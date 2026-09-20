@@ -11,6 +11,9 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 
 ### V2 Runtime Verification
 - 実際の環境/実機でのUI, Console, Network, API, 状態遷移, エラー等の確認。（静的確認のみでのPASS禁止）
+- **Google Maps 実描画要件（【項目⑤】）**:
+  - 地図機能を含む画面（Hアプリ・Manager）においては、単なる HTTP 200 応答や HTML DOM 到達のみでの PASS を絶対禁止とする。
+  - 実機ブラウザで `window.google.maps` がロードされ、地図コンテナ内に `#main-map .gm-style` が実描画され、コンテナサイズが非ゼロ（width > 0 && height > 0）であり、ドラッグ・ズーム等の操作が可能であることを確認しなければならない。
 
 ### V3 Regression Verification
 - 既存機能への副作用がないことの確認。
@@ -33,11 +36,16 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
   - **Evidence不足の場合**: PASSせず即時HARD STOPし、MASTERへ報告すること。Evidence不足を補うための実装・修正をAIが勝手に開始してはならない。
   - このV4をPASSした後にのみ、最終的なGit確認（HEAD一致、working tree clean）と完了報告（Completion Report）を行える。
 
+### Report Truth Gate（完了報告値直接機械取得・突合関門）
+- **義務**: 完了報告（Completion Report / `walkthrough.md` / チャット報告）を作成する際、AI社員が自身の記憶や過去のコンテキストから数値を記述することを絶対禁止とする。
+- **Action**: その時点の実ファイル（`data/address_master.csv` 等）を直接コマンド（`head`, `tail`, `wc -l` 等）で機械抽出し、先頭行ID/町名、末尾行ID/町名、総件数、合計人口、世帯数、代表座標等の確定値を報告書に埋め込み、1文字の狂いもなく実ファイルと完全一致することを検証・提示する。
+- **Hard Stop**: 報告書の記載値と実ファイル値に 1文字でも差異・推測・古い残骸がある場合は、報告提出を物理禁止し **HARD STOP** とする。
+
 ---
 
 ## 2. Verification Evidence Requirement (証跡5項目)
 
-すべてのVerification（V1〜V4）において、以下の5項目を記録し証明しなければならない。
+すべてのVerification（V1〜V4、および Report Truth Gate）において、以下の5項目を記録し証明しなければならない。
 - **Test**: 何を確認するか
 - **Expected**: 期待される結果
 - **Actual**: 実際の実行結果
@@ -60,6 +68,8 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 ### 禁止事項
 - 実行していない検証結果を書く
 - 予定結果を書く
+- 記憶や過去ログから推測で完了報告の数値を書く（Report Truth Gate違反）
+- Google Maps の実描画（`.gm-style` / コンテナ非0サイズ）を確認せずにUI検証をPASSとする
 - ユーザー確認待ち状態で完了報告する
 - あとでcommitする、など未確定状態での報告
 - 「スクリーンショットを要求する」「画面を想像する」「実機確認をユーザーに任せる」形での検証完了報告は絶対禁止とする。

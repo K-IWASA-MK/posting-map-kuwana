@@ -119,17 +119,25 @@ description: 新地区の初期展開、GAS生成、デプロイ、スプレッ�
 * **Action**:
   - `bootstrapEnvironment` API を POST リクエストで呼び出し、Script Properties へパラメータを一括注入。
   - 注入パラメータ: `DISTRICT_ID`, `TARGET_SPREADSHEET_ID`, `STORAGE_PARENT_ID`, `PROVISIONING_TOKEN_HASH`。
+  - **Google Maps APIキー自動投入（【項目③】）**:
+    - 共通秘密情報 `POSTING_MAP_GOOGLE_MAPS_API_KEY` をプロビジョニングパイプライン（`scripts/provision-district.mjs`）を通じて GAS Script Properties へ自動投入。
+    - キー未設定時は即時 **HARD STOP (exit 1)**。キー値そのものは Git、ログ、画面、報告書へ一切露出させず、`GOOGLE_MAPS_API_KEY: PRESENT` のみ確認・記録する。
+  - **Spreadsheet DB行順完全同期（【項目②】）**:
+    - `npm run provision:district -- --reset-existing-records` を実行し、`data/address_master.csv` の確定行順（五十音順SSOT）を「配布実績の原本」および当月業務シート「配布実績YYYY-MM」へ 100% 同期。
+    - 新地区製造時は既存テストデータを全消去し、全件クリーン初期化（進捗率0.0%）。
   - 新地区構築時に必要な外部サービス連携（LINE Messaging API等）は、人間への手動設定依頼を完全排除し、プロビジョニングパイプライン（`provision-district.mjs` ➔ `SystemInfoService.syncSystemInfo`）を通じて自動構成する。
   - プロビジョニング認証はプラットフォーム共通シークレット（`CORE_PROVISIONING_HASH`）によってゼロコンフィグで通過させ、人間に未知のトークン手入力を求めない。
 * **Assertion / Evidence**:
   - レスポンス `{"success": true, "message": "Environment bootstrapped successfully."}` の取得。
   - 実機API `GET /exec?action=getSystemSummary` を実行し、返却値 `districtName` が対象スプレッドシート名と動的一致することの客観的ログ。
   - `syncSystemInfo` レスポンスにおいて `lineConfigured: true` が返却されること。
+  - `verify:gas` 実行時に `GOOGLE_MAPS_API_KEY: PRESENT` が出力されること。
+  - 「配布実績の原本」および「配布実績YYYY-MM」の行順が `address_master.csv` と 100% 一致すること。
 * **Hard Stop**:
-  - `UNAUTHORIZED`（トークン不正）、`DISTRICT_MISMATCH`（地区不一致）、`RESOURCE_NOT_FOUND`、外部サービス未構成時は即時停止。
+  - `UNAUTHORIZED`（トークン不正）、`DISTRICT_MISMATCH`（地区不一致）、`RESOURCE_NOT_FOUND`、Google Maps APIキー未設定（`MISSING`）、原本/当月シート行順不一致、外部サービス未構成時は即時停止。
 * **Prohibition**:
-  - 平文のプロビジョニングトークンをGASやGitに保存することは禁止（SHA-256ハッシュのみ保持）。
-  - 人間に手作業でトークン値の調査や手動設定を要求することの絶対禁止（ゼロ手作業原則）。
+  - 平文のプロビジョニングトークンやAPIキーをGASやGitに保存・コミットすることは禁止（SHA-256ハッシュのみ保持、APIキーは環境変数からScript Propertiesへ直接投入）。
+  - 人間に手作業でトークン値やAPIキーの調査や手動設定を要求することの絶対禁止（ゼロ手作業原則）。
   - GAS管理画面や外部コンソールを手動で開いて設定させる手順に依存することの絶対禁止。
 
 ---
@@ -155,10 +163,11 @@ description: 新地区の初期展開、GAS生成、デプロイ、スプレッ�
   - `npm run sync:config` を実行し、`data/config.js` を SSOT から自動生成（`active/` 配下は完全不変・0変更を維持）。
   - `npm run check:ssot` を実行し、エンドポイントの整合性を検証（`active/` 内に旧 `config.js` が存在しないことも検証）。
   - 読み取り専用API（`getSystemSummary`, `getDeviceStatus`, `getTier1`）を実行して接続を検証。
+  - スプレッドシートDBの「配布実績の原本」および「配布実績YYYY-MM」のA列ID・C列町域の全行順序が、確定済み `data/address_master.csv` の行順と 100% 完全一致することを検証。
 * **Assertion / Evidence**:
-  - `sync:config` 成功ログ、`check:ssot` PASS ログ、読み取りAPIの正常応答（200 OK）、`git diff active/` が完全 0 バイトであること。
+  - `sync:config` 成功ログ、`check:ssot` PASS ログ、読み取りAPIの正常応答（200 OK）、Spreadsheet DB全行ID順序一致ログ、`git diff active/` が完全 0 バイトであること。
 * **Hard Stop**:
-  - SSOT 不一致、古いエンドポイントの残存、APIエラー、`active/` 配下に差分が発生した場合は即時停止。
+  - SSOT 不一致、古いエンドポイントの残存、APIエラー、原本/当月シート行順不一致、`active/` 配下に差分が発生した場合は即時停止。
 * **Prohibition**:
   - `active/` 配下のファイル（HTML/JS/CSS）へ直接設定ファイルを出力・変更することは絶対禁止。
   - フロントエンドコード（`app.js`, `manager.js` 等）に地区固有値を直接ハードコードすることは禁止。
@@ -191,3 +200,10 @@ description: 新地区の初期展開、GAS生成、デプロイ、スプレッ�
    MIE-03等の他地区スプレッドシート、他地区GAS、親リポジトリへのアクセス・変更は一切禁止。
 4. **自己承認によるデプロイ禁止**:
    人間の明示的な `Proceed` なしに、AI社員自身の判断で Phase 2（インフラ作成）へ進んではならない。
+5. **APIキー未設定でのデプロイ・稼働進行の禁止**:
+   `POSTING_MAP_GOOGLE_MAPS_API_KEY` が未設定のままプロビジョニングやデプロイを進行させることは絶対禁止（未設定時は即時 HARD STOP）。
+6. **APIキー平文出力の絶対禁止**:
+   APIキー値をログ、Gitコミット、報告書等に平文で出力・露出させてはならない（`PRESENT` / `MISSING` のみ記録）。
+7. **Spreadsheet DB行順不一致の放置禁止**:
+   `address_master.csv` の確定行順（五十音順SSOT）と異なる順序でスプレッドシートの原本・当月シートを放置・運用してはならない。
+

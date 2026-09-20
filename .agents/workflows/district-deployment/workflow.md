@@ -112,10 +112,16 @@ MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
 - **Action**:
   1. MASTERから受領した「地区名」に基づき、公定マスターから正式自治体名・自治体コード（5桁）を機械特定。
   2. `census-small-area-master` プロトコルを起動し、`scripts/generate-boundaries-geojson.py` を実行して `address_master.csv`, `boundaries.geojson`, `municipality_master.csv` を生成。
+     - **【項目①】町名五十音順SSOT化の自動執行**: 生成直後に `python3 scripts/sort-address-master.py` を実行し、日本郵便公定カナに完全準拠した五十音順へ整列する。
+       - 表示文字列（`town_name`）は1文字も改変しない。
+       - `rowId`（1..N）の数値そのものは100%保持し、絶対に振り直さない。
+       - `e_stat_code` 等との属性対応を完全に維持する。
   3. `data/area_mapping.json` を空配列 `[]` に初期化。直近過去3回の選挙結果を `data/election_history.json` へ反映。
-  4. `node scripts/validate-district-data-gate.mjs` を実行。
-  5. Auditor が独立査読を実施（データ純度・前地区残骸ゼロ・境界有効性を検査）。
-- **PASS条件**: `validate-district-data-gate` ALL PASS ＆ Auditor 承認。
+     - **【項目④】小選挙区構成自治体からの保管場所自動確定**: 地方選挙モードにおける既存確定ロジックに基づき、基準自治体が属する衆議院小選挙区の全構成自治体（例: 桑名市なら三重3区の8市町: 桑名市、いなべ市、木曽岬町、東員町、菰野町、朝日町、川越町、四日市市）を `data/storage_locations.json` へ自動確定する。単一市への狭窄や他地区残骸を排除する。
+  4. `node scripts/validate-district-data-gate.mjs` を実行。町名五十音順（Rule-03/ソート整合）および小選挙区構成自治体ホワイトリスト（Rule-06）を機械検査。
+  5. Auditor が独立査読を実施（データ純度・五十音順・前地区残骸ゼロ・境界有効性を検査）。
+- **PASS条件**: `validate-district-data-gate` ALL PASS（五十音順・小選挙区自治体純度含む） ＆ Auditor 承認。
+- **HARD STOP条件**: 読み仮名未解決町名が存在、`rowId` 重複・欠番、または小選挙区構成自治体以外の他地区残骸が1件でも検知された場合は即時 **HARD STOP (exit 1)**。
 - **REJECT時**: State 2 先頭へ戻り、パラメータ再調整・データ再生成を実施（State 1 の Git は維持）。
 
 ---
@@ -149,12 +155,18 @@ MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
      - コピー元・他地区 LIFF ID の転用は絶対禁止（不一致・正規フォーマットを検証）。
      - 取得した `productionLiffUrl` を `deployment.json` へ自動反映。
   6. `npm run sync:config` ➔ `npm run check:ssot` を実行し、`data/config.js` を SSOT 一方向同期。
-  7. `npm run provision:district` を実行し、スプレッドシートに初期台帳およびシート集合を構築（人間確認用 `SYSTEM_INFO` シートへの実環境情報同期を含む。※システム設定 SSOT は `deployment.json` ➔ `data/config.js` であり、`SYSTEM_INFO` は人間確認用シートと位置付ける）。
-      - **Google Maps APIキー自動設定**: 実行環境側の共通秘密情報 `POSTING_MAP_GOOGLE_MAPS_API_KEY` をプロビジョニング時に GAS Script Properties へ自動投入（未設定時は HARD STOP）。
-  8. **シート集合検証**: 実スプレッドシートのシート集合が、[`active/business/system/district_provisioner.js`](active/business/system/district_provisioner.js) の定義する **SSOT期待シート集合（`allSheets` = `SYSTEM_INFO` + 原本5種 + 月次5種）** と Set 完全一致することを検証（固定値「12」による判定を禁止）。
-  9. ルートに `CNAME` ファイルを配備してプッシュし、GitHub Pages API（`gh api`）でカスタムドメイン登録および HTTPS 強制化（`https_enforced: true`）を設定。
-  10. DNS伝播・Let's Encrypt 証明書発行をポーリング待機し、`curl -ILs "https://${domain}/"` で HTTP 200 OK 疎通を確認。
-- **PASS条件**: インフラ全リソース配備完了（新地区専用LIFF ID確定・コピー元残骸ゼロ含む） ＆ シート集合 SSOT 完全一致 ＆ 本番ドメイン HTTP 200 OK 疎通。
+  7. **【項目③】Google Maps APIキー自動設定 ＆ 未設定時 HARD STOP**:
+     - 実行環境側の共通秘密情報 `POSTING_MAP_GOOGLE_MAPS_API_KEY` をプロビジョニング時に GAS Script Properties へ自動投入。
+     - キーが未設定の場合は即座に **HARD STOP (exit 1)**。キー値そのものはログ・Git・報告書に絶対に出力せず、`GOOGLE_MAPS_API_KEY: PRESENT` のみ記録する。
+  8. **【項目②】Spreadsheet DB（原本・当月シート）行順の即時完全同期**:
+     - `npm run provision:district -- --reset-existing-records` を実行し、確定した `data/address_master.csv` の行順（五十音順SSOT）をスプレッドシートの「配布実績の原本」および当月業務シート「配布実績YYYY-MM」へ 100% 同期する。
+     - A列ID・C列町域の全行順序が CSV と完全一致すること。新地区製造時のテストデータは `--reset-existing-records` で全リセットされ、クリーン初期化（進捗率0.0%）される。
+     - 人間確認用 `SYSTEM_INFO` シートへの実環境情報同期を含む。
+  9. **シート集合検証**: 実スプレッドシートのシート集合が、[`active/business/system/district_provisioner.js`](active/business/system/district_provisioner.js) の定義する **SSOT期待シート集合（`allSheets` = `SYSTEM_INFO` + 原本5種 + 月次5種）** と Set 完全一致することを検証（固定値「12」による判定を禁止）。
+  10. ルートに `CNAME` ファイルを配備してプッシュし、GitHub Pages API（`gh api`）でカスタムドメイン登録および HTTPS 強制化（`https_enforced: true`）を設定。
+  11. DNS伝播・Let's Encrypt 証明書発行をポーリング待機し、`curl -ILs "https://${domain}/"` で HTTP 200 OK 疎通を確認。
+- **PASS条件**: インフラ全リソース配備完了（新地区専用LIFF ID確定・コピー元残骸ゼロ含む） ＆ Maps APIキー PRESENT ＆ 原本/当月シート行順 100% 完全同期 ＆ シート集合 SSOT 完全一致 ＆ 本番ドメイン HTTP 200 OK 疎通。
+- **HARD STOP条件**: Google Maps APIキー未設定、原本/当月シート行順不一致、またはシート集合不一致検知時は即時 **HARD STOP (exit 1)**。
 - **REJECT時**: State 4 先頭へ戻り、失敗したリソースの再生成・再デプロイ・反映待機を実施（データ層は保全）。
 
 ---
@@ -163,24 +175,31 @@ MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
 - **担当**: Deployer ➔ Auditor
 - **Action**:
   以下の **5重の本番稼働検証** を実機ブラウザ・API経由で執行する：
-  1. **Hアプリ本番URL検証**:
+  1. **【項目⑤】Hアプリ本番URL・Google Maps実描画E2E検証**:
      - `https://${domain}/` へアクセス。
-     - LINE/LIFF 起動、認証、Google Maps SDK ロード（`window.google.maps`）、地図コンテナ（`#main-map .gm-style`）の実描画および非ゼロサイズ確認、GPS記録、写真アップロード、配布完了フローが Console/Network エラー 0 件で動作すること。
+     - 単なる HTTP 200 応答ではなく、実機ブラウザで以下を厳格にアサート：
+       - `window.google.maps` SDK ロード完了
+       - 地図コンテナ内に `#main-map .gm-style` が実描画されていること
+       - 地図コンテナのレンダリングサイズ（width > 0 && height > 0）が非ゼロであること
+       - 実際に地図のズーム・ドラッグ・ピン操作が可能であること
+       - LINE/LIFF 起動、認証、GPS記録、写真アップロード、配布完了フローが Console/Network エラー 0 件で動作すること。
   2. **Dashboard PC本番URL検証**:
      - `https://${domain}/active/manager/` へ PC 解像度でアクセス。
-     - Manager パスワード認証、全ピン描画（件数 == 住所マスター行数）、API 疎通、集計表示を確認。
+     - Manager パスワード認証、全ピン描画（件数 == 住所マスター行数）、町名セレクターが五十音順に整列、API 疎通、集計表示を確認。
   3. **Dashboard Mobile検証**:
      - モバイル viewport（iPhone 14相当: 390x844）でアクセス。
      - 横スクロール発生なし（`hasNoHorizontalScroll`）、UI重なりなし、町名セレクター開閉・ズーム・操作がレスポンシブに機能すること。
-  4. **本番GAS疎通・APIキー検証**:
-     - `npm run verify:gas` を実行し、本番 WebApp URL の HTTP 200 応答および `getMapsApiKey` による `GOOGLE_MAPS_API_KEY: PRESENT`（キー非空・未設定時 FAIL）を確認。
-  5. **本番スプレッドシートDB検証**:
+  4. **【項目③】本番GAS疎通・APIキー検証**:
+     - `npm run verify:gas` を実行し、本番 WebApp URL の HTTP 200 応答および `getMapsApiKey` による `GOOGLE_MAPS_API_KEY: PRESENT` を確認。キー未設定（`MISSING`）の場合は即時 FAIL。
+  5. **【項目②】本番スプレッドシートDB行順・初期状態検証**:
      - `npm run check:provisioning` を実行し、全原本0件、進捗率0.0%、ノイズ残骸ゼロを確認。
-- **PASS条件**: 5項目すべてが ALL PASS であること（Google Maps が実描画されない限り完成扱いにしない）。
+     - 「配布実績の原本」および「配布実績YYYY-MM」の行順が、`data/address_master.csv` の行順と 100% 一致（全件完全一致）していることを検証。
+- **PASS条件**: 5項目すべてが ALL PASS であること（Google Maps が実描画されない限り、またはDB行順が一致しない限り完成扱いにしない）。
+- **HARD STOP条件**: Google Maps が実描画されない（`.gm-style` 不在、コンテナサイズ 0）、またはAPIキー MISSING、DB行順不一致の場合は即時 **HARD STOP (FAIL)**。
 - **REJECT時**:
   - 画面・CSS・レイアウト不具合 ➔ State 5 内部修正・再検証
   - API・インフラ・通信障害 ➔ State 4（インフラ再同期・再デプロイ）へ戻る
-  - データ欠損・ピン数不一致 ➔ State 2（データ層再生成）へ戻る
+  - データ欠損・ピン数不一致・行順不一致 ➔ State 2（データ層再生成）へ戻る
 
 ---
 
@@ -191,25 +210,31 @@ State 5 の 5 重検証が ALL PASS となった後、以下の責任分離に�
 ```text
 ［State 5 ALL PASS］
        ↓
-［1. Auditor 独立査読］
+［1. Report Truth Gate（完了報告値の実ファイル機械取得・突合）］
+  ・担当: Flash（統括AI）
+  ・記憶や過去ログからの数値記述を絶対禁止。
+  ・その時点の実ファイル（data/address_master.csv等）を直接読み込み、
+    先頭行ID/町名、末尾行ID/町名、総件数、合計人口、世帯数等の数値を機械抽出。
+  ・報告書記載値と実ファイル抽出値の完全一致をアサート。
+       ↓ PASS
+［2. Auditor 独立査読］
   ・担当: Auditor（完全 READ ONLY）
   ・5観点（①地区非依存、②スコープ厳守、③客観的エビデンス、④コピー耐性、⑤公式データ確定）の独立判定を下す。
   ・すべての品質ゲートログおよび本番稼働エビデンスを照合し、PASS を宣言。
        ↓ PASS
-［2. 成果物 Commit & Push］
-  ・担当: Flash（統括AI）または Deployer
+［3. 成果物 Commit & Push］
+  ・担当: Flash または Deployer
   ・確定した新地区成果物（data/, config, deployment等）をステージング。
   ・git commit -m "feat(<district>): complete autonomous district establishment"
   ・git push origin main
        ↓
-［3. DELIVERY（完成納品）］
-  ・MASTERへ以下の全稼働URL一覧を提示して完了報告を行う：
+［4. DELIVERY（完成納品）］
+  ・MASTERへ以下の全稼働URL一覧および実ファイルから抽出した確定値を提示して完了報告：
     - Hアプリ本番URL（LINE LIFF URL）
     - Dashboard PC本番URL
     - Dashboard Mobile本番URL
     - 本番GoogleスプレッドシートURL
 ```
-
 
 ---
 
@@ -219,7 +244,9 @@ State 5 の 5 重検証が ALL PASS となった後、以下の責任分離に�
 | :---: | :--- | :--- | :--- | :--- |
 | **0** | **SOURCE_VERIFY** | Auditor | `git status` clean ＆ `npm run check:purity` ALL PASS | **HARD STOP**（親機の汚染・未コミット変更解消まで中断・MASTER報告） |
 | **1** | **REPLICA_INIT_AND_GIT_ISOLATION** | Deployer | 新フォルダー作成 ＆ `gh repo create` ＆ 初回push ＆ 旧origin切断確認 | **State 1 先頭**（フォルダー再作成・Git再接続） |
-| **2** | **DATA_RESOLVE_AND_AUDIT** | Deployer ➔ Auditor | `validate-district-data-gate` ALL PASS ＆ Auditor 承認 | **State 2 先頭**（パラメータ再調整・データ再生成）。Gitリポジトリは維持 |
+| **2** | **DATA_RESOLVE_AND_AUDIT** | Deployer ➔ Auditor | `validate-district-data-gate` ALL PASS（五十音順・小選挙区自治体純度含む） ＆ Auditor 承認 | **State 2 先頭**（パラメータ再調整・データ再生成）。Gitリポジトリは維持 |
 | **3** | **SYS_INFO_DERIVATION** | Deployer | ドメインから CNAME、各URL、districtCode、resourceSpecs が矛盾なく確定 | **State 3 先頭**（内部再導出。MASTERへは聞き返さない） |
-| **4** | **INFRA_PROVISIONING** | Deployer | スプレッドシート複製 ＆ Drive写真フォルダ生成 ＆ GAS deploy ＆ SSOT期待シート集合構築 ＆ Pages CNAME設定 ＆ HTTPS疎通（HTTP 200） | **State 4 先頭**（失敗した外部リソースの再生成・再デプロイ・反映待機）。データ層は保全 |
-| **5** | **RUNTIME_AUDIT** | Deployer ➔ Auditor | 5重検証（Hアプリ、Dashboard PC、Dashboard Mobile、本番GAS、本番DB）ALL PASS ＆ Auditor承認 | ・画面・CSS崩れ ➔ **State 5 内部修正**<br>・API・インフラ障害 ➔ **State 4 へ戻る**<br>・データ・ピン不一致 ➔ **State 2 へ戻る** |
+| **4** | **INFRA_PROVISIONING** | Deployer | スプレッドシート複製 ＆ Drive写真フォルダ生成 ＆ GAS deploy ＆ Maps APIキー投入（PRESENT） ＆ 原本/当月シート行順同期 ＆ SSOT期待シート集合構築 ＆ Pages CNAME設定 ＆ HTTPS疎通（HTTP 200） | **State 4 先頭**（失敗した外部リソースの再生成・再デプロイ・反映待機）。データ層は保全 |
+| **5** | **RUNTIME_AUDIT** | Deployer ➔ Auditor | 5重検証（Hアプリ実描画、Dashboard PC、Dashboard Mobile、本番GAS Mapsキー、本番DB行順）ALL PASS ＆ Auditor承認 | ・画面・CSS崩れ ➔ **State 5 内部修正**<br>・API・インフラ障害 ➔ **State 4 へ戻る**<br>・データ・ピン不一致・行順不一致 ➔ **State 2 へ戻る** |
+| **引渡** | **REPORT_TRUTH_GATE** | Flash ➔ Auditor | 報告書記載値と実ファイル直接抽出値の 100% 完全一致 ＆ Auditor 独立査読 PASS | **HARD STOP**（記載値に推測・乖離がある場合は報告提出を物理禁止） |
+

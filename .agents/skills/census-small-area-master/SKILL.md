@@ -100,6 +100,11 @@ graph TD
 1. `data/address_master.csv`:
    - ヘッダ: `rowId,city_name,town_name,latitude,longitude,households,population,e_stat_code`
    - 改行コード: LF (`lineterminator="\n"`)
+   - **町名日本語あいうえお順整列（五十音順SSOT規則）**:
+     - 日本郵便公定データに基づくソート専用キー（`sort_kana`）により、最初からあいうえお順で生成・整列する。
+     - `town_name` の表示文字列は1文字も改変しない。
+     - `rowId`（1..M）の数値そのものは100%保持し、絶対に振り直さない。
+     - `e_stat_code` 等との属性対応を完全に維持する。
 2. `data/boundaries.geojson`:
    - CRS: `urn:ogc:def:crs:OGC:1.3:CRS84`
    - Properties: `rowId,city_name,town_name,households,population,e_stat_code`
@@ -112,10 +117,12 @@ graph TD
 1. **V1 Static Verification**:
    - rowId 連続性 (1..M)、旧 rowId 参照保持。
    - 原本との人口・世帯数突合（差分 0 の証明）。
+   - 町名日本語五十音順の完全整列アサーション。
    - `git diff --check` で空白・改行コードの完全チェック。
 2. **V2 Runtime Verification (ブラウザ実機検証)**:
    - Chrome DevTools MCP を用い、マネージャー画面（`active/manager/index.html`）を開く。
    - `DashboardState.masterPins.length === M`、`masterLoadStatus === 'LOADED'`。
+   - 町名セレクターが五十音順に整列して表示されること。
    - ピン選択時に右下エリア統計（実人口・実世帯数）が即座に連動表示されること。
    - 自治体セレクターの全自治体項目・件数・フィルタリング連動の確認。
    - Console Error / Network Error 0 件の確認。
@@ -129,12 +136,13 @@ graph TD
 ### Stage 8: バックエンド・スプレッドシート月次業務データ同期（Backend & Spreadsheet Deployment Gate）
 マスターの更新完了後、フロントエンドだけでなく「スプレッドシート業務データ」「GASバックエンド」「本番API」までを完全に一本につなぎ直す。
 
-1. **Spreadsheet業務データ・原本の同期 (`DistrictProvisioner`)**:
+1. **Spreadsheet業務データ・原本の行順完全同期 (`DistrictProvisioner`)**:
    - `scripts/provision-district.mjs` を実行し、GAS側で `DistrictProvisioner.getInstance().provisionNewDistrict(addresses, options)` をトリガーする。
-   - **「配布実績の原本」**: 新マスターの全件数（M件）に展開。
-   - **当月業務シート「配布実績YYYY-MM」**:
-     - **クリーン初期化モード時**: `--reset-existing-records`（`options.resetExistingRecords === true`）を明示指定して全M件を初期化（完了0件、0%）。
-     - **重要**: `resetExistingRecords: true` はデフォルト動作にしてはならない。明示指定時のみクリーン初期化し、指定がない場合は既存実績を保護すること（本番実績継承地区での不用意なデータ消失を防止）。
+   - **「配布実績の原本」および当月業務シート「配布実績YYYY-MM」**:
+     - `data/address_master.csv` の確定行順（五十音順SSOT）をそのままスプレッドシートの行順に 100% 同期する。
+     - A列ID・C列町域の全行順序が CSV と完全一致すること。
+     - **クリーン初期化モード（新地区製造時）**: `--reset-existing-records`（`options.resetExistingRecords === true`）を明示指定して既存テストデータを完全消去し、全M件を初期化（完了0件、0%）。
+     - **重要**: `resetExistingRecords: true` はデフォルト動作にしてはならない。新地区製造時および明示指定時のみクリーン初期化し、指定がない場合は既存実績を保護すること（本番実績継承地区での不用意なデータ消失を防止）。
 2. **GASバックエンドの同期 & 本番デプロイ**:
    - `npx clasp push` で最新HEADコードをGASプロジェクトへ反映。
    - `npx clasp deploy -i <DeploymentId> -d "<ReleaseNote>"` で本番Versionを更新。
@@ -145,6 +153,7 @@ graph TD
      - `done`: 0（クリーン初期化時）または継承完了数
      - `percent`: 0%（クリーン初期化時）または継承完了率
      - `online`: true
+   - **本番スプレッドシート行順検証**: 原本および当月シートのA列ID順が `address_master.csv` の順序と 100% 一致していることを実証。
    - **Hアプリ / Manager実機**: ヘッダーおよび統計バッジで M件 / 0 / 0% を確認。
 
 ---
@@ -202,3 +211,8 @@ with open("data/address_master.csv", "w", encoding="utf-8", newline="\n") as f:
    - ポスティング不可能な水面・海上・河川エリアが含まれている場合。
 4. **地区固有情報のコード侵入**:
    - `active/` 配下のスクリプトに特定地区固有の名称・座標・コード分岐が書き込まれそうになった場合。
+5. **町名五十音順の不整合・公定読み仮名未解決**:
+   - 日本郵便公定データで読み順が確定できない町名が存在する場合、または整列後に `rowId` 重複・欠番・範囲外・件数不一致が発生した場合。
+6. **Spreadsheet DB行順不一致**:
+   - スプレッドシートの「配布実績の原本」および「配布実績YYYY-MM」の行順が `data/address_master.csv` と 1行でも不一致な場合。
+
