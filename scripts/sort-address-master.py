@@ -274,10 +274,10 @@ def resolve_sort_key(row):
     town_name の表示文字列そのものは一切変更しない。
     """
     town_name = row["town_name"]
-    
+
     # 1. 大字接頭辞の除去（ソート専用キー用）
     core_name = re.sub(r"^大字", "", town_name)
-    
+
     # 2. 丁目部分の分離
     chome_part = ""
     chome_match = re.search(r"([一二三四五六七八九十]+丁目)$", core_name)
@@ -285,20 +285,20 @@ def resolve_sort_key(row):
     if chome_match:
         chome_part = chome_match.group(1)
         base_name = core_name[:-len(chome_part)]
-    
+
     # 3. カナ引き当て
     base_kana = None
     if base_name in POSTAL_KANA_KUWANA:
         base_kana = POSTAL_KANA_KUWANA[base_name]
     elif core_name in POSTAL_KANA_KUWANA:
         base_kana = POSTAL_KANA_KUWANA[core_name]
-    
+
     if not base_kana:
         raise ValueError(f"FATAL: Unresolved reading kana for town_name='{town_name}' (base='{base_name}')")
-        
+
     chome_num = CHOME_NUM_MAP.get(chome_part, "00")
     e_stat_code = int(row.get("e_stat_code") or 0)
-    
+
     return (base_kana, chome_num, e_stat_code)
 
 def main():
@@ -306,52 +306,52 @@ def main():
     parser.add_argument("--input", default="data/address_master.csv", help="Input address_master.csv path")
     parser.add_argument("--output", default="data/address_master.csv", help="Output address_master.csv path")
     args = parser.parse_args()
-    
+
     if not os.path.exists(args.input):
         sys.exit(f"FATAL: Input file not found: {args.input}")
-        
+
     with open(args.input, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         original_header = reader.fieldnames
         original_rows = list(reader)
-        
+
     original_count = len(original_rows)
     print(f"📊 Loaded {original_count} records from {args.input}")
-    
+
     # 全件のソートキー解決テスト
     for r in original_rows:
         try:
             resolve_sort_key(r)
         except Exception as err:
             sys.exit(f"❌ Error at rowId={r.get('rowId')}: {err}")
-            
+
     print("✅ All records successfully resolved sort_kana from official Japan Post data.")
-    
+
     # ソート実行
     sorted_rows = sorted(original_rows, key=resolve_sort_key)
-    
+
     # 整合性検証
     assert len(sorted_rows) == original_count, "Record count mismatch after sort"
-    
+
     orig_row_ids = set(int(r["rowId"]) for r in original_rows)
     sorted_row_ids = set(int(r["rowId"]) for r in sorted_rows)
     assert orig_row_ids == sorted_row_ids, "rowId set changed after sort"
     assert orig_row_ids == set(range(1, original_count + 1)), "rowId is not a continuous sequence from 1 to N"
-    
+
     orig_pop = sum(int(r["population"]) for r in original_rows if r.get("population"))
     sorted_pop = sum(int(r["population"]) for r in sorted_rows if r.get("population"))
     assert orig_pop == sorted_pop, f"Population sum mismatch: {orig_pop} vs {sorted_pop}"
-    
+
     orig_hh = sum(int(r["households"]) for r in original_rows if r.get("households"))
     sorted_hh = sum(int(r["households"]) for r in sorted_rows if r.get("households"))
     assert orig_hh == sorted_hh, f"Households sum mismatch: {orig_hh} vs {sorted_hh}"
-    
+
     # 出力 (LF改行)
     with open(args.output, "w", encoding="utf-8", newline="\n") as f:
         writer = csv.DictWriter(f, fieldnames=original_header, lineterminator="\n")
         writer.writeheader()
         writer.writerows(sorted_rows)
-        
+
     print(f"🎉 Successfully sorted and wrote {len(sorted_rows)} records to {args.output}")
     print(f"   First: rowId={sorted_rows[0]['rowId']}, town_name={sorted_rows[0]['town_name']}")
     print(f"   Last:  rowId={sorted_rows[-1]['rowId']}, town_name={sorted_rows[-1]['town_name']}")
