@@ -1,5 +1,6 @@
 [
-  "data/address_master.csv",
-  "scripts/sort-address-master.py",
-  ".agents/skills/census-small-area-master/SKILL.md"
+  ".agents/rules/verification-gates.md",
+  ".agents/skills/census-small-area-master/SKILL.md",
+  ".agents/skills/district-provisioning/SKILL.md",
+  ".agents/workflows/district-deployment/workflow.md"
 ]
