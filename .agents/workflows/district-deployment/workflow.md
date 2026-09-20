@@ -138,12 +138,22 @@ MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
   1. 公式テンプレート（`POSTING_MAP_EMPTY_TEMPLATE`）から新地区スプレッドシートを複製・リネーム。
   2. 写真保存用 Google Drive フォルダ（`<DISTRICT>_PHOTOS`）を生成し、`storageFolderId` を取得。
   3. 新規 Standalone GAS プロジェクトを配備し、`node scripts/safe-deploy.mjs` で本番コードを反映。
-  4. `deployment.json` を確定し、`npm run sync:config` ➔ `npm run check:ssot` で `data/config.js` を一方向同期。
-  5. `npm run provision:district` を実行し、スプレッドシートに初期台帳およびシート集合を構築。
-  6. **シート集合検証**: 実スプレッドシートのシート集合が、[`active/business/system/district_provisioner.js`](active/business/system/district_provisioner.js) の定義する **SSOT期待シート集合（`allSheets` = `SYSTEM_INFO` + 原本5種 + 月次5種）** と Set 完全一致することを検証（固定値「12」による判定を禁止）。
-  7. ルートに `CNAME` ファイルを配備してプッシュし、GitHub Pages API（`gh api`）でカスタムドメイン登録および HTTPS 強制化（`https_enforced: true`）を設定。
-  8. DNS伝播・Let's Encrypt 証明書発行をポーリング待機し、`curl -ILs "https://${domain}/"` で HTTP 200 OK 疎通を確認。
-- **PASS条件**: インフラ全リソース配備完了 ＆ シート集合 SSOT 完全一致 ＆ 本番ドメイン HTTP 200 OK 疎通。
+  4. 初回 OAuth 同意（Consent Checkpoint）を通過し、GAS エディタ経由での実行権限を確立。
+  5. **LIFF 自律発行・ID 抽出（Autonomous LIFF Provisioning）**:
+     - `npm run liff:acquire` を実行。
+     - ローカルブラウザ（Chrome CDP `[::1]:9222`）に接続し、LINE Developers のログイン済みセッションを利用。
+     - 地区固有 LIFF（`POSTING-MAP-<DISTRICT>` かつ `Endpoint = https://${domain}/`）を探索。
+     - **厳格な冪等判定**:
+       - 地区固有 APP_NAME かつ Endpoint URL の両方が完全一致する既存専用 LIFF が存在 ➔ ID を検証・取得
+       - 未存在 ➔ フォームを自律入力して新規作成（Full / profile, openid / 友だち追加 Off）➔ 新 LIFF ID を取得
+     - コピー元・他地区 LIFF ID の転用は絶対禁止（不一致・正規フォーマットを検証）。
+     - 取得した `productionLiffUrl` を `deployment.json` へ自動反映。
+  6. `npm run sync:config` ➔ `npm run check:ssot` を実行し、`data/config.js` を SSOT 一方向同期。
+  7. `npm run provision:district` を実行し、スプレッドシートに初期台帳およびシート集合を構築（人間確認用 `SYSTEM_INFO` シートへの実環境情報同期を含む。※システム設定 SSOT は `deployment.json` ➔ `data/config.js` であり、`SYSTEM_INFO` は人間確認用シートと位置付ける）。
+  8. **シート集合検証**: 実スプレッドシートのシート集合が、[`active/business/system/district_provisioner.js`](active/business/system/district_provisioner.js) の定義する **SSOT期待シート集合（`allSheets` = `SYSTEM_INFO` + 原本5種 + 月次5種）** と Set 完全一致することを検証（固定値「12」による判定を禁止）。
+  9. ルートに `CNAME` ファイルを配備してプッシュし、GitHub Pages API（`gh api`）でカスタムドメイン登録および HTTPS 強制化（`https_enforced: true`）を設定。
+  10. DNS伝播・Let's Encrypt 証明書発行をポーリング待機し、`curl -ILs "https://${domain}/"` で HTTP 200 OK 疎通を確認。
+- **PASS条件**: インフラ全リソース配備完了（新地区専用LIFF ID確定・コピー元残骸ゼロ含む） ＆ シート集合 SSOT 完全一致 ＆ 本番ドメイン HTTP 200 OK 疎通。
 - **REJECT時**: State 4 先頭へ戻り、失敗したリソースの再生成・再デプロイ・反映待機を実施（データ層は保全）。
 
 ---
