@@ -160,10 +160,15 @@ async function main() {
     console.log('ℹ️  POSTING MAP Common LINE Configuration: Not set in environment (Skipping LINE token provisioning).');
   }
 
-  if (mapsApiKey) {
-    options.mapsApiKey = mapsApiKey;
-    console.log('🗺️  POSTING MAP Common Maps API Configuration: Loaded from secure environment.');
+  if (!mapsApiKey) {
+    console.error('\n🛑 [Hard Stop] GOOGLE_MAPS_API_KEY is missing!');
+    console.error('   Google Maps API Key is required for district provisioning to ensure map rendering.');
+    console.error('   Please set POSTING_MAP_GOOGLE_MAPS_API_KEY in environment or .env before running provision:district.\n');
+    process.exit(1);
   }
+
+  options.mapsApiKey = mapsApiKey;
+  console.log('🗺️  GOOGLE_MAPS_API_KEY: PRESENT (Configured for GAS Script Properties)');
 
   const payload = {
     action: 'provisionDistrict',

@@ -150,6 +150,7 @@ MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
      - 取得した `productionLiffUrl` を `deployment.json` へ自動反映。
   6. `npm run sync:config` ➔ `npm run check:ssot` を実行し、`data/config.js` を SSOT 一方向同期。
   7. `npm run provision:district` を実行し、スプレッドシートに初期台帳およびシート集合を構築（人間確認用 `SYSTEM_INFO` シートへの実環境情報同期を含む。※システム設定 SSOT は `deployment.json` ➔ `data/config.js` であり、`SYSTEM_INFO` は人間確認用シートと位置付ける）。
+      - **Google Maps APIキー自動設定**: 実行環境側の共通秘密情報 `POSTING_MAP_GOOGLE_MAPS_API_KEY` をプロビジョニング時に GAS Script Properties へ自動投入（未設定時は HARD STOP）。
   8. **シート集合検証**: 実スプレッドシートのシート集合が、[`active/business/system/district_provisioner.js`](active/business/system/district_provisioner.js) の定義する **SSOT期待シート集合（`allSheets` = `SYSTEM_INFO` + 原本5種 + 月次5種）** と Set 完全一致することを検証（固定値「12」による判定を禁止）。
   9. ルートに `CNAME` ファイルを配備してプッシュし、GitHub Pages API（`gh api`）でカスタムドメイン登録および HTTPS 強制化（`https_enforced: true`）を設定。
   10. DNS伝播・Let's Encrypt 証明書発行をポーリング待機し、`curl -ILs "https://${domain}/"` で HTTP 200 OK 疎通を確認。
@@ -164,18 +165,18 @@ MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
   以下の **5重の本番稼働検証** を実機ブラウザ・API経由で執行する：
   1. **Hアプリ本番URL検証**:
      - `https://${domain}/` へアクセス。
-     - LINE/LIFF 起動、認証、GPS記録、写真アップロード、配布完了フローが Console/Network エラー 0 件で動作すること。
+     - LINE/LIFF 起動、認証、Google Maps SDK ロード（`window.google.maps`）、地図コンテナ（`#main-map .gm-style`）の実描画および非ゼロサイズ確認、GPS記録、写真アップロード、配布完了フローが Console/Network エラー 0 件で動作すること。
   2. **Dashboard PC本番URL検証**:
      - `https://${domain}/active/manager/` へ PC 解像度でアクセス。
      - Manager パスワード認証、全ピン描画（件数 == 住所マスター行数）、API 疎通、集計表示を確認。
   3. **Dashboard Mobile検証**:
      - モバイル viewport（iPhone 14相当: 390x844）でアクセス。
      - 横スクロール発生なし（`hasNoHorizontalScroll`）、UI重なりなし、町名セレクター開閉・ズーム・操作がレスポンシブに機能すること。
-  4. **本番GAS疎通検証**:
-     - `npm run verify:gas` を実行し、本番 WebApp URL の HTTP 200 応答および POST API 実行を確認。
+  4. **本番GAS疎通・APIキー検証**:
+     - `npm run verify:gas` を実行し、本番 WebApp URL の HTTP 200 応答および `getMapsApiKey` による `GOOGLE_MAPS_API_KEY: PRESENT`（キー非空・未設定時 FAIL）を確認。
   5. **本番スプレッドシートDB検証**:
      - `npm run check:provisioning` を実行し、全原本0件、進捗率0.0%、ノイズ残骸ゼロを確認。
-- **PASS条件**: 5項目すべてが ALL PASS であること。
+- **PASS条件**: 5項目すべてが ALL PASS であること（Google Maps が実描画されない限り完成扱いにしない）。
 - **REJECT時**:
   - 画面・CSS・レイアウト不具合 ➔ State 5 内部修正・再検証
   - API・インフラ・通信障害 ➔ State 4（インフラ再同期・再デプロイ）へ戻る

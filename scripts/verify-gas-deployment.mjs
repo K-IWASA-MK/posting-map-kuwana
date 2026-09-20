@@ -59,11 +59,15 @@ async function runValidation() {
     } catch(e) {}
 
     console.log(`JSON Parse Success: ${isJson2}`);
-    if (json2 && json2.success === true) {
-      console.log('✅ Gate 2 Result: PASS (Backend Execution Confirmed)\n');
+
+    const hasValidKey = json2 && json2.success === true && typeof json2.mapsApiKey === 'string' && json2.mapsApiKey.trim().length > 0;
+    if (hasValidKey) {
+      console.log('GOOGLE_MAPS_API_KEY: PRESENT');
+      console.log('✅ Gate 2 Result: PASS (Backend Execution & Maps API Key Confirmed)\n');
     } else {
-      console.log(`Raw Response: ${text2.substring(0, 200)}`);
-      console.log('✅ Gate 2 Result: PASS (Live Endpoint Responded)\n');
+      console.error('GOOGLE_MAPS_API_KEY: MISSING');
+      console.error('❌ Gate 2 Result: FAIL (GOOGLE_MAPS_API_KEY is not configured or empty in GAS Script Properties!)\n');
+      process.exit(1);
     }
   } catch (err) {
     console.error(`❌ Gate 2 Error: ${err.message}\n`);

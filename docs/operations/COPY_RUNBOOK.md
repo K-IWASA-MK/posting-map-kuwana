@@ -115,8 +115,9 @@ AI社員がAPIおよび自動化スクリプトを用いて、新地区専用の
    - `node scripts/safe-deploy.mjs` を実行し、コード反映とWeb App公開を実施。
 3. **初回OAuth同意（人間によるワンクリック承認）**:
    - AIから提示されたWeb AppまたはエディタURLを開き、Googleアクセス権限を1回だけ承認。
-4. **12シート完全自動プロビジョニング**:
+4. **12シート完全自動プロビジョニング ＆ Maps APIキー自動設定**:
    - `npm run provision:district` を実行。
+   - 実行環境側の共通秘密情報 `POSTING_MAP_GOOGLE_MAPS_API_KEY` から GAS Script Properties へ API キーを自動投入（未設定時は HARD STOP）。
    - 新規スプレッドシート上に、以下の**全12シート、数式、書式、マッピングが0件初期状態で自動構築**される：
      1. `SYSTEM_INFO`（保護台帳・進捗率0.0%）
      2. `配布実績の原本`
@@ -130,16 +131,18 @@ AI社員がAPIおよび自動化スクリプトを用いて、新地区専用の
      10. `受渡要請履歴YYYY-MM`
      11. `PinStatusYYYY-MM`
      12. `ポスティング進捗状況`
-5. **クライアント設定の一方向同期**:
+5. **クライアント設定の一方向同期 ＆ 本番GAS疎通・APIキー検証**:
    - `npm run sync:config` ➔ `npm run check:ssot` を実行し、フロントエンド設定を同期。
+   - `npm run verify:gas` を実行し、本番 WebApp の疎通および `GOOGLE_MAPS_API_KEY: PRESENT` を検証（空なら FAIL）。
 
 ---
 
 ### Stage 6: 全自動E2E検証 ＆ 独立検品 ＆ 納品 (E2E Verification & Completion)
 1. **プロビジョニング完全性ゲート**:
    - `npm run check:provisioning` を実行し、12シート完全性、進捗率0.0%、件数整合を確認。
-2. **Dashboard深層E2Eテスト**:
+2. **Dashboard深層E2E ＆ HアプリGoogle Maps実描画テスト**:
    - `npm run test:dashboard:gate` を実行し、全6フェーズのブラウザ自動テストがPASSすることを確認。
+   - Hアプリ本番E2Eにて、`window.google.maps` および `#main-map .gm-style` の実描画（非ゼロサイズ）を確認（地図実描画がない限り地区完成扱いにしない）。
 3. **Auditor独立検品**:
    - `auditor` サブエージェントが「公式データ確定」「前地区残骸ゼロ」「権限境界」を独立査読し、PASS判定を受領。
 4. **納品報告**:
