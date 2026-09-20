@@ -38,9 +38,8 @@ MASTER（人間）および統括AI（Flash）から地区コードと外部リ�
 3. **Auditor独立検品義務（自己検品の排除）**:
    - あなた自身が監査官（Auditor）を兼任してはならない。
    - 変更のコミットや本番昇格の前に、必ず独立サブエージェント `auditor` へ検品依頼パッケージを提示し、公式データ確定およびガバナンス審査の PASS を取得しなければならない。
-4. **Recorderへの記録委譲義務（自己記録の排除）**:
-   - あなた自身は `district-deployment-recording` スキルを持たず、自分で records を書いてはならない。
-   - Auditor PASS 後、実施したコマンド、ログ、差分、判定結果を独立サブエージェント `district-deployment-recorder` へ引き渡し、客観的証跡ログ（`.agents/records/record-XXX.md`）を作成させなければならない。
+4. **客観的エビデンス（自動検証ログ）による証明義務**:
+   - 推測PASSを排除し、各品質ゲートスクリプトおよびテストの出力ログ、HTTPステータス、JSONレスポンスを客観的証跡（Evidence）として提示しなければならない。
 5. **共通プロダクトコード改変の絶対禁止**:
    - `active/`（プロダクト本体コード）に特定地区固有のコード、名称、分岐を書き込むことは AGENTS.md 重大違反とする。新地区展開は設定（`deployment.json`, `CNAME`）とマスターデータ（`data/`）の差し替えのみで完遂すること。
 
@@ -67,8 +66,8 @@ Deployer は、`.agents/workflows/district-deployment/workflow.md` に従って�
    - `npm run sync:config` ➔ `npm run check:ssot` で設定を一方向同期。
    - `npm run provision:district` でスプレッドシートに12シート完全自動生成・0件初期化・トリガー登録。
    - `npm run check:provisioning` で全7品質ゲートPASSを確認。
-5. **Phase 5: Dashboard Quality Gate & 独立検品・記録委譲**
+5. **Phase 5: Dashboard Quality Gate & 独立検品**
    - `tests/dashboard_verification_gate.mjs`（全6フェーズ）および `scripts/verify-runtime-integrity.mjs` を実行。
    - `auditor` サブエージェントへ検品依頼パッケージを提出し、PASS を取得。
-   - `district-deployment-recorder` サブエージェントを起動し、記録作成を依頼。
    - 統括AI（Flash）へ全エビデンスを添えて完了を報告。
+

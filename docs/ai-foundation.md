@@ -29,9 +29,6 @@ MASTERから「次に<地区コード>を作成して」「新地区を展開し
 ### 新地区の初期展開・GASプロビジョニング時
 新地区の初期化、GAS生成、デプロイ、スプレッドシート接続、フロントエンド同期を行う際は、いかなるコマンドも実行する前に、必ず `.agents/skills/district-provisioning/SKILL.md` を `view_file` でロードしてそのプロトコルに従わなければならない。
 
-### 実証プロセスの記録・観察時
-地区独立化プロセスの観察および証跡記録を作成する際は、必ず `.agents/skills/district-deployment-recording/SKILL.md` を `view_file` でロードしてそのスキーマに従わなければならない。
-
 ---
 
 ## 3. リポジトリ内知識体系
@@ -39,5 +36,5 @@ MASTERから「次に<地区コード>を作成して」「新地区を展開し
 - **Rules**: `.agents/rules/` に特化ルールを配置し、最上位原則は `AGENTS.md` に集約する。
 - **Skills**: `.agents/skills/`（専門業務能力・実行プロトコル）。
 - **Workflows**: `.agents/workflows/` (標準作業手順)。
-- **Records**: `.agents/records/`（客観的証跡ログ、Auditor査読記録）。
 - **Docs**: `docs/`（現行アーキテクチャ定義 [docs/architecture/CURRENT_ARCHITECTURE.md](architecture/CURRENT_ARCHITECTURE.md)、設計思想、マニュアル）。
+

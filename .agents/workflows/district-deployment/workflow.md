@@ -1,6 +1,6 @@
 # Workflow: District Deployment（新地区完全自律展開オーケストレーション）
 
-本ワークフローは、MASTERからの「地区名」および「新地区用ドメイン」の2点提示のみを起動トリガーとし、AI組織（Flash / Deployer / Auditor / Recorder）が自律連携して、新地区を本番稼働状態（Hアプリ・Dashboard PC・Dashboard Mobile・本番GAS・本番Spreadsheet DB・独立Git）まで完全自動で完走させる**新地区展開オーケストレーションの公式正本**である。
+本ワークフローは、MASTERからの「地区名」および「新地区用ドメイン」の2点提示のみを起動トリガーとし、AI組織（Flash / Deployer / Auditor）が自律連携して、新地区を本番稼働状態（Hアプリ・Dashboard PC・Dashboard Mobile・本番GAS・本番Spreadsheet DB・独立Git）まで完全自動で完走させる**新地区展開オーケストレーションの公式正本**である。
 
 ---
 
@@ -8,8 +8,8 @@
 
 ### 1. 人間（MASTER）の責務（2入力限定の原則）
 MASTERが新地区展開時に提示する情報は、以下の**2点のみ**とする：
-1. **地区名**（例: `四日市`）
-2. **新地区用ドメイン**（例: `yokkaichi.postingmap.jp`）
+1. **地区名**（例: `桑名市` または `桑名`）
+2. **新地区用ドメイン**（例: `kuwana.postingmap.jp`）
 ※「地区名」と「ドメイン」は明確に別個の入力として定義する。
 
 ### 2. 途中質問・追加ID要求の絶対禁止【Workflow違反規程】
@@ -27,7 +27,7 @@ AI組織は上記2点を受領した瞬間から、人間に対して以下の�
 
 ---
 
-## 🧭 全体オーケストレーション経路
+## 🧭 全体オーケストレーション経路（Lean 6-Step Pipeline）
 
 ```text
 MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
@@ -70,14 +70,14 @@ MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
   ・本番GAS（verify:gas HTTP 200/全API正常応答）PASS
   ・本番DB（進捗率0.0%/原本件数整合/運用残骸0件）PASS
       ↓ ALL PASS
-［完了引渡（Auditor ➔ Recorder ➔ Flash / Deployer）］
-  ・Auditor 独立査読 PASS
-  ・Recorder: record-XXX.md 実証記録作成（記録専任）
-  ・Flash / Deployer: git add / commit / push（責任分離）
+［完了引渡（Auditor ➔ Deployer / Flash）］
+  ・Auditor 独立査読 PASS（客観的エビデンスに基づく確定判定）
+  ・Deployer / Flash: 確定成果物の git add / commit / push
       ↓
 ［DELIVERY（完成納品）］
   MASTERへ全本番URLを提示して完了
 ```
+
 
 ---
 
@@ -182,27 +182,23 @@ State 5 の 5 重検証が ALL PASS となった後、以下の責任分離に�
        ↓
 ［1. Auditor 独立査読］
   ・担当: Auditor（完全 READ ONLY）
-  ・5観点（地区非依存、スコープ厳守、客観的エビデンス、ゼロ手作業、公式データ確定）の独立判定を下す。
+  ・5観点（①地区非依存、②スコープ厳守、③客観的エビデンス、④コピー耐性、⑤公式データ確定）の独立判定を下す。
+  ・すべての品質ゲートログおよび本番稼働エビデンスを照合し、PASS を宣言。
        ↓ PASS
-［2. Recorder 実証記録作成］
-  ・担当: district-deployment-recorder（記録専任・破壊的操作禁止）
-  ・Auditor PASS ログ、コマンド実行ログ、差分エビデンスを受領。
-  ・.agents/records/record-XXX-<district>-establishment.md を書き出す（write_to_file）。
-  ※Recorder は git commit / push を行ってはならない。
-       ↓ 生成完了
-［3. 成果物 Commit & Push］
+［2. 成果物 Commit & Push］
   ・担当: Flash（統括AI）または Deployer
-  ・git add .agents/records/ および確定成果物をステージング。
+  ・確定した新地区成果物（data/, config, deployment等）をステージング。
   ・git commit -m "feat(<district>): complete autonomous district establishment"
   ・git push origin main
        ↓
-［4. DELIVERY（完成納品）］
+［3. DELIVERY（完成納品）］
   ・MASTERへ以下の全稼働URL一覧を提示して完了報告を行う：
     - Hアプリ本番URL（LINE LIFF URL）
     - Dashboard PC本番URL
     - Dashboard Mobile本番URL
     - 本番GoogleスプレッドシートURL
 ```
+
 
 ---
 

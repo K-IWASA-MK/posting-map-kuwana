@@ -8,7 +8,9 @@ const rootDir = process.cwd();
 const server = http.createServer((req, res) => {
   let relativePath = req.url.split('?')[0];
   if (relativePath === '/' || relativePath === '') {
-    relativePath = '/scripts/operations/index.html';
+    res.writeHead(302, { Location: '/manager/' });
+    res.end();
+    return;
   } else if (relativePath.startsWith('/manager/')) {
     relativePath = relativePath.replace('/manager/', '/active/manager/');
   } else if (relativePath === '/manager') {

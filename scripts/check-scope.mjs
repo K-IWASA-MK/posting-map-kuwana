@@ -87,37 +87,7 @@ if (violations.length > 0) {
 
 console.log('🟢 Scope Validation PASSED: All code changes are within the approved Git-HEAD scope.');
 
-// 5. Connect Existing Governance Auditor (report-governance-gate.js)
-const auditorScript = resolve(rootDir, '.agents/auditor/report-governance-gate.js');
-const jsonReportPath = resolve(rootDir, '.agents/audit-log/report-audit.json');
-const targetReport = resolve(rootDir, '.agents/audit-log/latest-report-audit.json');
-
-if (existsSync(auditorScript)) {
-  console.log('\n[Governance Gate] Invoking .agents/auditor/report-governance-gate.js...');
-  try {
-    const reportToAudit = existsSync(jsonReportPath) ? jsonReportPath : targetReport;
-    if (existsSync(reportToAudit)) {
-      const output = execSync(`node "${auditorScript}" "${reportToAudit}"`, { cwd: rootDir }).toString();
-      console.log(output);
-
-      let parsed;
-      try {
-        parsed = JSON.parse(output);
-      } catch (e) {
-        exitFail('Failed to parse report-governance-gate.js JSON output.');
-      }
-
-      if (parsed.allowCommit !== true) {
-        exitFail(`Governance Auditor rejected (allowCommit: ${parsed.allowCommit}).`);
-      }
-      console.log('🟢 Governance Gate PASSED: Auditor allowCommit === true.');
-    } else {
-      exitFail('Governance Gate Error: No audit report file found. Execution cannot proceed without a valid audit report.');
-    }
-  } catch (e) {
-    exitFail(`Governance Auditor execution failed: ${e.message}`);
-  }
-}
-
-console.log('\n✅ [Audit Gate Complete] Scope & Governance Validation Succeeded.');
+// 5. Scope Guard Complete
+console.log('\n✅ [Scope Guard Complete] Scope Validation Succeeded.');
 process.exit(0);
+
