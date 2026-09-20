@@ -176,7 +176,13 @@ N = len(orig_rows)
 # 3. 旧 rowId 1..N 保持と新 rowId N+1..M 昇順採番
 # ... (アサーション: used_row_ids == set(range(1, M + 1)))
 
-# 4. LF 改行による CSV 出力 (trailing whitespace 防御)
+# 4. 町名日本語あいうえお順整列規則（Japanese Alphabetical Reading Order）
+# - 表示値（town_name等の全カラム）は1文字も改変しない。
+# - rowId（1..M）の数値そのものは100%保持し、絶対に振り直さない。
+# - 読み順は日本郵便公式郵便番号データ等（公定一次資料）から導出したソート専用キー（sort_kana）で整列する。
+# - 大字等の接頭辞を除いた本体読み順、丁目の数値順、同一町名の e_stat_code 昇順による安定した複合キーを使用する。
+
+# 5. LF 改行による CSV 出力 (trailing whitespace 防御)
 with open("data/address_master.csv", "w", encoding="utf-8", newline="\n") as f:
     writer = csv.writer(f, lineterminator="\n")
     writer.writerow(["rowId", "city_name", "town_name", "latitude", "longitude", "households", "population", "e_stat_code"])
