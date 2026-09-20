@@ -1,135 +1,218 @@
-# Workflow: District Deployment（新地区展開オーケストレーション）
+# Workflow: District Deployment（新地区完全自律展開オーケストレーション）
 
-本ワークフローは、MASTERからの「次に`<TARGET_DISTRICT>`を作成して」という一言指示を起動トリガーとし、既存の Rule / Skill / Script / Test / Agent を定義済みの順序で接続して新地区を本番稼働状態へ導く**純粋なオーケストレーション層**である。  
-ワークフロー自体に独自のデータ生成ロジックや品質基準を記述せず、実証済みの既存資産を順序正しく呼び出す責務に徹する。
+本ワークフローは、MASTERからの「地区名」および「新地区用ドメイン」の2点提示のみを起動トリガーとし、AI組織（Flash / Deployer / Auditor / Recorder）が自律連携して、新地区を本番稼働状態（Hアプリ・Dashboard PC・Dashboard Mobile・本番GAS・本番Spreadsheet DB・独立Git）まで完全自動で完走させる**新地区展開オーケストレーションの公式正本**である。
+
+---
+
+## 🏛️ 最上位絶対原則 & 人間／AI責任境界
+
+### 1. 人間（MASTER）の責務（2入力限定の原則）
+MASTERが新地区展開時に提示する情報は、以下の**2点のみ**とする：
+1. **地区名**（例: `四日市`）
+2. **新地区用ドメイン**（例: `yokkaichi.postingmap.jp`）
+※「地区名」と「ドメイン」は明確に別個の入力として定義する。
+
+### 2. 途中質問・追加ID要求の絶対禁止【Workflow違反規程】
+AI組織は上記2点を受領した瞬間から、人間に対して以下の情報を**質問・要求してはならない**。
+- 自治体コード（全国地方公共団体コード）
+- 地区ID（`districtCode`）
+- Google スプレッドシートID
+- Google Drive 写真フォルダID
+- GAS Script ID / Deployment ID / WebApp URL
+- LINE LIFF ID / LIFF URL
+- CNAME レコード
+- `deployment.json` の各設定値
+
+**AI組織が途中で人間へこれらを尋ねたり入力を求めた時点で「Workflow違反（HARD STOP）」とする。**
 
 ---
 
 ## 🧭 全体オーケストレーション経路
 
 ```text
-MASTER:「次に<TARGET_DISTRICT>を作成して」
-  ↓
-Flash (統括AI)
-  ↓ [Entry & Readiness Check]
-  │ 既存資産・外部リソース確認（不足時はMASTERへ提示・受領）
-  ↓
-Deployer (.agents/agents/deployer/agent.md)
-  ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Step 1: Copy Preparation & コピー元資産検証                 │
-│         → .agents/rules/district-pre-copy-rule.md           │
-│ Step 2: コピー実施確認 & Data Transition                    │
-│         → .agents/rules/district-data-transition-rule.md    │
-│ Step 3: Master Skill 起動 & Data Quality Gate               │
-│         → .agents/skills/census-small-area-master/SKILL.md  │
-│         → scripts/generate-boundaries-geojson.py            │
-│         → scripts/validate-district-data-gate.mjs           │
-│ Step 4: Provisioning Skill 起動 & Gate                      │
-│         → .agents/skills/district-provisioning/SKILL.md     │
-│         → scripts/safe-deploy.mjs                           │
-│         → scripts/provision-district.mjs                    │
-│         → scripts/check-provisioning-gate.mjs               │
-│ Step 5: Dashboard Quality Gate & Runtime 検証               │
-│         → tests/dashboard_verification_gate.mjs             │
-│         → scripts/verify-runtime-integrity.mjs              │
-└─────────────────────────────────────────────────────────────┘
-  ↓
-Auditor (.agents/agents/auditor/agent.md)
-  ↓ [official-data-confirmation-audit 独立検品]
-PASS
-  ↓
-district-deployment-recorder (.agents/agents/district-deployment-recorder/agent.md)
-  ↓ [district-deployment-recording 実証記録作成]
-Flash ➔ MASTER 最終完了報告
+MASTER入力: 【地区名】 ＋ 【新地区用ドメイン】
+      ↓
+［STATE 0: SOURCE_VERIFY（親機純度検証）］
+  担当: Auditor（READ ONLY）
+  ・Working Tree Clean確認
+  ・npm run check:purity（親機純度100%検査）
+      ↓ PASS
+［STATE 1: REPLICA_INIT_AND_GIT_ISOLATION（複製 ＆ Git独立化）］
+  担当: Deployer
+  ・新地区フォルダー物理複製
+  ・gh repo create による独立GitHubリポジトリ自動発行
+  ・新origin接続 ＆ 初回push ＆ 旧origin物理遮断
+      ↓ PASS
+［STATE 2: DATA_RESOLVE_AND_AUDIT（データ自動解決 ＆ 検品）］
+  担当: Deployer ➔ Auditor
+  ・地区名から公定マスターによる自治体特定・データ調達
+  ・境界GeoJSON / 住所マスター / 選挙データ生成
+  ・validate-district-data-gate ＆ Auditor独立承認
+      ↓ PASS
+［STATE 3: SYS_INFO_DERIVATION（構成情報自動導出）］
+  担当: Deployer
+  ・ドメインから CNAME、HアプリURL、Dashboard URL、districtCode を確定
+  ・resourceSpecs（作成すべきインフラ仕様）の確定
+      ↓ PASS
+［STATE 4: INFRA_PROVISIONING（外部インフラ自動構築）］
+  担当: Deployer
+  ・公式テンプレートから新地区スプレッドシート複製
+  ・Drive写真保存フォルダ（<DISTRICT>_PHOTOS）生成
+  ・GAS プロジェクト配備 ＆ safe-deploy ＆ プロビジョニング
+  ・シート集合検証: 実シート集合 == district_provisioner.js の SSOT期待シート集合
+  ・Pages Custom Domain 設定 ＆ HTTPS疎通（HTTP 200 OK）確認
+      ↓ PASS
+［STATE 5: RUNTIME_AUDIT（本番稼働E2E 5重検証）］
+  担当: Deployer ➔ Auditor
+  ・Hアプリ本番URL（LIFF/現場操作/API疎通）PASS
+  ・Dashboard PC本番URL（大画面/全ピン描画/API疎通）PASS
+  ・Dashboard Mobile（スマホviewport 390x844/横崩れなし/ズーム/操作）PASS
+  ・本番GAS（verify:gas HTTP 200/全API正常応答）PASS
+  ・本番DB（進捗率0.0%/原本件数整合/運用残骸0件）PASS
+      ↓ ALL PASS
+［完了引渡（Auditor ➔ Recorder ➔ Flash / Deployer）］
+  ・Auditor 独立査読 PASS
+  ・Recorder: record-XXX.md 実証記録作成（記録専任）
+  ・Flash / Deployer: git add / commit / push（責任分離）
+      ↓
+［DELIVERY（完成納品）］
+  MASTERへ全本番URLを提示して完了
 ```
 
 ---
 
-## 📋 各フェーズの執行手順
+## 📋 各Stateの執行手順 ＆ 完了基準
 
-### Entry: 起動 & リソース存在確認
-1. **発動契機**: MASTERからの「次に `<DISTRICT_CODE>` を作成して」という指示を受領。
-2. **リソース確認**: Flashは新地区展開に必要な以下の外部リソースおよび前提情報の存在を確認する：
-   - ① 新規GoogleスプレッドシートID（ファイル名が `<DISTRICT_CODE>` と一致）
-   - ② Google Drive 写真保存用フォルダID
-   - ③ LINE LIFF URL
-   - ④ 対象自治体コード一覧および国勢調査データの配置パス
-3. **境界制御**:
-   - 不足がある場合: FlashはMASTERへ定型フォーマットで不足項目を提示し、受領を待つ。
-   - 揃っている場合: Flashは `deployer` サブエージェントを起動し、パイプライン執行を委譲する。
-
----
-
-### Step 1: Copy Preparation & コピー元資産検証
-- **準拠Rule**: [district-pre-copy-rule.md](../../rules/district-pre-copy-rule.md)
+### State 0: SOURCE_VERIFY（親機純度検証）
+- **担当**: Auditor（完全 READ ONLY）
 - **Action**:
-  - コピー前作業10項目チェックリストの全数点検。
-  - 開始禁止条件（開始禁止条件7項目がすべて0件であること）を検証。
-- **Gate**: コピー前ゲート PASS を確認。
+  1. `git status --porcelain` を実行し、親機が `working tree clean`（差分ゼロ）であることを確認。
+  2. `npm run check:purity`（実体: `scripts/check-pre-copy-purity.mjs`）を実行し、親機に特定地区の実体設定・RAWデータ・不要残骸が存在しないことを機械検証。
+  3. `DEPLOYMENT_REGISTRY.md` の公式空テンプレート `POSTING_MAP_EMPTY_TEMPLATE`（ID: `1_fvgpNsK2fmz6hYgraDUnvyn69JnphmbgnXcOvzLYeY`）の存在を確認。
+- **PASS条件**: Working tree clean ＆ `check:purity` ALL PASS。
+- **REJECT時**: **HARD STOP**。親機の汚染・未コミット変更が解消されるまで新地区展開の開始を禁止し、MASTERへ報告。
 
 ---
 
-### Step 2: コピー実施確認 & Data Transition
-- **準拠Rule**: [district-data-transition-rule.md](../../rules/district-data-transition-rule.md), [district-external-data-governance-rule.md](../../rules/district-external-data-governance-rule.md)
+### State 1: REPLICA_INIT_AND_GIT_ISOLATION（複製 ＆ Git独立化）
+- **担当**: Deployer
 - **Action**:
-  - 親機フォルダーから新地区フォルダーへの複製実施を確認。
-  - Git リモートの切り離しを確認（AGENTS.md 第0原則: 地区別完全独立リポジトリ）。
-  - `data/area_mapping.json` を空配列 `[]` に初期化（実績移行地区を除く）。
-  - 前地区の一次原本（`data/raw/`, `data/raw_estat_r2/` 等）の混入がないことを確認。
+  1. 親機フォルダーから新地区フォルダー（`posting-map-<district>`）へ物理複製。
+  2. `gh repo create posting-map-<district> --public --description "POSTING MAP <district>"` を実行し、独立したGitHubリポジトリを発行。
+  3. 新地区フォルダー内で `git remote add origin https://github.com/<ORG>/posting-map-<district>.git`（または set-url）を実行。
+  4. 初期化コミットを作成し、`git push -u origin main` で初回プッシュを完了。
+  5. 親機リモートへの経路が完全に遮断されていることを確認（AGENTS.md 第2条）。
+- **PASS条件**: 新リポジトリへの初回push完了 ＆ 親機への誤爆経路ゼロ確認。
+- **REJECT時**: State 1 先頭へ戻り、フォルダー再作成・Git再初期化を試行。
 
 ---
 
-### Step 3: Master Skill 起動 & Data Quality Gate
-- **準拠Skill**: [census-small-area-master](../../skills/census-small-area-master/SKILL.md)
+### State 2: DATA_RESOLVE_AND_AUDIT（データ自動解決 ＆ 検品）
+- **担当**: Deployer ➔ Auditor
 - **Action**:
-  1. `python3 scripts/generate-boundaries-geojson.py --city-codes "<自治体コード:自治体名,...>"` を実行。
-  2. `address_master.csv`, `boundaries.geojson`, `municipality_master.csv` の3点を生成・配置。
-  3. `node scripts/validate-district-data-gate.mjs` を実行。
-- **Gate**: 全6ルール（件数整合、rowId連続性、市町村名、件数合計、座標有効性、前地区残骸ゼロ）の ALL PASS を確認。
+  1. MASTERから受領した「地区名」に基づき、公定マスターから正式自治体名・自治体コード（5桁）を機械特定。
+  2. `census-small-area-master` プロトコルを起動し、`scripts/generate-boundaries-geojson.py` を実行して `address_master.csv`, `boundaries.geojson`, `municipality_master.csv` を生成。
+  3. `data/area_mapping.json` を空配列 `[]` に初期化。直近過去3回の選挙結果を `data/election_history.json` へ反映。
+  4. `node scripts/validate-district-data-gate.mjs` を実行。
+  5. Auditor が独立査読を実施（データ純度・前地区残骸ゼロ・境界有効性を検査）。
+- **PASS条件**: `validate-district-data-gate` ALL PASS ＆ Auditor 承認。
+- **REJECT時**: State 2 先頭へ戻り、パラメータ再調整・データ再生成を実施（State 1 の Git は維持）。
 
 ---
 
-### Step 4: Provisioning Skill 起動 & Gate
-- **準拠Skill**: [district-provisioning](../../skills/district-provisioning/SKILL.md)
+### State 3: SYS_INFO_DERIVATION（構成情報自動導出）
+- **担当**: Deployer
 - **Action**:
-  1. `deployment.json` に新地区リソースID群（`districtId`, `spreadsheetId`, `storageFolderId`, `productionLiffUrl` 等）を設定。
-  2. `node scripts/safe-deploy.mjs`（`clasp push` ➔ `clasp deploy`）でGAS本番バージョンを反映。
-  3. **OAuth同意チェックポイント**: エディタURLを提示し、人間へ初回権限許可を依頼して待機。
-  4. `npm run sync:config` ➔ `npm run check:ssot` でクライアント設定を一方向同期。
-  5. `npm run provision:district` を実行し、スプレッドシート上に12シートを完全自動生成・0件初期化・トリガー登録。
-  6. `npm run check:provisioning` を実行。
-- **Gate**: 12シート完全性、件数一致、SSOT一致、0%初期化の ALL GATES PASS を確認。
+  1. MASTERから受領した「新地区用ドメイン」に基づき、`CNAME` 文字列を導出。
+  2. ドメインから Hアプリ本番URL（`https://${domain}/`）および Dashboard本番URL（`https://${domain}/active/manager/`）を導出。
+  3. 地区識別子（`districtCode`）を正規化。
+  4. 次工程で作成すべき外部リソース仕様（`resourceSpecs`: Spreadsheet名、Driveフォルダ名、GASタイトル等）を確定。
+- **PASS条件**: 全構成情報が矛盾なく導出・確定されていること。
+- **REJECT時**: State 3 先頭へ戻り、内部で再導出（MASTERへは聞き返さない）。
 
 ---
 
-### Step 5: Dashboard Quality Gate & Runtime 検証
+### State 4: INFRA_PROVISIONING（外部インフラ自動構築）
+- **担当**: Deployer
 - **Action**:
-  1. `npm run test:dashboard:gate` を実行し、Dashboard深層E2E（全6フェーズ）の検証を実施。
-  2. `node scripts/verify-runtime-integrity.mjs` を実行し、HアプリおよびDashboardの実機ブラウザランタイム（Console/Networkエラー0件）を検証。
-- **Gate**: 全テスト ALL PASS を確認。
+  1. 公式テンプレート（`POSTING_MAP_EMPTY_TEMPLATE`）から新地区スプレッドシートを複製・リネーム。
+  2. 写真保存用 Google Drive フォルダ（`<DISTRICT>_PHOTOS`）を生成し、`storageFolderId` を取得。
+  3. 新規 Standalone GAS プロジェクトを配備し、`node scripts/safe-deploy.mjs` で本番コードを反映。
+  4. `deployment.json` を確定し、`npm run sync:config` ➔ `npm run check:ssot` で `data/config.js` を一方向同期。
+  5. `npm run provision:district` を実行し、スプレッドシートに初期台帳およびシート集合を構築。
+  6. **シート集合検証**: 実スプレッドシートのシート集合が、[`active/business/system/district_provisioner.js`](active/business/system/district_provisioner.js) の定義する **SSOT期待シート集合（`allSheets` = `SYSTEM_INFO` + 原本5種 + 月次5種）** と Set 完全一致することを検証（固定値「12」による判定を禁止）。
+  7. ルートに `CNAME` ファイルを配備してプッシュし、GitHub Pages API（`gh api`）でカスタムドメイン登録および HTTPS 強制化（`https_enforced: true`）を設定。
+  8. DNS伝播・Let's Encrypt 証明書発行をポーリング待機し、`curl -ILs "https://${domain}/"` で HTTP 200 OK 疎通を確認。
+- **PASS条件**: インフラ全リソース配備完了 ＆ シート集合 SSOT 完全一致 ＆ 本番ドメイン HTTP 200 OK 疎通。
+- **REJECT時**: State 4 先頭へ戻り、失敗したリソースの再生成・再デプロイ・反映待機を実施（データ層は保全）。
 
 ---
 
-### Step 6: Auditor 独立検品
-- **準拠Agent**: [auditor](../../agents/auditor/agent.md)
-- **準拠Skill**: [official-data-confirmation-audit](../../skills/official-data-confirmation-audit/SKILL.md)
+### State 5: RUNTIME_AUDIT（本番稼働E2E 5重検証）
+- **担当**: Deployer ➔ Auditor
 - **Action**:
-  - Deployer は、変更差分および取得した客観的Evidenceを「検品依頼パッケージ」として `auditor` サブエージェントへ提出。
-  - Auditor が 5観点（地区非依存、スコープ厳守、客観的エビデンス、ゼロ手作業、公式データ確定）で独立査読を実施。
-- **Gate**: Auditor からの PASS 判定を受領。
+  以下の **5重の本番稼働検証** を実機ブラウザ・API経由で執行する：
+  1. **Hアプリ本番URL検証**:
+     - `https://${domain}/` へアクセス。
+     - LINE/LIFF 起動、認証、GPS記録、写真アップロード、配布完了フローが Console/Network エラー 0 件で動作すること。
+  2. **Dashboard PC本番URL検証**:
+     - `https://${domain}/active/manager/` へ PC 解像度でアクセス。
+     - Manager パスワード認証、全ピン描画（件数 == 住所マスター行数）、API 疎通、集計表示を確認。
+  3. **Dashboard Mobile検証**:
+     - モバイル viewport（iPhone 14相当: 390x844）でアクセス。
+     - 横スクロール発生なし（`hasNoHorizontalScroll`）、UI重なりなし、町名セレクター開閉・ズーム・操作がレスポンシブに機能すること。
+  4. **本番GAS疎通検証**:
+     - `npm run verify:gas` を実行し、本番 WebApp URL の HTTP 200 応答および POST API 実行を確認。
+  5. **本番スプレッドシートDB検証**:
+     - `npm run check:provisioning` を実行し、全原本0件、進捗率0.0%、ノイズ残骸ゼロを確認。
+- **PASS条件**: 5項目すべてが ALL PASS であること。
+- **REJECT時**:
+  - 画面・CSS・レイアウト不具合 ➔ State 5 内部修正・再検証
+  - API・インフラ・通信障害 ➔ State 4（インフラ再同期・再デプロイ）へ戻る
+  - データ欠損・ピン数不一致 ➔ State 2（データ層再生成）へ戻る
 
 ---
 
-### Step 7: Recorder 実証記録
-- **準拠Agent**: [district-deployment-recorder](../../agents/district-deployment-recorder/agent.md)
-- **準拠Skill**: [district-deployment-recording](../../skills/district-deployment-recording/SKILL.md)
-- **Action**:
-  - Deployer は、Auditor PASS ログおよび実施コマンド・差分・証跡を `district-deployment-recorder` サブエージェントへ引き渡す。
-  - Recorder が必須14項目を満たす `.agents/records/record-XXX.md` を作成。
-- **Gate**: 記録ファイルが生成され、Gitステータスに反映されたことを確認。
+## 🔒 完了・引渡フェーズの責任分離規程
+
+State 5 の 5 重検証が ALL PASS となった後、以下の責任分離に従って安全に納品を完了する：
+
+```text
+［State 5 ALL PASS］
+       ↓
+［1. Auditor 独立査読］
+  ・担当: Auditor（完全 READ ONLY）
+  ・5観点（地区非依存、スコープ厳守、客観的エビデンス、ゼロ手作業、公式データ確定）の独立判定を下す。
+       ↓ PASS
+［2. Recorder 実証記録作成］
+  ・担当: district-deployment-recorder（記録専任・破壊的操作禁止）
+  ・Auditor PASS ログ、コマンド実行ログ、差分エビデンスを受領。
+  ・.agents/records/record-XXX-<district>-establishment.md を書き出す（write_to_file）。
+  ※Recorder は git commit / push を行ってはならない。
+       ↓ 生成完了
+［3. 成果物 Commit & Push］
+  ・担当: Flash（統括AI）または Deployer
+  ・git add .agents/records/ および確定成果物をステージング。
+  ・git commit -m "feat(<district>): complete autonomous district establishment"
+  ・git push origin main
+       ↓
+［4. DELIVERY（完成納品）］
+  ・MASTERへ以下の全稼働URL一覧を提示して完了報告を行う：
+    - Hアプリ本番URL（LINE LIFF URL）
+    - Dashboard PC本番URL
+    - Dashboard Mobile本番URL
+    - 本番GoogleスプレッドシートURL
+```
 
 ---
 
-### Step 8: 完了報告
-- Flash（統括AI）が全証跡（スプレッドシート12シート生成、E2Eテスト結果、Auditor査読結果、作成記録ファイル）を取りまとめ、MASTERへ新地区の完全稼働を報告する。
+## 🔄 State 0〜5 判定 ＆ ロールバック対応表
+
+| State | フェーズ名 | 担当 | 完了判定（PASS条件） | REJECT時の戻り先・挙動 |
+| :---: | :--- | :--- | :--- | :--- |
+| **0** | **SOURCE_VERIFY** | Auditor | `git status` clean ＆ `npm run check:purity` ALL PASS | **HARD STOP**（親機の汚染・未コミット変更解消まで中断・MASTER報告） |
+| **1** | **REPLICA_INIT_AND_GIT_ISOLATION** | Deployer | 新フォルダー作成 ＆ `gh repo create` ＆ 初回push ＆ 旧origin切断確認 | **State 1 先頭**（フォルダー再作成・Git再接続） |
+| **2** | **DATA_RESOLVE_AND_AUDIT** | Deployer ➔ Auditor | `validate-district-data-gate` ALL PASS ＆ Auditor 承認 | **State 2 先頭**（パラメータ再調整・データ再生成）。Gitリポジトリは維持 |
+| **3** | **SYS_INFO_DERIVATION** | Deployer | ドメインから CNAME、各URL、districtCode、resourceSpecs が矛盾なく確定 | **State 3 先頭**（内部再導出。MASTERへは聞き返さない） |
+| **4** | **INFRA_PROVISIONING** | Deployer | スプレッドシート複製 ＆ Drive写真フォルダ生成 ＆ GAS deploy ＆ SSOT期待シート集合構築 ＆ Pages CNAME設定 ＆ HTTPS疎通（HTTP 200） | **State 4 先頭**（失敗した外部リソースの再生成・再デプロイ・反映待機）。データ層は保全 |
+| **5** | **RUNTIME_AUDIT** | Deployer ➔ Auditor | 5重検証（Hアプリ、Dashboard PC、Dashboard Mobile、本番GAS、本番DB）ALL PASS ＆ Auditor承認 | ・画面・CSS崩れ ➔ **State 5 内部修正**<br>・API・インフラ障害 ➔ **State 4 へ戻る**<br>・データ・ピン不一致 ➔ **State 2 へ戻る** |
