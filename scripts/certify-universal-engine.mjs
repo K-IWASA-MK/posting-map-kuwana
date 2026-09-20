@@ -207,13 +207,13 @@ fs.mkdirSync(replicaDir, { recursive: true });
 // リポジトリをレプリカへコピー (node_modules, .git, scratch除外)
 execSync(`tar -cf - --exclude='node_modules' --exclude='.git' --exclude='scratch' . | (cd "${replicaDir}" && tar -xf -)`);
 
-// 新地区テスト用サンプルデータセットの作成 (亀山サンプル: KAMEYAMA-SAMPLE)
+// 新地区テスト用サンプルデータセットの作成 (汎用テストサンプル: SAMPLE-DISTRICT)
 const sampleAddressCsv = `rowId,city_name,town_name,latitude,longitude,households,population,e_stat_code
-1,亀山市,本町一丁目,34.856123,136.452341,120,280,242100010
-2,亀山市,本町二丁目,34.857456,136.453892,150,340,242100020
-3,亀山市,東町一丁目,34.854321,136.455678,95,210,242100030
-4,亀山市,関町中町,34.851234,136.412345,180,410,242100040
-5,亀山市,関町新町,34.852345,136.413456,110,260,242100050
+1,サンプル市,本町一丁目,34.856123,136.452341,120,280,249990010
+2,サンプル市,本町二丁目,34.857456,136.453892,150,340,249990020
+3,サンプル市,東町一丁目,34.854321,136.455678,95,210,249990030
+4,サンプル市,中央町,34.851234,136.412345,180,410,249990040
+5,サンプル市,栄町,34.852345,136.413456,110,260,249990050
 `;
 
 const sampleBoundariesGeoJson = {
@@ -222,27 +222,27 @@ const sampleBoundariesGeoJson = {
   features: [
     {
       type: "Feature",
-      properties: { rowId: 1, city_name: "亀山市", town_name: "本町一丁目", households: 120, population: 280 },
+      properties: { rowId: 1, city_name: "サンプル市", town_name: "本町一丁目", households: 120, population: 280 },
       geometry: { type: "Polygon", coordinates: [[[136.451, 34.855], [136.453, 34.855], [136.453, 34.857], [136.451, 34.857], [136.451, 34.855]]] }
     },
     {
       type: "Feature",
-      properties: { rowId: 2, city_name: "亀山市", town_name: "本町二丁目", households: 150, population: 340 },
+      properties: { rowId: 2, city_name: "サンプル市", town_name: "本町二丁目", households: 150, population: 340 },
       geometry: { type: "Polygon", coordinates: [[[136.453, 34.856], [136.455, 34.856], [136.455, 34.858], [136.453, 34.858], [136.453, 34.856]]] }
     },
     {
       type: "Feature",
-      properties: { rowId: 3, city_name: "亀山市", town_name: "東町一丁目", households: 95, population: 210 },
+      properties: { rowId: 3, city_name: "サンプル市", town_name: "東町一丁目", households: 95, population: 210 },
       geometry: { type: "Polygon", coordinates: [[[136.454, 34.853], [136.456, 34.853], [136.456, 34.855], [136.454, 34.855], [136.454, 34.853]]] }
     },
     {
       type: "Feature",
-      properties: { rowId: 4, city_name: "亀山市", town_name: "関町中町", households: 180, population: 410 },
+      properties: { rowId: 4, city_name: "サンプル市", town_name: "中央町", households: 180, population: 410 },
       geometry: { type: "Polygon", coordinates: [[[136.411, 34.850], [136.413, 34.850], [136.413, 34.852], [136.411, 34.852], [136.411, 34.850]]] }
     },
     {
       type: "Feature",
-      properties: { rowId: 5, city_name: "亀山市", town_name: "関町新町", households: 110, population: 260 },
+      properties: { rowId: 5, city_name: "サンプル市", town_name: "栄町", households: 110, population: 260 },
       geometry: { type: "Polygon", coordinates: [[[136.412, 34.851], [136.414, 34.851], [136.414, 34.853], [136.412, 34.853], [136.412, 34.851]]] }
     }
   ]
@@ -276,7 +276,7 @@ fs.writeFileSync(path.join(replicaDataDir, 'config.js'), sampleConfigJs, 'utf8')
 fs.writeFileSync(path.join(replicaDataDir, 'area_mapping.json'), '[]', 'utf8');
 
 recordGate('Gate-05', 'data/ の別地区丸ごと交換', true,
-  'レプリカ内の data/ フォルダを新地区データ (亀山市5ピン、boundaries.geojson、新地区config.js) に丸ごと置換完了');
+  'レプリカ内の data/ フォルダを新地区データ (サンプル市5ピン、boundaries.geojson、新地区config.js) に丸ごと置換完了');
 
 // ----------------------------------------------------------------------------
 // [Phase 4A & 4B 実行準備] レプリカ用ローカルHTTPサーバー起動 (Port: 8099)
@@ -302,7 +302,7 @@ const server = http.createServer((req, res) => {
       const mockResponses = {
         getSystemSummary: {
           success: true,
-          districtName: '三重県亀山市 (新地区認定テスト)',
+          districtName: 'サンプル市 (新地区認定テスト)',
           total: 5,
           done: 2,
           percent: 40,
@@ -319,7 +319,7 @@ const server = http.createServer((req, res) => {
         getTransferRequests: { success: true, requests: [] },
         getLatestDistribution: { success: true, records: [] },
         getMapsApiKey: { success: true, mapsApiKey: 'TEST_MAPS_API_KEY' },
-        verifyManagerPassword: { success: true, districtCode: 'MIE-KAMEYAMA' }
+        verifyManagerPassword: { success: true, districtCode: 'SAMPLE-DISTRICT' }
       };
 
       res.writeHead(200, {
@@ -379,9 +379,9 @@ async function runBrowserTests() {
         getAccessToken: () => 'mock-token',
         getIDToken: () => 'mock-id-token',
         getOS: () => 'web',
-        getProfile: () => Promise.resolve({ userId: 'U_TEST', displayName: '亀山配布員' })
+        getProfile: () => Promise.resolve({ userId: 'U_TEST', displayName: 'テスト配布員' })
       };
-      localStorage.setItem('user_info', JSON.stringify({ id: 'STAFF_KAMEYAMA', last: '亀山', first: '配布員' }));
+      localStorage.setItem('user_info', JSON.stringify({ id: 'STAFF_TEST', last: 'テスト', first: '配布員' }));
     });
 
     await hPage.goto(`http://localhost:${PORT}/active/dashboard/index.html`, { waitUntil: 'networkidle', timeout: 15000 });
@@ -401,9 +401,9 @@ async function runBrowserTests() {
     await hPage.close();
 
     const criticalHErrors = hErrors.filter(e => !e.includes('Google Maps JavaScript API') && !e.includes('NoApiKeys'));
-    const hPass = criticalHErrors.length === 0 && hResult.hasConfig && hResult.pinsCount === 5 && hResult.cities.includes('亀山市');
+    const hPass = criticalHErrors.length === 0 && hResult.hasConfig && hResult.pinsCount === 5 && hResult.cities.includes('サンプル市');
     const hDetail = hPass
-      ? `JS例外0件。新地区設定(LIFF: ${hResult.liffId})をdata/から取得し、亀山市5ピンが自動生成されました。`
+      ? `JS例外0件。新地区設定(LIFF: ${hResult.liffId})をdata/から取得し、サンプル市5ピンが自動生成されました。`
       : `Hアプリ起動失敗: エラー=[${criticalHErrors.join('; ')}], pins=${hResult.pinsCount}, cities=${hResult.cities.join(',')}`;
     recordGate('Gate-06', 'Hアプリ新地区正常起動 (Phase 4A: 構造交換)', hPass, hDetail);
 
@@ -436,9 +436,9 @@ async function runBrowserTests() {
     await dPage.close();
 
     const criticalDErrors = dErrors.filter(e => !e.includes('Google Maps JavaScript API') && !e.includes('NoApiKeys'));
-    const dPass = criticalDErrors.length === 0 && dResult.masterLoadStatus === 'LOADED' && dResult.masterPinsCount === 5 && dResult.cities.includes('亀山市');
+    const dPass = criticalDErrors.length === 0 && dResult.masterLoadStatus === 'LOADED' && dResult.masterPinsCount === 5 && dResult.cities.includes('サンプル市');
     const dDetail = dPass
-      ? `JS例外0件。DashboardState.masterLoadStatus='LOADED'、亀山市5ピン、自治体セレクターが動的生成されました。`
+      ? `JS例外0件。DashboardState.masterLoadStatus='LOADED'、サンプル市5ピン、自治体セレクターが動的生成されました。`
       : `Dashboard起動失敗: エラー=[${criticalDErrors.join('; ')}], status=${dResult.masterLoadStatus}, pins=${dResult.masterPinsCount}`;
     recordGate('Gate-07', 'Dashboard新地区正常起動 (Phase 4A: 構造交換)', dPass, dDetail);
 
@@ -465,7 +465,7 @@ async function runBrowserTests() {
     // ----------------------------------------------------------------------------
     // [Gate 9] 地区名のSpreadsheet動的連動
     // ----------------------------------------------------------------------------
-    const gate9Pass = districtNameResolved.includes('亀山市');
+    const gate9Pass = districtNameResolved.includes('サンプル市');
     const gate9Detail = gate9Pass
       ? `地区名 '${districtNameResolved}' がSpreadsheet(バックエンド)から動的取得・反映されました。`
       : `地区名連動失敗: ${districtNameResolved}`;

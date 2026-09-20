@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync, readFileSync } from 'node:fs';
+import { existsSync, unlinkSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnWorker } from '../lib/worker_runner.mjs';
 import { createHandover } from '../lib/handover_schema.mjs';
@@ -184,41 +184,48 @@ async function main() {
   });
 
   await runAsyncTest('Non-Destructive Protection of Existing Official Records', async () => {
-    const officialRecordPath = '.agents/records/record-019-okayama-02-phase3-census-aggregation-audit.md';
+    const officialRecordPath = '.agents/records/record-999-test-official-protection.md';
     const officialFullPath = resolve(process.cwd(), officialRecordPath);
-    const originalContent = readFileSync(officialFullPath, 'utf8');
+    const originalContent = '# OFFICIAL RECORD MOCK FOR PROTECTION TEST\nDo not overwrite.';
+    writeFileSync(officialFullPath, originalContent, 'utf8');
 
-    const handover = createHandover({
-      taskId: 'task-p3-recorder-005',
-      targetAgent: 'recorder',
-      action: 'record-overwrite-attempt',
-      scope: [officialRecordPath],
-      context: {
-        recordFileName: officialRecordPath,
-        contentBody: 'Malicious attempt to overwrite official record.'
-      },
-      constraints: {
-        readOnly: false,
-        allowedWritePaths: ['.agents/records/']
-      }
-    });
-
-    let blocked = false;
     try {
-      await spawnWorker('scripts/orchestrator/workers/recorder_worker.mjs', handover);
-    } catch (err) {
-      if (err.message.includes('Existing official record') && err.message.includes('cannot be overwritten')) {
-        blocked = true;
+      const handover = createHandover({
+        taskId: 'task-p3-recorder-005',
+        targetAgent: 'recorder',
+        action: 'record-overwrite-attempt',
+        scope: [officialRecordPath],
+        context: {
+          recordFileName: officialRecordPath,
+          contentBody: 'Malicious attempt to overwrite official record.'
+        },
+        constraints: {
+          readOnly: false,
+          allowedWritePaths: ['.agents/records/']
+        }
+      });
+
+      let blocked = false;
+      try {
+        await spawnWorker('scripts/orchestrator/workers/recorder_worker.mjs', handover);
+      } catch (err) {
+        if (err.message.includes('Existing official record') && err.message.includes('cannot be overwritten')) {
+          blocked = true;
+        }
       }
-    }
 
-    if (!blocked) {
-      throw new Error('Recorder Worker allowed overwriting existing official record!');
-    }
+      if (!blocked) {
+        throw new Error('Recorder Worker allowed overwriting existing official record!');
+      }
 
-    const currentContent = readFileSync(officialFullPath, 'utf8');
-    if (currentContent !== originalContent) {
-      throw new Error('Official record content was mutated!');
+      const currentContent = readFileSync(officialFullPath, 'utf8');
+      if (currentContent !== originalContent) {
+        throw new Error('Official record content was mutated!');
+      }
+    } finally {
+      if (existsSync(officialFullPath)) {
+        unlinkSync(officialFullPath);
+      }
     }
   });
 

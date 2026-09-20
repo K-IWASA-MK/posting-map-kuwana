@@ -187,7 +187,7 @@ Drive 原本 ➔ [正式スクリプト] ➔ 中間データ ➔ [機械監査�
 
 ## 12. 既存ルールとの責務分担・階層関係
 
-本規則と既存の [district-data-transition-rule.md](file:///Volumes/SSD_DATA/posting-map-okayama-02/.agents/rules/district-data-transition-rule.md) は、相互補完的な二層ガバナンスを形成する。
+本規則と既存の [district-data-transition-rule.md](./district-data-transition-rule.md) は、相互補完的な二層ガバナンスを形成する。
 
 ```text
 [AGENTS.md (基本就業規則)]
