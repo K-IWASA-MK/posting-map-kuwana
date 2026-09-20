@@ -1,6 +1,5 @@
 [
-  "scripts/provision-district.mjs",
-  "scripts/verify-gas-deployment.mjs",
-  ".agents/workflows/district-deployment/workflow.md",
-  "docs/operations/COPY_RUNBOOK.md"
+  "data/address_master.csv",
+  "scripts/sort-address-master.py",
+  ".agents/skills/census-small-area-master/SKILL.md"
 ]
