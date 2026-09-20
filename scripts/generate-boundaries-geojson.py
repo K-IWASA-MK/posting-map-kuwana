@@ -181,8 +181,18 @@ def main():
         match_level = ""
         match_reason = ""
 
+        # Case 0: Direct e_stat_code (KEY_CODE) match if present in address master (Small Area Mode)
+        estat_code = (row.get('e_stat_code') or '').strip()
+        if estat_code:
+            assigned_estat = [e for e in city_estat if e['key_code'] == estat_code]
+            if assigned_estat:
+                match_level = "LEVEL 0"
+                match_reason = "e-Stat KEY_CODE小地域完全一致"
+
+
         # Case A: Municipality-wide prefix aggregation policy
-        if cname in muni_prefix_aggr:
+        if not assigned_estat and cname in muni_prefix_aggr:
+
             for e in city_estat:
                 if e['s_name'] == town or e['s_name'].startswith(town):
                     assigned_estat.append(e)
@@ -191,7 +201,7 @@ def main():
                 match_reason = "自治体全域親大字集約（小字統合）"
 
         # Case B: Specific town prefix aggregation rule
-        elif (cname, town) in prefix_rules:
+        elif not assigned_estat and (cname, town) in prefix_rules:
             prefix_pattern, reason = prefix_rules[(cname, town)]
             for e in city_estat:
                 if e['s_name'] == prefix_pattern or e['s_name'].startswith(prefix_pattern):
@@ -201,7 +211,8 @@ def main():
                 match_reason = reason or f"個別親大字集約 (接頭辞: {prefix_pattern})"
 
         # Case C: Standard exact match or exact normalization alias
-        else:
+        elif not assigned_estat:
+
             # 1. Direct exact match
             for e in city_estat:
                 if e['s_name'] == town:
@@ -260,11 +271,13 @@ def main():
                 "rowId": row_id,
                 "city_name": cname,
                 "town_name": town,
+                "households": hh,
                 "population": pop,
-                "households": hh
+                "e_stat_code": estat_code or (assigned_estat[0]['key_code'] if assigned_estat else "")
             },
             "geometry": geom_dict
         }
+
         output_features.append(feature)
 
         audit_table.append({

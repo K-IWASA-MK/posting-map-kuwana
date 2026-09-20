@@ -21,8 +21,8 @@ URL を変更してはならない。
 ## Environment List
 
 | Environment | Status | Script ID | Deployment ID | Web App URL | Notes |
-|-------------|--------|-----------|---------------|-------------|-------|
-| (DISTRICT_ID) | Template / Ready | `(Script ID)` | `(Deployment ID)` | `(Web App URL)` | 新地区プロビジョニング時に記入 |
+|---|---|---|---|---|---|
+| KUWANA | Production Active | `15Nr43ftSF2vKgq-aX-NbkQrPijKaUIG-y1QwrVvEQfqwXcovT6Qg9mdx` | `AKfycbw69CcF7Ktb711lIYhmHSgR0iqTOuoGF_gElWsWcxJzZU3uR595me62t6lAgcUZAnFyOA` | `https://script.google.com/macros/s/AKfycbw69CcF7Ktb711lIYhmHSgR0iqTOuoGF_gElWsWcxJzZU3uR595me62t6lAgcUZAnFyOA/exec` | 三重県桑名市 本番稼働環境 |
 
 ---
 
@@ -30,7 +30,7 @@ URL を変更してはならない。
 
 | District | Role | Spreadsheet ID | Spreadsheet Name | Status |
 |---|---|---|---|---|
-| (DISTRICT_ID) | 新地区本番稼働 | `(Spreadsheet ID)` | `(District Name)` | プロビジョニング時に自動配備 |
+| KUWANA | 新地区本番稼働 | `1mk346cjH6JhrYeVKye6ZyfmHXaXpRFO-FJ1BGa0WQIw` | `KUWANA` | 本番スプレッドシート配備完了 |
 
 ---
 
