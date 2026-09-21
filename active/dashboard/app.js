@@ -1649,9 +1649,27 @@ window.updateBulletinCharCount = function(textarea) {
   }
 };
 
-window.fetchBulletinPosts = function() {
+// 掲示板データ取得ライフサイクル管理ステート
+let _cachedBulletinPosts = null;       // 投稿データのメモリキャッシュ
+let _bulletinFetched = false;          // 取得成功実績フラグ
+let _activeBulletinPromise = null;      // 実際の通信プロミス（callApiPostが真にsettleするまで保持）
+let _bulletinReqSeq = 0;               // 最新リクエスト世代番号
+let _bulletinNeedsRefresh = false;     // in-flight中にforceが要求された場合の遅延再取得フラグ
+
+window.fetchBulletinPosts = function(options = {}) {
+  const force = options.force === true;
   const container = document.getElementById('bulletin-list-container');
-  if (container) {
+  const bulletinPage = document.getElementById('page-bulletin');
+  const isBulletinActive = bulletinPage && !bulletinPage.classList.contains('hidden');
+
+  // 【最終設計原則】既に取得済みの掲示板データを、画面遷移のたびにLoadingで破壊しない
+  if (_cachedBulletinPosts !== null) {
+    // 2回目以降：既存投稿一覧を即表示（Loading画面は一切出さない）
+    if (isBulletinActive && typeof renderBulletinList === 'function') {
+      renderBulletinList(_cachedBulletinPosts);
+    }
+  } else if (!_bulletinFetched && isBulletinActive && container) {
+    // 初回のみ：キャッシュがないためLoadingを表示
     container.innerHTML = `
       <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
         <div class="w-8 h-8 rounded-full border-2 border-[#2563eb]/40 border-t-[#2563eb] animate-spin"></div>
@@ -1659,27 +1677,129 @@ window.fetchBulletinPosts = function() {
       </div>`;
   }
 
-  callApiPost('getBulletinPosts').then(data => {
-    if (data && data.success && Array.isArray(data.posts)) {
-      if (typeof renderBulletinList === 'function') renderBulletinList(data.posts);
-    } else {
-      if (container) {
-        container.innerHTML = `
-          <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-            <span class="text-2xl">⚠️</span>
-            <p class="text-sm font-black text-white/60">データ取得に失敗しました</p>
-          </div>`;
+  // 【要件②】in-flight通信が存在する場合：同時GETを絶対に発生させない
+  if (_activeBulletinPromise) {
+    if (force) {
+      // 通信中かつforce指定の場合：2本目の通信を発射せず、現在の通信完了後に1回再取得する予約を入れる
+      _bulletinNeedsRefresh = true;
+    }
+    return _activeBulletinPromise;
+  }
+
+  // 新規通信開始
+  const currentSeq = ++_bulletinReqSeq;
+  let isUiSettled = false;
+  let uiTimeoutTimer = null;
+
+  // 【要件①】15秒の「UI待機限界」タイマー（通信本体とは完全分離）
+  const uiTimeoutPromise = new Promise((_, reject) => {
+    uiTimeoutTimer = setTimeout(() => {
+      if (!isUiSettled) {
+        reject(new Error("UI_TIMEOUT"));
       }
-    }
-  }).catch(() => {
-    if (container) {
-      container.innerHTML = `
-        <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-          <span class="text-2xl">⚠️</span>
-          <p class="text-sm font-black text-white/60">エラーが発生しました</p>
-        </div>`;
-    }
+    }, 15000);
   });
+
+  // 実際の通信処理（callApiPostが真にsettleするまで管理）
+  const networkPromise = callApiPost('getBulletinPosts')
+    .then(data => {
+      if (data && data.success && Array.isArray(data.posts)) {
+        return data.posts;
+      }
+      throw new Error((data && data.message) || "データ取得に失敗しました");
+    });
+
+  _activeBulletinPromise = networkPromise;
+
+  // UI層への反映：networkPromise と uiTimeoutPromise のレース
+  // ※ただし networkPromise はバックグラウンドで最後まで走り続ける
+  Promise.race([networkPromise, uiTimeoutPromise])
+    .then(posts => {
+      isUiSettled = true;
+      if (uiTimeoutTimer) clearTimeout(uiTimeoutTimer);
+
+      // 【要件③】世代チェック：自分が最新リクエストか？
+      if (currentSeq !== _bulletinReqSeq) return;
+
+      // キャッシュ更新
+      _cachedBulletinPosts = posts;
+      _bulletinFetched = true;
+
+      // 【要件③】画面状態チェック：現在 page-bulletin がアクティブか？
+      const pageEl = document.getElementById('page-bulletin');
+      const isActive = pageEl && !pageEl.classList.contains('hidden');
+      if (isActive && typeof renderBulletinList === 'function') {
+        renderBulletinList(posts);
+      }
+    })
+    .catch(err => {
+      isUiSettled = true;
+      if (uiTimeoutTimer) clearTimeout(uiTimeoutTimer);
+
+      // 【要件③】世代チェック：自分が最新リクエストか？
+      if (currentSeq !== _bulletinReqSeq) return;
+
+      const pageEl = document.getElementById('page-bulletin');
+      const isActive = pageEl && !pageEl.classList.contains('hidden');
+
+      // キャッシュがあればキャッシュ描画を維持（エラーで画面を破壊しない）
+      if (_cachedBulletinPosts !== null) {
+        if (isActive && typeof renderBulletinList === 'function') {
+          renderBulletinList(_cachedBulletinPosts);
+        }
+        return;
+      }
+
+      // 初回でキャッシュがない場合のみエラーUIを表示
+      if (isActive) {
+        const curContainer = document.getElementById('bulletin-list-container');
+        if (curContainer) {
+          const errMsg = err.message === "UI_TIMEOUT" ? "通信がタイムアウトしました" : "データ取得に失敗しました";
+          curContainer.innerHTML = `
+            <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+              <span class="text-2xl">⚠️</span>
+              <p class="text-sm font-black text-white/60">${errMsg}</p>
+              <button type="button" onclick="window.fetchBulletinPosts({ force: true })"
+                class="mt-2 px-4 py-1.5 rounded-full text-xs font-bold text-white bg-white/10 hover:bg-white/20 active:scale-95 transition">
+                再読み込み
+              </button>
+            </div>`;
+        }
+      }
+    });
+
+  // 【要件①】通信本体（networkPromise）が真にsettleしたときのライフサイクルクリーンアップ
+  networkPromise
+    .then(posts => {
+      // もしUIタイムアウト後に遅れて成功した場合でも、最新世代ならキャッシュを最新化
+      if (currentSeq === _bulletinReqSeq) {
+        _cachedBulletinPosts = posts;
+        _bulletinFetched = true;
+        // もし現在掲示板を表示中なら、遅れて届いた最新データを静かに描画更新
+        const pageEl = document.getElementById('page-bulletin');
+        const isActive = pageEl && !pageEl.classList.contains('hidden');
+        if (isActive && typeof renderBulletinList === 'function') {
+          renderBulletinList(posts);
+        }
+      }
+    })
+    .catch(err => {
+      console.warn("[Bulletin Network Settle Warn]", err.message);
+    })
+    .finally(() => {
+      // 【要件①】元のcallApiPostが実際にsettleするまでin-flightとして管理
+      if (_activeBulletinPromise === networkPromise) {
+        _activeBulletinPromise = null;
+      }
+
+      // 【要件②】in-flight中にforce再取得の要求があった場合、1回だけ最新再取得を発射
+      if (_bulletinNeedsRefresh) {
+        _bulletinNeedsRefresh = false;
+        window.fetchBulletinPosts({ force: true });
+      }
+    });
+
+  return networkPromise;
 };
 
 window.submitBulletinPost = async function() {
@@ -1723,7 +1843,8 @@ window.submitBulletinPost = async function() {
       inputEl.value = '';
       if (counter) counter.textContent = '0 / 150';
       alert('✓ 投稿が完了しました');
-      window.fetchBulletinPosts();
+      // 投稿完了後：キャッシュを無視して最新取得を要求
+      window.fetchBulletinPosts({ force: true });
     } else {
       alert('投稿に失敗しました: ' + (res ? res.message : 'Unknown error'));
     }
