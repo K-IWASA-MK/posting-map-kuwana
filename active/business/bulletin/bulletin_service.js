@@ -39,9 +39,20 @@
     getContactSheet() {
       const ss = this.getSS();
       let sheet = ss.getSheetByName("掲示板連絡履歴");
+      const expectedHeaders = [["日時", "送信者ID", "送信者名", "相手ID", "連絡方法", "連絡先", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時"]];
       if (!sheet) {
         sheet = ss.insertSheet("掲示板連絡履歴");
-        sheet.getRange(1, 1, 1, 6).setValues([["日時", "送信者ID", "送信者名", "相手ID", "連絡方法", "連絡先"]]);
+        sheet.getRange(1, 1, 1, 10).setValues(expectedHeaders);
+      } else {
+        const lastRow = sheet.getLastRow();
+        if (lastRow === 0) {
+          sheet.getRange(1, 1, 1, 10).setValues(expectedHeaders);
+        } else {
+          const headerValues = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 10)).getValues()[0];
+          if (!headerValues[6] || headerValues[6] !== "requestId") {
+            sheet.getRange(1, 1, 1, 10).setValues(expectedHeaders);
+          }
+        }
       }
       return sheet;
     }
@@ -112,6 +123,7 @@
     }
 
     sendContact(data) {
+      const requestId = data && data.requestId ? String(data.requestId).trim() : '';
       const requestUserId = data && data.requestUserId ? String(data.requestUserId).trim() : '';
       const targetStaffId = data && data.targetStaffId ? String(data.targetStaffId).trim() : '';
       const contactMethod = data && data.contactMethod ? String(data.contactMethod).trim() : 'LINE';
@@ -119,6 +131,10 @@
 
       if (!requestUserId || !targetStaffId || !contactValue) {
         return { success: false, message: "必須パラメータが不足しています。" };
+      }
+
+      if (!requestId) {
+        Logger.log("[WARN] sendContact received without requestId. Legacy client fallback.");
       }
 
       const lock = LockService.getScriptLock();
@@ -129,6 +145,15 @@
       }
 
       try {
+        const cache = CacheService.getScriptCache();
+        if (requestId) {
+          const cached = cache.get("IDEMPOTENCY_LINE_" + requestId);
+          if (cached === "SENT") {
+            Logger.log("[IDEMPOTENCY] Cache hit SENT for requestId: " + requestId);
+            return { success: true, status: "SENT", duplicate: true };
+          }
+        }
+
         const rosterSheet = this.getMonthlySheet('staff');
         let requestUserName = requestUserId;
         let targetName = targetStaffId;
@@ -155,17 +180,58 @@
         }
 
         const contactSheet = this.getContactSheet();
+
+        let existingRow = 0;
+        let existingStatus = "";
+        const lastRow = contactSheet.getLastRow();
+        if (requestId && lastRow >= 2) {
+          const reqIdValues = contactSheet.getRange(2, 7, lastRow - 1, 2).getValues();
+          for (let i = 0; i < reqIdValues.length; i++) {
+            if (String(reqIdValues[i][0]).trim() === requestId) {
+              existingRow = i + 2;
+              existingStatus = String(reqIdValues[i][1] || '').trim();
+              break;
+            }
+          }
+        }
+
+        if (existingRow > 0) {
+          if (existingStatus === "SENT") {
+            cache.put("IDEMPOTENCY_LINE_" + requestId, "SENT", 600);
+            return { success: true, status: "SENT", duplicate: true };
+          }
+          if (existingStatus === "FAILED") {
+            return { success: true, status: "FAILED", message: "以前の送信で回復不能なエラーが発生しました。" };
+          }
+          if (existingStatus === "UNKNOWN") {
+            return { success: true, status: "UNKNOWN", message: "送信結果を確認できません。二重送信を防ぐためしばらくお待ちください。" };
+          }
+          if (existingStatus === "PROCESSING") {
+            return { success: false, status: "PROCESSING", message: "現在処理中です。少々お待ちください。" };
+          }
+        }
+
+        let targetRow = existingRow;
         const now = new Date();
         const requestTime = Utilities.formatDate(now, "JST", "yyyy/MM/dd HH:mm:ss");
 
-        contactSheet.appendRow([
-          requestTime,
-          requestUserId,
-          requestUserName,
-          targetStaffId,
-          contactMethod,
-          contactValue
-        ]);
+        if (targetRow === 0) {
+          contactSheet.appendRow([
+            requestTime,
+            requestUserId,
+            requestUserName,
+            targetStaffId,
+            contactMethod,
+            contactValue,
+            requestId,
+            "PROCESSING",
+            "",
+            ""
+          ]);
+          targetRow = contactSheet.getLastRow();
+        } else {
+          contactSheet.getRange(targetRow, 8).setValue("PROCESSING");
+        }
 
         if (targetLineUserId) {
           const postingMapUrl = typeof getProductionLiffUrl === 'function' ? getProductionLiffUrl() : '';
@@ -179,10 +245,51 @@
             "POSTING MAPを開く\n" +
             postingMapUrl;
 
-          this.sendLinePushMessage(targetLineUserId, messageText);
-        }
+          const lineRes = this.sendLinePushMessage(targetLineUserId, messageText);
+          const lineTime = Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd HH:mm:ss");
 
-        return { success: true };
+          contactSheet.getRange(targetRow, 8, 1, 3).setValues([[
+            lineRes.status,
+            String(lineRes.httpStatus),
+            lineTime
+          ]]);
+
+          if (lineRes.status === "SENT") {
+            if (requestId) cache.put("IDEMPOTENCY_LINE_" + requestId, "SENT", 600);
+            return { success: true, status: "SENT" };
+          } else if (lineRes.status === "FAILED") {
+            return {
+              success: true,
+              status: "FAILED",
+              httpStatus: lineRes.httpStatus,
+              message: lineRes.message || "LINE通知の送信に失敗しました。"
+            };
+          } else if (lineRes.status === "UNKNOWN") {
+            return {
+              success: true,
+              status: "UNKNOWN",
+              httpStatus: lineRes.httpStatus,
+              message: lineRes.message || "送信結果を確認できません。二重送信を防ぐためしばらくお待ちください。"
+            };
+          } else {
+            // RETRYABLE: 一時障害のため api.js に自動リトライを許可
+            return {
+              success: false,
+              status: lineRes.status,
+              httpStatus: lineRes.httpStatus,
+              message: lineRes.message || "一時的なエラーが発生しました。"
+            };
+          }
+        } else {
+          const lineTime = Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd HH:mm:ss");
+          contactSheet.getRange(targetRow, 8, 1, 3).setValues([[
+            "SKIPPED_NO_LINE_ID",
+            "NONE",
+            lineTime
+          ]]);
+          if (requestId) cache.put("IDEMPOTENCY_LINE_" + requestId, "SKIPPED_NO_LINE_ID", 600);
+          return { success: true, status: "SKIPPED_NO_LINE_ID", message: "相手のLINE未登録のため通知はスキップされました。" };
+        }
       } catch (err) {
         return { success: false, message: err.toString() };
       } finally {
@@ -193,7 +300,10 @@
     sendLinePushMessage(toUserId, messageText) {
       const props = PropertiesService.getScriptProperties();
       const token = props.getProperty("LINE_CHANNEL_ACCESS_TOKEN_ADMIN") || props.getProperty("LINE_CHANNEL_ACCESS_TOKEN");
-      if (!token) return;
+      if (!token) {
+        Logger.log('LINE Push error: access token not found');
+        return { success: false, status: "FAILED", httpStatus: "NO_TOKEN", message: "LINE channel access token missing" };
+      }
 
       const url = "https://api.line.me/v2/bot/message/push";
       const payload = {
@@ -215,8 +325,22 @@
       };
 
       try {
-        UrlFetchApp.fetch(url, options);
-      } catch (e) {}
+        const response = UrlFetchApp.fetch(url, options);
+        const code = response.getResponseCode();
+        const body = response.getContentText();
+        Logger.log('LINE Push → status:' + code + ' body:' + body);
+
+        if (code === 200) {
+          return { success: true, status: "SENT", httpStatus: code, message: "OK" };
+        } else if (code >= 400 && code < 500 && code !== 429) {
+          return { success: false, status: "FAILED", httpStatus: code, message: body };
+        } else {
+          return { success: false, status: "RETRYABLE", httpStatus: code, message: body };
+        }
+      } catch (err) {
+        Logger.log('LINE Push exception: ' + err.toString());
+        return { success: false, status: "UNKNOWN", httpStatus: "TIMEOUT", message: err.toString() };
+      }
     }
   }
 

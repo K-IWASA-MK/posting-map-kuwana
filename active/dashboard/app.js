@@ -10,6 +10,27 @@ window.escapeHtml = function(value) {
     .replace(/'/g, "&#039;");
 };
 
+// 暗号学的UUID v4 + 実機フォールバック対応のRequestId生成関数 (冪等性キー)
+window.generateRequestId = function(prefix = 'req') {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return `${prefix}_${crypto.randomUUID()}`;
+    } catch (e) {}
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    try {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
+      bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant 10
+      const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      return `${prefix}_${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+    } catch (e) {}
+  }
+  const p = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? Math.floor(performance.now() * 1000) : 0;
+  return `${prefix}_${Date.now()}_${p}_${Math.random().toString(36).substring(2, 11)}`;
+};
+
 // デバッグログ出力関数 (本番用: コンソールのみ出力)
 window.logDebug = function(msg) {
   console.log("[DEBUG]", msg);
@@ -1560,7 +1581,10 @@ window.openTransferRequestDialog = function(name, id, loc, count, storageId) {
 
   document.getElementById('dyn-cancel').addEventListener('click', () => overlay.remove());
 
+  let isSubmittingTransfer = false;
   document.getElementById('dyn-submit').addEventListener('click', async () => {
+    if (isSubmittingTransfer) return;
+
     const contactValueInput = document.getElementById('transfer-contact-value');
     const contactValue = contactValueInput ? contactValueInput.value.trim() : '';
 
@@ -1575,12 +1599,15 @@ window.openTransferRequestDialog = function(name, id, loc, count, storageId) {
 
     const btn = document.getElementById('dyn-submit');
     if (btn) { btn.textContent = '送信中...'; btn.disabled = true; }
+    isSubmittingTransfer = true;
 
     const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
     const requestUserId = userInfo.id ? String(userInfo.id).trim() : 'UNKNOWN';
+    const requestId = window.generateRequestId ? window.generateRequestId('req_tr') : `req_tr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     try {
       const res = await callApiPost('requestFlyerTransfer', {
+        requestId: requestId,
         requestUserId: requestUserId,
         holderUserId: currentTransferRequest.holderUserId,
         contactMethod: contactMethod,
@@ -1588,13 +1615,16 @@ window.openTransferRequestDialog = function(name, id, loc, count, storageId) {
       });
 
       overlay.remove();
-      if (res && res.success) {
+      if (res && (res.status === 'SENT' || res.status === 'SKIPPED_NO_LINE_ID')) {
         alert('✅ 受渡要請を送信しました！\n保管者に通知されます。');
+      } else if (res && res.status === 'UNKNOWN') {
+        alert('⚠️ 送信結果を確認できませんでした。\n通信状態をご確認のうえ、二重送信を防ぐためしばらくお待ちください。');
       } else {
         alert('送信に失敗しました: ' + (res ? res.message : 'Unknown error'));
       }
     } catch(err) {
       alert('通信エラー: ' + err.message);
+      isSubmittingTransfer = false;
       if (btn) { btn.textContent = '受渡要請を送る'; btn.disabled = false; }
     }
   });
@@ -1779,7 +1809,10 @@ window.openBulletinContactDialog = function(targetStaffId) {
 
   document.getElementById('btn-bulletin-contact-cancel').addEventListener('click', () => overlay.remove());
 
+  let isSubmittingContact = false;
   document.getElementById('btn-bulletin-contact-submit').addEventListener('click', async () => {
+    if (isSubmittingContact) return;
+
     const contactValueInput = document.getElementById('bulletin-contact-value');
     const contactValue = contactValueInput ? contactValueInput.value.trim() : '';
 
@@ -1794,12 +1827,15 @@ window.openBulletinContactDialog = function(targetStaffId) {
 
     const btn = document.getElementById('btn-bulletin-contact-submit');
     if (btn) { btn.textContent = '連絡中...'; btn.disabled = true; }
+    isSubmittingContact = true;
 
     const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
     const requestUserId = userInfo.id ? String(userInfo.id).trim() : (window.currentUser && window.currentUser.id ? String(window.currentUser.id).trim() : 'UNKNOWN');
+    const requestId = window.generateRequestId ? window.generateRequestId('req_bc') : `req_bc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     try {
       const res = await callApiPost('sendBulletinContact', {
+        requestId: requestId,
         requestUserId: requestUserId,
         targetStaffId: targetIdStr,
         contactMethod: contactMethod,
@@ -1807,13 +1843,16 @@ window.openBulletinContactDialog = function(targetStaffId) {
       });
 
       overlay.remove();
-      if (res && res.success) {
+      if (res && (res.status === 'SENT' || res.status === 'SKIPPED_NO_LINE_ID')) {
         alert('✓ 連絡を送信しました');
+      } else if (res && res.status === 'UNKNOWN') {
+        alert('⚠️ 送信結果を確認できませんでした。\n通信状態をご確認のうえ、二重送信を防ぐためしばらくお待ちください。');
       } else {
         alert('連絡の送信に失敗しました: ' + (res ? res.message : 'Unknown error'));
       }
     } catch(err) {
       alert('通信エラー: ' + err.message);
+      isSubmittingContact = false;
       if (btn) { btn.textContent = '連絡する'; btn.disabled = false; }
     }
   });
