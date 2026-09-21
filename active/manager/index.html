@@ -173,16 +173,22 @@
       animation: liveSlideIn 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
-    /* iOS ホーム画面追加 (standalone) 表示限定の Safe Area 処理 */
+    /* iOS ホーム画面追加 (standalone) 表示限定の Safe Area 処理：画面全体を下へオフセット */
     @media (display-mode: standalone) {
-      header.lg\:hidden {
-        height: calc(3rem + env(safe-area-inset-top, 0px)) !important;
+      body {
         padding-top: env(safe-area-inset-top, 0px) !important;
       }
+      header.lg\:hidden {
+        height: 3rem !important;
+        padding-top: 0 !important;
+      }
+    }
+    html.is-standalone body {
+      padding-top: env(safe-area-inset-top, 0px) !important;
     }
     html.is-standalone header.lg\:hidden {
-      height: calc(3rem + env(safe-area-inset-top, 0px)) !important;
-      padding-top: env(safe-area-inset-top, 0px) !important;
+      height: 3rem !important;
+      padding-top: 0 !important;
     }
   </style>
 </head>
@@ -252,7 +258,7 @@
   </div>
 
   <!-- ==================== MOBILE TOP HEADER (lg:hidden) ==================== -->
-  <header class="lg:hidden h-[calc(3rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] bg-containerBg border-b border-borderNormal px-3 flex items-center justify-between flex-shrink-0 z-30">
+  <header class="lg:hidden h-12 bg-containerBg border-b border-borderNormal px-3 flex items-center justify-between flex-shrink-0 z-30">
     <div class="flex items-center gap-2">
       <div class="w-7 h-7 rounded-lg overflow-hidden border border-white/10 bg-white flex items-center justify-center p-0.5 shadow-sm flex-shrink-0">
         <img src="/active/dashboard/assets/icon180-v2.png" alt="POSTING MAP" class="w-full h-full object-cover">
