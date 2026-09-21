@@ -45,7 +45,11 @@ if (typeof FlyerRepository === 'undefined') {
     }
 
     updateStock(location, count, staffName, staffId) {
-      if (!staffId || !staffName) return { success: false, message: "Staff info required" };
+      const cleanStaffId = String(staffId || "").trim();
+      const cleanStaffName = String(staffName || "").trim();
+      if (!cleanStaffId || !cleanStaffName) {
+        return { success: false, code: "INVALID_ARGUMENT", message: "Staff info required" };
+      }
       
       const lock = LockService.getScriptLock();
       try {

@@ -1391,38 +1391,51 @@ async function safeInitApp() {
         logDebug("LOGIN OK");
         sessionStorage.removeItem('liff_initializing');
 
-        let userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+        try {
+          logDebug("PROFILE START");
+          const profile = await liff.getProfile();
+          logDebug("PROFILE OK");
 
-        if (userInfo.id) {
-          liff.getProfile().then(profile => {
-            logDebug("Background profile refresh OK");
-            userInfo.lineUserId = profile.userId;
-            userInfo.picture = profile.pictureUrl;
-            localStorage.setItem('user_info', JSON.stringify(userInfo));
+          try {
+            const cleanUrl = window.location.origin + window.location.pathname + window.location.search.replace(/[\?&](code|liff\.state)=[^&]*/g, '');
+            window.history.replaceState({}, document.title, cleanUrl);
+            logDebug("OAuth query parameters cleaned from address bar via history.replaceState (Safe Delay)");
+          } catch (e) {
+            console.warn("Failed to clean OAuth query parameters:", e);
+          }
+
+          setLoadingProgress(50, 'VERIFYING IDENTITY...');
+
+          // Backendから正規のStaff Identity（表示用ID/名前）を確認
+          let identityRes = null;
+          try {
+            identityRes = await callApiPost('getStaffIdentity', {});
+          } catch (apiErr) {
+            console.warn("getStaffIdentity call failed:", apiErr);
+          }
+
+          if (identityRes && identityRes.success && identityRes.registered) {
+            // ① 登録済み: BackendのIdentityを正としてlocalStorageへ表示用として同期
+            logDebug("STAFF IDENTITY VERIFIED: " + identityRes.staffId);
+            const verifiedUserInfo = {
+              last: identityRes.staffName || profile.displayName || '',
+              first: '',
+              id: identityRes.staffId,
+              lineUserId: profile.userId,
+              picture: profile.pictureUrl || ''
+            };
+            localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
+            setLoadingProgress(100, 'READY');
 
             if (typeof renderSettings === 'function') {
               renderSettings();
             }
-          }).catch(err => {
-            console.warn("Background profile refresh failed:", err);
-          });
-
-        } else {
-          try {
-            logDebug("PROFILE START");
-            const profile = await liff.getProfile();
-            logDebug("PROFILE OK");
-
-            try {
-              const cleanUrl = window.location.origin + window.location.pathname + window.location.search.replace(/[\?&](code|liff\.state)=[^&]*/g, '');
-              window.history.replaceState({}, document.title, cleanUrl);
-              logDebug("OAuth query parameters cleaned from address bar via history.replaceState (Safe Delay)");
-            } catch (e) {
-              console.warn("Failed to clean OAuth query parameters:", e);
-            }
-
+            updateBottomNavVisibility();
+            showMainApp();
+          } else {
+            // ② 未登録: localStorageの古いStaff IDを無効化し、既存初回登録フローへ
+            logDebug("STAFF NOT REGISTERED OR IDENTITY MISMATCH. PROCEEDING TO REGISTRATION...");
             setLoadingProgress(60, 'REGISTERING...');
-            console.log(profile);
 
             const initialUserInfo = {
               last: profile.displayName || '',
@@ -1435,19 +1448,19 @@ async function safeInitApp() {
 
             await triggerBackgroundRegistration(profile);
             setLoadingProgress(100, 'READY');
-          } catch (err) {
-            console.error("LIFF PROFILE ERROR", err);
-            logDebug("LIFF PROFILE ERROR: " + err.message);
-
-            if (err.message && err.message.toUpperCase().includes("REVOKED")) {
-              logDebug("Access token revoked detected. Forcing re-login...");
-              liff.logout();
-              liff.login({ redirectUri: window.location.href });
-              return;
-            }
-
-            $('loading-status').textContent = "起動エラー: " + err.message;
           }
+        } catch (err) {
+          console.error("LIFF PROFILE / AUTH ERROR", err);
+          logDebug("LIFF PROFILE / AUTH ERROR: " + err.message);
+
+          if (err.message && err.message.toUpperCase().includes("REVOKED")) {
+            logDebug("Access token revoked detected. Forcing re-login...");
+            liff.logout();
+            liff.login({ redirectUri: window.location.href });
+            return;
+          }
+
+          $('loading-status').textContent = "起動エラー: " + err.message;
         }
       } else {
         // LINEログイン処理中（OAuthコールバックのパラメータがある）なら、手動ログイン画面を出さずに少し待機して再チェックする

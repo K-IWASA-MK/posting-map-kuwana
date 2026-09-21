@@ -581,8 +581,68 @@ function processPostAction(action, postData, e) {
       postData = { ...(postData || {}), ...parsedJson };
     } catch (errJson) {}
   }
+
+  // Staff依存業務アクションに対する操作主体（LINE User ID）の検証・Identity強制
+  const staffDependentActions = [
+    'updateFlyerStock',
+    'submitDistribution',
+    'updateRecordWithGPSPhoto',
+    'createBulletinPost',
+    'sendBulletinContact',
+    'requestFlyerTransfer',
+    'resolveTransferRequest'
+  ];
+  if (staffDependentActions.includes(action)) {
+    const lineUserId = (postData && postData.user && postData.user.lineUserId) ? String(postData.user.lineUserId).trim() : "";
+    if (!lineUserId) {
+      return { success: false, code: "UNAUTHORIZED", message: "LINE User ID が取得できません。" };
+    }
+    const identity = (typeof StaffService !== 'undefined' && StaffService.getInstance)
+      ? StaffService.getInstance().resolveStaffIdentity(lineUserId)
+      : null;
+    if (!identity || !identity.found) {
+      return {
+        success: false,
+        code: "NOT_REGISTERED",
+        message: "配布員登録が完了していません。名簿登録を行ってください。"
+      };
+    }
+    // 操作主体の Identity を Backend 側で強制確定（クライアント送信値を無力化）
+    postData.staffId = identity.staffId;
+    postData.staffName = identity.staffName;
+    postData.requestUserId = identity.staffId;
+    postData.resolvedStaffId = identity.staffId;
+    postData.resolvedStaffName = identity.staffName;
+    postData.resolvedLineUserId = identity.lineUserId;
+  }
+
   switch (action) {
 
+    case 'getStaffIdentity': {
+      const lineUserId = (postData && postData.user && postData.user.lineUserId) ? String(postData.user.lineUserId).trim() : "";
+      if (!lineUserId) {
+        return { success: false, code: "UNAUTHORIZED", message: "LINE User ID が取得できません。" };
+      }
+      const identity = (typeof StaffService !== 'undefined' && StaffService.getInstance)
+        ? StaffService.getInstance().resolveStaffIdentity(lineUserId)
+        : null;
+      if (identity && identity.found) {
+        return {
+          success: true,
+          registered: true,
+          staffId: identity.staffId,
+          staffName: identity.staffName,
+          lineUserId: identity.lineUserId
+        };
+      } else {
+        return {
+          success: true,
+          registered: false,
+          code: "NOT_REGISTERED",
+          message: "Staff not registered"
+        };
+      }
+    }
     case 'getSystemSummary':
       return typeof SystemSummaryService !== 'undefined' ? SystemSummaryService.getInstance().getSystemSummary() : { success: false };
     case 'getMapsApiKey':
