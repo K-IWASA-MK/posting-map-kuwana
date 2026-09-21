@@ -20,6 +20,7 @@ const DashboardState = {
   ranking: [], // 現場アプリと完全同一の計算済みランキング (getRanking)
   roster: [],
   requests: [], // 受渡要請 (getTransferRequests)
+  bulletinPosts: null, // 掲示板投稿キャッシュ (getBulletinPosts)
   liveRecords: [], // Backendから取得した最新配布実績レコード (SSOT)
   latestSeenRecordId: null, // アニメーション検知用最新レコードID
   globalPinStatus: { inProgress: [], completed: [] },
@@ -1832,54 +1833,100 @@ function renderMainStageRequests(requests) {
   contentEl.innerHTML = html;
 }
 
-function renderMainStageBulletin() {
+let _activeBulletinPromise = null;
+
+function renderMainStageBulletin(options = {}) {
+  const force = options && options.force === true;
   const contentEl = document.getElementById('main-stage-bulletin-content');
   if (!contentEl) return;
 
-  contentEl.innerHTML = `
-    <div class="flex items-center justify-center py-12">
-      <div class="w-6 h-6 rounded-full border-2 border-brand/40 border-t-brand animate-spin"></div>
-    </div>
-  `;
+  // ① 2回目以降：キャッシュがあれば即座に一覧を描画（スピナーは一切出さない・通信もしない）
+  if (DashboardState.bulletinPosts !== null && !force) {
+    drawBulletinList(DashboardState.bulletinPosts);
+    return;
+  }
 
-  callApiPost('getBulletinPosts', {}).then(res => {
-    if (!res || !res.success || !Array.isArray(res.posts) || res.posts.length === 0) {
-      contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、掲示板の投稿はありません</div>`;
-      return;
+  // ② 初回（キャッシュがない場合）のみスピナーを表示
+  if (DashboardState.bulletinPosts === null) {
+    contentEl.innerHTML = `
+      <div class="flex items-center justify-center py-12">
+        <div class="w-6 h-6 rounded-full border-2 border-brand/40 border-t-brand animate-spin"></div>
+      </div>
+    `;
+  }
+
+  // ③ in-flight通信の多重化防止
+  if (_activeBulletinPromise) {
+    return _activeBulletinPromise;
+  }
+
+  // ④ API通信
+  _activeBulletinPromise = callApiPost('getBulletinPosts', {})
+    .then(res => {
+      const posts = (res && res.success && Array.isArray(res.posts)) ? res.posts : [];
+      DashboardState.bulletinPosts = posts;
+
+      // 取得完了時、現在 bulletin 表示中なら静かに更新
+      if (DashboardState.currentFocus === 'bulletin') {
+        drawBulletinList(posts);
+      }
+    })
+    .catch(() => {
+      if (DashboardState.bulletinPosts !== null) {
+        if (DashboardState.currentFocus === 'bulletin') {
+          drawBulletinList(DashboardState.bulletinPosts);
+        }
+        return;
+      }
+      if (DashboardState.currentFocus === 'bulletin') {
+        contentEl.innerHTML = `<div class="text-sm text-statusRed/80 text-center py-12">掲示板の取得に失敗しました</div>`;
+      }
+    })
+    .finally(() => {
+      _activeBulletinPromise = null;
+    });
+
+  return _activeBulletinPromise;
+}
+
+function drawBulletinList(posts) {
+  const contentEl = document.getElementById('main-stage-bulletin-content');
+  if (!contentEl) return;
+
+  if (!posts || posts.length === 0) {
+    contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、掲示板の投稿はありません</div>`;
+    return;
+  }
+
+  let html = '<div class="space-y-1.5">';
+  posts.forEach(post => {
+    let formattedDate = '--';
+    if (post.updatedAt) {
+      const match = String(post.updatedAt).trim().match(/(?:^\d{4}[\/-])?(\d{1,2}[\/-]\d{1,2}\s+\d{1,2}:\d{2})/);
+      formattedDate = match ? match[1].replace('-', '/') : String(post.updatedAt).substring(0, 16);
     }
 
-    let html = '<div class="space-y-1.5">';
-    res.posts.forEach(post => {
-      let formattedDate = '--';
-      if (post.updatedAt) {
-        const match = String(post.updatedAt).trim().match(/(?:^\d{4}[\/-])?(\d{1,2}[\/-]\d{1,2}\s+\d{1,2}:\d{2})/);
-        formattedDate = match ? match[1].replace('-', '/') : String(post.updatedAt).substring(0, 16);
-      }
+    const staffBadge = post.staffId
+      ? `<span class="h-7 px-2 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center font-mono font-bold text-xs text-brand flex-shrink-0">${escapeHtml(post.staffId)}</span>`
+      : '';
 
-      const staffBadge = post.staffId
-        ? `<span class="h-7 px-2 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center font-mono font-bold text-xs text-brand flex-shrink-0">${escapeHtml(post.staffId)}</span>`
-        : '';
-
-      html += `
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 rounded-xl bg-[#182130] border border-[#243044] hover:border-[#33435C] gap-3 transition-colors">
-          <div class="flex items-center gap-2 min-w-0 w-full sm:w-60 sm:flex-none">
-            ${staffBadge}
-            <span class="font-semibold text-white truncate text-sm sm:text-base">${escapeHtml(post.staffName || '')}</span>
-          </div>
-          <div class="flex-1 min-w-0 text-xs sm:text-sm text-white/90 whitespace-pre-wrap break-words leading-relaxed">
-            ${escapeHtml(post.message || '')}
-          </div>
-          <div class="text-right flex-shrink-0">
-            <span class="font-mono text-xs text-[#94A3B8]">${escapeHtml(formattedDate)}</span>
-          </div>
+    html += `
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 rounded-xl bg-[#182130] border border-[#243044] hover:border-[#33435C] gap-3 transition-colors">
+        <div class="flex items-center gap-2 min-w-0 w-full sm:w-60 sm:flex-none">
+          ${staffBadge}
+          <span class="font-semibold text-white truncate text-sm sm:text-base">${escapeHtml(post.staffName || '')}</span>
         </div>
-      `;
-    });
-    html += '</div>';
-    contentEl.innerHTML = html;
-  }).catch(() => {
-    contentEl.innerHTML = `<div class="text-sm text-statusRed/80 text-center py-12">掲示板の取得に失敗しました</div>`;
+        <div class="flex-1 min-w-0 text-xs sm:text-sm text-white/90 whitespace-pre-wrap break-words leading-relaxed">
+          ${escapeHtml(post.message || '')}
+        </div>
+        <div class="text-right flex-shrink-0">
+          <span class="font-mono text-xs text-[#94A3B8]">${escapeHtml(formattedDate)}</span>
+        </div>
+      </div>
+    `;
   });
+  html += '</div>';
+  contentEl.innerHTML = html;
 }
 
 function switchView(type) {
