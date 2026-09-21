@@ -762,6 +762,7 @@ function setupStorageRegisterInputFormatter(inputEl) {
     container.addEventListener('click', function() {
       inputEl.classList.remove('hidden');
       display.classList.add('hidden');
+      inputEl.dataset.userEditing = 'true';
 
       const raw = inputEl.value.replace(/,/g, '').replace(/枚/g, '').trim();
       inputEl.value = raw;
@@ -776,6 +777,7 @@ function setupStorageRegisterInputFormatter(inputEl) {
   inputEl.addEventListener('focus', function() {
     if (display) display.classList.add('hidden');
     inputEl.classList.remove('hidden');
+    inputEl.dataset.userEditing = 'true';
     const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
     this.value = rawVal;
   });
@@ -797,6 +799,7 @@ function setupStorageRegisterInputFormatter(inputEl) {
   });
 
   inputEl.addEventListener('input', function() {
+    inputEl.dataset.userEditing = 'true';
     const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
     this.value = rawVal;
     updateStorageRegisterButtonText();
@@ -897,6 +900,88 @@ window.updateStorageLocationDropdown = function updateStorageLocationDropdown(ov
   updateStorageLocationDisplayText();
 };
 
+// 在庫データの In-flight リクエスト管理 & 世代管理
+let _activeFlyerStockPromise = null;
+let _flyerStockReqSeq = 0;
+
+async function fetchFlyerStock(options = {}) {
+  const { force = false } = options;
+
+  // 1. 進行中 Promise がある場合は重複発射せず既存Promiseを共有
+  if (_activeFlyerStockPromise) {
+    return _activeFlyerStockPromise;
+  }
+
+  const currentSeq = ++_flyerStockReqSeq;
+
+  _activeFlyerStockPromise = (async () => {
+    try {
+      const data = await callApiPost('getFlyerStock');
+      // 世代チェック: 新しいリクエストが後に発行されていたら古い結果は破棄
+      if (currentSeq !== _flyerStockReqSeq) {
+        return null;
+      }
+      if (data && data.success && Array.isArray(data.stocks)) {
+        _stockData = data.stocks;
+        _stockFetched = true;
+      }
+      return data;
+    } catch (err) {
+      console.warn('[fetchFlyerStock] Error:', err);
+      throw err;
+    } finally {
+      _activeFlyerStockPromise = null;
+    }
+  })();
+
+  return _activeFlyerStockPromise;
+}
+
+// 在庫登録フォームへのデータ反映（ユーザー入力完全保護）
+function applyMyStockToForm(options = {}) {
+  const { isAsyncResponse = false } = options;
+  const countInput = $('storage-register-count');
+  const locSelect = $('storage-register-location');
+  if (!countInput) return;
+
+  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+  const staffId = userInfo.id || '';
+  if (!staffId || !Array.isArray(_stockData) || _stockData.length === 0) return;
+
+  const myStock = _stockData.find(s => String(s.staffId) === String(staffId));
+  if (!myStock) return;
+
+  // 【ユーザー入力保護（枚数）】
+  // 非同期APIレスポンスの反映時、以下のいずれかならユーザー入力を保護し上書きしない:
+  // ① document.activeElement === countInput (フォーカス中)
+  // ② !countInput.classList.contains('hidden') (編集モード中)
+  // ③ countInput.dataset.userEditing === 'true' (ユーザーが編集操作を行った)
+  const isInputActive = document.activeElement === countInput ||
+                        !countInput.classList.contains('hidden') ||
+                        countInput.dataset.userEditing === 'true';
+
+  if (!isAsyncResponse || !isInputActive) {
+    const rawCount = parseInt(myStock.count, 10);
+    countInput.value = isNaN(rawCount) ? '' : String(rawCount);
+    // 同期初期反映時は userEditing フラグをクリア
+    if (!isAsyncResponse) {
+      delete countInput.dataset.userEditing;
+    }
+    updateStorageCountDisplay();
+    updateStorageRegisterButtonText();
+  }
+
+  // 【ユーザー選択保護（保管場所）】
+  // 非同期APIレスポンスの反映時、ユーザーが選択・操作中なら上書きしない:
+  // ① document.activeElement === locSelect (フォーカス中)
+  // ② locSelect.dataset.userSelected === 'true' (ユーザーが手動変更した)
+  const isLocActive = document.activeElement === locSelect || (locSelect && locSelect.dataset.userSelected === 'true');
+  if (locSelect && myStock.location && (!isAsyncResponse || !isLocActive)) {
+    locSelect.value = myStock.location;
+    updateStorageLocationDisplayText();
+  }
+}
+
 function initStorageRegisterPage() {
   const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
   const staffId = userInfo.id || '';
@@ -940,42 +1025,48 @@ function initStorageRegisterPage() {
   if (nameEl) nameEl.textContent = staffName || '---';
 
   const countInput = $('storage-register-count');
+  setupStorageRegisterInputFormatter(countInput);
+
+  const locSelect = $('storage-register-location');
+  if (locSelect && !locSelect.dataset.changeBound) {
+    locSelect.dataset.changeBound = 'true';
+    locSelect.addEventListener('change', function() {
+      this.dataset.userSelected = 'true';
+      updateStorageLocationDisplayText();
+    });
+  }
 
   updateStorageLocationDropdown();
   if (!_storageLocationsCache) {
     getStorageLocations().then(cities => {
       if (cities && Array.isArray(cities) && cities.length > 0) {
         updateStorageLocationDropdown(cities);
+        updateStorageLocationDisplayText();
       }
     });
   }
 
+  // 1. 【要件1】既存の _stockData が存在する場合、開いた瞬間にキャッシュから即座に同期反映！
+  // API通信完了を待たず、画面遷移の体感遅延をゼロにする
+  if (_stockFetched && Array.isArray(_stockData) && _stockData.length > 0) {
+    applyMyStockToForm({ isAsyncResponse: false });
+  }
+
+  // 2. 【要件2・3・4】API取得（初回必須、またはバックグラウンド更新）
+  // In-flight共有付きで実行し、画面表示はブロックしない
   if (staffId && countInput) {
-    callApiPost('getFlyerStock').then(data => {
+    fetchFlyerStock().then(data => {
       if (data && data.success && Array.isArray(data.stocks)) {
-        _stockData = data.stocks;
-        _stockFetched = true;
-        const myStock = _stockData.find(s => String(s.staffId) === String(staffId));
-        if (myStock) {
-          const rawCount = parseInt(myStock.count, 10);
-          countInput.value = isNaN(rawCount) ? '' : String(rawCount);
-          const locSelect = $('storage-register-location');
-          if (locSelect && myStock.location) {
-            locSelect.value = myStock.location;
-            updateStorageLocationDisplayText();
-          }
-        }
-        updateStorageCountDisplay();
-        updateStorageRegisterButtonText();
+        // 【要件5】非同期レスポンス到着時の反映。ユーザー入力操作中は絶対に上書きしない！
+        applyMyStockToForm({ isAsyncResponse: true });
       }
     }).catch(err => {
-      console.warn('Failed to fetch staff stock on entry:', err);
+      console.warn('[initStorageRegisterPage] fetchFlyerStock failed:', err);
       updateStorageCountDisplay();
       updateStorageRegisterButtonText();
     });
   }
 
-  setupStorageRegisterInputFormatter(countInput);
   updateStorageCountDisplay();
   updateStorageRegisterButtonText();
 }
@@ -983,7 +1074,11 @@ function initStorageRegisterPage() {
 function initStorageListPage() {
   const listContainer = $('storage-list-container');
 
-  if (!_stockFetched) {
+  // キャッシュがあれば即時描画（ローディングは一切出さない）
+  if (_stockFetched && Array.isArray(_stockData) && _stockData.length > 0) {
+    if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+  } else {
+    // キャッシュがない初回のみ Loading Inventory... を表示
     if (listContainer) {
       listContainer.innerHTML = `
         <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
@@ -991,32 +1086,30 @@ function initStorageListPage() {
           <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Inventory...</p>
         </div>`;
     }
-    callApiPost('getFlyerStock').then(data => {
-      if (data && data.success) {
-        _stockData = data.stocks || [];
-        _stockFetched = true;
-        if (typeof renderStorageList === 'function') renderStorageList(_stockData);
-      } else {
-        if (listContainer) {
-          listContainer.innerHTML = `
-            <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-              <span class="text-2xl">⚠️</span>
-              <p class="text-sm font-black text-white/60">データ取得に失敗しました</p>
-            </div>`;
-        }
-      }
-    }).catch(err => {
+  }
+
+  // In-flight管理付きで取得
+  fetchFlyerStock().then(data => {
+    if (data && data.success) {
+      if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+    } else if (!_stockFetched) {
       if (listContainer) {
         listContainer.innerHTML = `
           <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
             <span class="text-2xl">⚠️</span>
-            <p class="text-sm font-black text-white/60">エラーが発生しました</p>
+            <p class="text-sm font-black text-white/60">データ取得に失敗しました</p>
           </div>`;
       }
-    });
-  } else {
-    if (typeof renderStorageList === 'function') renderStorageList(_stockData);
-  }
+    }
+  }).catch(err => {
+    if (!_stockFetched && listContainer) {
+      listContainer.innerHTML = `
+        <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+          <span class="text-2xl">⚠️</span>
+          <p class="text-sm font-black text-white/60">エラーが発生しました</p>
+        </div>`;
+    }
+  });
 }
 
 
@@ -1062,7 +1155,22 @@ window.submitFlyerStock = async function() {
 
     if (res && res.success) {
       alert("✓ チラシ枚数を更新しました");
-      _stockFetched = false; // キャッシュを無効化し、次回遷移時に最新の在庫を取得させる
+      // 成功した登録結果を _stockData に即時反映し、キャッシュ有効状態を維持する！
+      if (!Array.isArray(_stockData)) _stockData = [];
+      const idx = _stockData.findIndex(s => String(s.staffId) === String(staffId));
+      if (idx >= 0) {
+        _stockData[idx] = { ..._stockData[idx], location: location, count: count, staffName: staffName };
+      } else {
+        _stockData.push({ staffId: staffId, staffName: staffName, location: location, count: count });
+      }
+      _stockFetched = true;
+
+      // 入力完了のため編集フラグをクリア
+      if (countInput) delete countInput.dataset.userEditing;
+      if (locSelect) delete locSelect.dataset.userSelected;
+
+      // バックグラウンドで最新同期（キャッシュは保持）
+      fetchFlyerStock({ force: true }).catch(() => {});
     } else {
       alert("更新に失敗しました: " + (res.message || "エラー"));
     }
