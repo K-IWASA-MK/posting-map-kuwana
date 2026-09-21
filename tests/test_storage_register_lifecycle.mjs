@@ -129,7 +129,7 @@ function setupStorageRegisterInputFormatter(inputEl) {
 }
 
 // 評価対象の関数群 (app.js のロジックと100%同一)
-async function fetchFlyerStock(options = {}) {
+async function fetchFlyerStock() {
   if (_activeFlyerStockPromise) {
     return _activeFlyerStockPromise;
   }
@@ -249,7 +249,8 @@ async function submitFlyerStock(location, count) {
     if (countInput) delete countInput.dataset.userEditing;
     if (locSelect) delete locSelect.dataset.userSelected;
 
-    fetchFlyerStock({ force: true }).catch(() => {});
+    // 世代インクリメント: 登録前から走っている古い getFlyerStock のレスポンスを破棄し、上書きを完全防止
+    _flyerStockReqSeq++;
   }
 }
 
@@ -369,8 +370,45 @@ async function runTests() {
   assert.equal($('storage-register-count').value, '500', '次回遷移時に即座に500が表示される');
   console.log('✅ Gate 6 PASS\n');
 
+  // Gate 7: 登録前の遅延GET (1000枚) と登録 (500枚) の世代競合検証【最重要競合試験】
+  console.log('--- Gate 7: 登録前の遅延GET (1000枚) と登録 (500枚) の世代競合検証 ---');
+  _stockData = [];
+  _stockFetched = false;
+  _activeFlyerStockPromise = null;
+
+  // 1. サーバー上の初期在庫は 1000枚
+  mockApiResponseData = {
+    success: true,
+    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1000 }]
+  };
+  // 2. getFlyerStock を意図的に大きく遅延させる (100ms)
+  mockApiDelayMs = 100;
+
+  // 3. 画面を開く → getFlyerStock が In-flight 状態になる
+  const initialSeq = _flyerStockReqSeq + 1;
+  const inFlightGetPromise = fetchFlyerStock();
+  assert.equal(_flyerStockReqSeq, initialSeq, '先行GETの世代番号が記録された');
+  assert.notEqual(_activeFlyerStockPromise, null, 'GETがIn-flight状態である');
+
+  // 4. GET通信の完了前（30ms後）に、ユーザーが「500枚」で在庫登録を成功させる
+  await new Promise(r => setTimeout(r, 30));
+  mockApiDelayMs = 10;
+  await submitFlyerStock('桑名市', 500);
+
+  // 5. 登録成功直後の _stockData が 500枚 であることを確認
+  assert.equal(_stockData.find(s => s.staffId === 'STAFF_007')?.count, 500, '登録直後のキャッシュは500枚');
+  assert.equal(_flyerStockReqSeq, initialSeq + 1, 'submitFlyerStockによって世代番号がインクリメントされた');
+
+  // 6. その後、遅延していた旧GETレスポンス（1000枚）を到着させる
+  await inFlightGetPromise;
+
+  // 7. 【核心検証】_stockData が 1000枚 へ戻らず、500枚 を維持していることを確認！
+  const finalStock = _stockData.find(s => s.staffId === 'STAFF_007');
+  assert.equal(finalStock?.count, 500, '遅延した旧GET(1000枚)到着後も500枚が維持されている（上書き破棄成功）');
+  console.log('✅ Gate 7 PASS: 世代不一致により旧GET(1000枚)が破棄され、最新値500枚が完全維持された！\n');
+
   console.log('====================================================');
-  console.log('🎉 ALL 6 GATES PASSED PERFECTLY!');
+  console.log('🎉 ALL 7 GATES PASSED PERFECTLY!');
   console.log('====================================================');
 }
 

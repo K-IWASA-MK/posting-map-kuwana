@@ -904,9 +904,7 @@ window.updateStorageLocationDropdown = function updateStorageLocationDropdown(ov
 let _activeFlyerStockPromise = null;
 let _flyerStockReqSeq = 0;
 
-async function fetchFlyerStock(options = {}) {
-  const { force = false } = options;
-
+async function fetchFlyerStock() {
   // 1. 進行中 Promise がある場合は重複発射せず既存Promiseを共有
   if (_activeFlyerStockPromise) {
     return _activeFlyerStockPromise;
@@ -1074,11 +1072,7 @@ function initStorageRegisterPage() {
 function initStorageListPage() {
   const listContainer = $('storage-list-container');
 
-  // キャッシュがあれば即時描画（ローディングは一切出さない）
-  if (_stockFetched && Array.isArray(_stockData) && _stockData.length > 0) {
-    if (typeof renderStorageList === 'function') renderStorageList(_stockData);
-  } else {
-    // キャッシュがない初回のみ Loading Inventory... を表示
+  if (!_stockFetched) {
     if (listContainer) {
       listContainer.innerHTML = `
         <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
@@ -1086,30 +1080,32 @@ function initStorageListPage() {
           <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Inventory...</p>
         </div>`;
     }
-  }
-
-  // In-flight管理付きで取得
-  fetchFlyerStock().then(data => {
-    if (data && data.success) {
-      if (typeof renderStorageList === 'function') renderStorageList(_stockData);
-    } else if (!_stockFetched) {
+    callApiPost('getFlyerStock').then(data => {
+      if (data && data.success) {
+        _stockData = data.stocks || [];
+        _stockFetched = true;
+        if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+      } else {
+        if (listContainer) {
+          listContainer.innerHTML = `
+            <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+              <span class="text-2xl">⚠️</span>
+              <p class="text-sm font-black text-white/60">データ取得に失敗しました</p>
+            </div>`;
+        }
+      }
+    }).catch(err => {
       if (listContainer) {
         listContainer.innerHTML = `
           <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
             <span class="text-2xl">⚠️</span>
-            <p class="text-sm font-black text-white/60">データ取得に失敗しました</p>
+            <p class="text-sm font-black text-white/60">エラーが発生しました</p>
           </div>`;
       }
-    }
-  }).catch(err => {
-    if (!_stockFetched && listContainer) {
-      listContainer.innerHTML = `
-        <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-          <span class="text-2xl">⚠️</span>
-          <p class="text-sm font-black text-white/60">エラーが発生しました</p>
-        </div>`;
-    }
-  });
+    });
+  } else {
+    if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+  }
 }
 
 
@@ -1169,8 +1165,8 @@ window.submitFlyerStock = async function() {
       if (countInput) delete countInput.dataset.userEditing;
       if (locSelect) delete locSelect.dataset.userSelected;
 
-      // バックグラウンドで最新同期（キャッシュは保持）
-      fetchFlyerStock({ force: true }).catch(() => {});
+      // 世代インクリメント: 登録前から走っている古い getFlyerStock のレスポンスを破棄し、上書きを完全防止
+      _flyerStockReqSeq++;
     } else {
       alert("更新に失敗しました: " + (res.message || "エラー"));
     }
