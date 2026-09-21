@@ -36,6 +36,11 @@
     }
   </script>
   <script>
+    if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
+      document.documentElement.classList.add('is-standalone');
+    }
+  </script>
+  <script>
     tailwind.config = {
       theme: {
         extend: {
@@ -166,6 +171,18 @@
     }
     .live-card-new {
       animation: liveSlideIn 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* iOS ホーム画面追加 (standalone) 表示限定の Safe Area 処理 */
+    @media (display-mode: standalone) {
+      header.lg\:hidden {
+        height: calc(3rem + env(safe-area-inset-top, 0px)) !important;
+        padding-top: env(safe-area-inset-top, 0px) !important;
+      }
+    }
+    html.is-standalone header.lg\:hidden {
+      height: calc(3rem + env(safe-area-inset-top, 0px)) !important;
+      padding-top: env(safe-area-inset-top, 0px) !important;
     }
   </style>
 </head>
