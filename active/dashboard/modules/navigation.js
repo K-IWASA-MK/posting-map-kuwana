@@ -57,10 +57,6 @@ async function switchPage(id, force = false) {
     });
   }
 
-  if (typeof window.onPageEnter === 'function') {
-    window.onPageEnter(id);
-  }
-
   updateBottomNavVisibility();
 
   const contentEl = document.getElementById('content');
@@ -72,6 +68,10 @@ async function switchPage(id, force = false) {
   target.style.opacity = '0';
   target.style.transform = 'translateY(12px)';
   target.classList.remove('hidden');
+
+  if (typeof window.onPageEnter === 'function') {
+    window.onPageEnter(id);
+  }
 
   target.offsetHeight;
 

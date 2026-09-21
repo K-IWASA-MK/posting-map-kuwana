@@ -1798,11 +1798,12 @@ window.fetchBulletinPosts = function(options = {}) {
   const isBulletinActive = bulletinPage && !bulletinPage.classList.contains('hidden');
 
   // 【最終設計原則】既に取得済みの掲示板データを、画面遷移のたびにLoadingで破壊しない
-  if (_cachedBulletinPosts !== null) {
+  if (_cachedBulletinPosts !== null && !force) {
     // 2回目以降：既存投稿一覧を即表示（Loading画面は一切出さない）
     if (isBulletinActive && typeof renderBulletinList === 'function') {
       renderBulletinList(_cachedBulletinPosts);
     }
+    return Promise.resolve(_cachedBulletinPosts);
   } else if (!_bulletinFetched && isBulletinActive && container) {
     // 初回のみ：キャッシュがないためLoadingを表示
     container.innerHTML = `

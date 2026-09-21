@@ -114,6 +114,7 @@ if (document.readyState === 'loading') {
 
 let _isDashboardInitialized = false;
 let _isSyncing = false;
+let _isInitialSummaryFresh = false;
 let _hasAppliedPinStatus = false;
 
 function getResolvedDistrictCode() {
@@ -154,6 +155,7 @@ async function checkManagerAuth() {
       if (summary && summary.districtName) {
         DashboardState.districtCode = summary.districtName;
         DashboardState.summary = summary;
+        _isInitialSummaryFresh = true;
       }
     } catch (err) {
       console.warn('[Background SystemSummary Error]', err);
@@ -173,6 +175,7 @@ async function checkManagerAuth() {
     if (summary && summary.districtName) {
       DashboardState.districtCode = summary.districtName;
       DashboardState.summary = summary;
+      _isInitialSummaryFresh = true;
       const verifiedAuthKey = 'pm_auth_' + summary.districtName;
       if (localStorage.getItem(verifiedAuthKey) === 'true' || sessionStorage.getItem(verifiedAuthKey) === 'true') {
         return true;
@@ -830,8 +833,15 @@ async function syncDashboardData() {
   if (_isSyncing) return;
   _isSyncing = true;
   try {
+    const summaryPromise = (DashboardState.summary && _isInitialSummaryFresh)
+      ? Promise.resolve(DashboardState.summary).then(summary => {
+          _isInitialSummaryFresh = false;
+          return summary;
+        })
+      : callApiPost('getSystemSummary').catch(e => ({ success: false, error: e.message }));
+
     const [summaryRes, stockRes, rankRes, pinStatusRes, rosterRes, reqRes, latestDistRes] = await Promise.all([
-      callApiPost('getSystemSummary').catch(e => ({ success: false, error: e.message })),
+      summaryPromise,
       callApiPost('getFlyerStock').catch(e => ({ success: false, error: e.message })),
       callApiPost('getRanking').catch(e => ({ success: false, error: e.message })),
       callApiPost('getGlobalPinStatus').catch(e => ({ success: false, error: e.message })),
