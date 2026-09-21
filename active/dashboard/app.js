@@ -167,10 +167,35 @@ function showMainApp() {
   if (mainAppVisible || window.__contractExpired) return;
 
   const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  if (!userInfo.last && !userInfo.id) return;
+  if (!userInfo.id) return;
 
   mainAppVisible = true;
-  switchPage('settings');
+
+  // 初期画面（page-settings）のDOMを同期的に完全確定させる
+  if (typeof renderSettings === 'function') {
+    renderSettings();
+  }
+  updateBottomNavVisibility();
+
+  const navContainer = document.getElementById('bottom-nav');
+  const renderNavFn = window.renderBottomNavigation || (typeof renderBottomNavigation === 'function' ? renderBottomNavigation : null);
+  if (navContainer && renderNavFn) {
+    navContainer.innerHTML = renderNavFn('settings');
+  }
+
+  // 初期ページを同期的に settings に即時確定（200msアニメーション遅延による未描画フレームを排除）
+  const pages = document.querySelectorAll('.page');
+  pages.forEach(p => {
+    if (p.id === 'page-settings') {
+      p.classList.remove('hidden');
+      p.style.opacity = '1';
+      p.style.transform = 'translateY(0)';
+    } else {
+      p.classList.add('hidden');
+      p.style.opacity = '0';
+    }
+  });
+
   $('app').classList.remove('hidden');
   $('app').classList.remove('opacity-0');
 
@@ -302,11 +327,19 @@ function triggerBackgroundRegistration(profile) {
       };
     }
 
-    // エラー状態を描画するために再表示
-    if (typeof renderSettings === 'function') {
-      renderSettings();
+    // エラー時は未完成画面を表示させず、ローディング画面でエラーと再試行を提示
+    const loadingStatusEl = $('loading-status');
+    if (loadingStatusEl) {
+      loadingStatusEl.textContent = '登録エラー (タップして再試行): ' + (err.message || '通信失敗');
+      loadingStatusEl.style.color = '#ef4444';
+      loadingStatusEl.style.cursor = 'pointer';
+      loadingStatusEl.onclick = () => {
+        loadingStatusEl.textContent = '再試行中...';
+        loadingStatusEl.style.color = 'inherit';
+        loadingStatusEl.onclick = null;
+        triggerBackgroundRegistration(profile);
+      };
     }
-    showMainApp();
   });
 }
 
@@ -1388,7 +1421,7 @@ async function safeInitApp() {
               console.warn("Failed to clean OAuth query parameters:", e);
             }
 
-            setLoadingProgress(100, 'READY');
+            setLoadingProgress(60, 'REGISTERING...');
             console.log(profile);
 
             const initialUserInfo = {
@@ -1400,13 +1433,8 @@ async function safeInitApp() {
             };
             localStorage.setItem('user_info', JSON.stringify(initialUserInfo));
 
-            if (typeof renderSettings === 'function') {
-              renderSettings();
-            }
-            updateBottomNavVisibility();
-            showMainApp();
-
-            triggerBackgroundRegistration(profile);
+            await triggerBackgroundRegistration(profile);
+            setLoadingProgress(100, 'READY');
           } catch (err) {
             console.error("LIFF PROFILE ERROR", err);
             logDebug("LIFF PROFILE ERROR: " + err.message);
@@ -1455,8 +1483,11 @@ async function safeInitApp() {
   }
 }
 
-// defer属性によりDOM解析完了後・LIFF SDK読み込み後に実行される（DOMContentLoaded待ち不要）
-safeInitApp();
+if (document.readyState === 'complete') {
+  safeInitApp();
+} else {
+  window.addEventListener('DOMContentLoaded', safeInitApp);
+}
 
 // 規約・ライセンスデータ
 const ID_INFO_DATA = {
