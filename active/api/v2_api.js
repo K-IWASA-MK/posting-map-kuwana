@@ -555,6 +555,23 @@ function doPost(e) {
     }
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'runIdentityMigration') {
+    const token = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)))
+               || (params && (params.provisioningToken || (params.options && params.options.provisioningToken)));
+    const tokenCheck = verifyProvisioningToken(token);
+    if (!tokenCheck.success) {
+      return ContentService.createTextOutput(JSON.stringify(tokenCheck))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    const isDryRun = (postData && postData.isDryRun !== undefined) ? !!postData.isDryRun : true;
+    let result;
+    if (typeof migrateIdentityColumns === 'function') {
+      result = migrateIdentityColumns(isDryRun);
+    } else {
+      result = { success: false, message: 'migrateIdentityColumns not available' };
+    }
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 
   if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
