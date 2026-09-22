@@ -28,8 +28,8 @@ function migrateIdentityColumns(isDryRun) {
   // 1. 名簿の取得
   let roster = [];
   try {
-    if (typeof StaffRepository !== 'undefined' && StaffRepository.getInstance) {
-      roster = StaffRepository.getInstance().findAll() || [];
+    if (typeof StaffService !== 'undefined' && StaffService.getInstance) {
+      roster = StaffService.getInstance().getRoster() || [];
     } else {
       const rSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("staff") : ss.getSheetByName("スタッフ名簿");
       if (rSheet && rSheet.getLastRow() >= 2) {

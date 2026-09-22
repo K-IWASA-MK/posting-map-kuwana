@@ -76,8 +76,8 @@ if (typeof DistributionRepository === 'undefined') {
       // 名簿逆引き用キャッシュ（P列が空のレガシー行の安全な補完のため）
       let rosterList = [];
       try {
-        if (typeof StaffRepository !== 'undefined' && StaffRepository.getInstance) {
-          rosterList = StaffRepository.getInstance().findAll() || [];
+        if (typeof StaffService !== 'undefined' && StaffService.getInstance) {
+          rosterList = StaffService.getInstance().getRoster() || [];
         }
       } catch (eRoster) {}
 
