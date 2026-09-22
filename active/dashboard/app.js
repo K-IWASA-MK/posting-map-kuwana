@@ -134,6 +134,17 @@ window.fetchGlobalPinStatus = async function() {
   }
 };
 
+// --- Identity Safety Gate (Verified後のみ業務Write許可) ---
+let _identityVerified = false;
+let _identitySyncPromise = null;
+
+function waitForIdentityVerified() {
+  if (_identityVerified) return Promise.resolve(true);
+  if (_identitySyncPromise) return _identitySyncPromise;
+  return Promise.reject(new Error("IDENTITY_NOT_INITIALIZED"));
+}
+window.waitForIdentityVerified = waitForIdentityVerified;
+
 let pinActionPromiseChain = Promise.resolve();
 
 window.setPinInProgress = function(rowId, action) {
@@ -147,17 +158,6 @@ window.setPinInProgress = function(rowId, action) {
       }
     }
   }
-
-  // --- Identity Safety Gate (Verified後のみ業務Write許可) ---
-  let _identityVerified = false;
-  let _identitySyncPromise = null;
-
-  function waitForIdentityVerified() {
-    if (_identityVerified) return Promise.resolve(true);
-    if (_identitySyncPromise) return _identitySyncPromise;
-    return Promise.reject(new Error("IDENTITY_NOT_INITIALIZED"));
-  }
-  window.waitForIdentityVerified = waitForIdentityVerified;
 
   // Promise Chain によるFIFO直列通信制御
   pinActionPromiseChain = pinActionPromiseChain.then(async () => {
@@ -661,6 +661,25 @@ async function submitMissionComplete(areaName, rowId) {
       await new Promise(r => setTimeout(r, 200));
     }
 
+    // Safety Gate: Identity Verified を確認
+    try {
+      await waitForIdentityVerified();
+    } catch (authErr) {
+      alert("スタッフ認証が完了していないため、配布完了を送信できません。再起動してください。");
+      p.syncStatus = 'failed';
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '🚀 この内容で提出する';
+      }
+      if (cancelBtn) cancelBtn.disabled = false;
+      return;
+    }
+
+    // 最新の認証済み user_info を再取得して staffId / staffName を確定
+    const verifiedUserInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+    const finalStaffId = verifiedUserInfo.id || p.staffId || '';
+    const finalStaffName = `${verifiedUserInfo.last || ''} ${verifiedUserInfo.first || ''}`.trim() || p.staffName || '';
+
     if (typeof enqueueSync === 'function') {
       await enqueueSync({
         areaName,
@@ -675,8 +694,8 @@ async function submitMissionComplete(areaName, rowId) {
         branchCode: localStorage.getItem('branch_name') || '',
         areaId:     String(rowId),
         photoBase64: p.photoBase64 || '',
-        staffName:  p.staffName || '',
-        staffId:    p.staffId || ''
+        staffName:  finalStaffName,
+        staffId:    finalStaffId
       });
 
       while (true) {
