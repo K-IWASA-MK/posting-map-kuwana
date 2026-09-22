@@ -218,11 +218,33 @@ function showMainApp() {
   }
 }
 
+function loadGoogleMapsApi() {
+  if (window.googleMapsApiLoaded) return;
+  window.googleMapsApiLoaded = true;
+
+  callApiPost('getMapsApiKey').then(keyData => {
+    if (keyData && keyData.success && keyData.mapsApiKey) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${keyData.mapsApiKey}&callback=initMainMap&language=ja`;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    } else {
+      window.googleMapsApiLoaded = false;
+    }
+  }).catch(err => {
+    window.googleMapsApiLoaded = false;
+    logDebug("[loadGoogleMapsApi] Error: " + (err ? err.message : err));
+  });
+}
+
 async function startApp() {
   if (appStartupTriggered) return;
   appStartupTriggered = true;
 
   try {
+    loadGoogleMapsApi();
+
     fetchSystemSummary();
 
     loadData(false).catch(err => {
@@ -370,23 +392,6 @@ async function loadData(skipSync = false) {
   try {
     if (!skipSync) {
       setSyncStatus(navigator.onLine ? 'online' : 'offline');
-    }
-
-    if (!window.googleMapsApiLoaded) {
-      window.googleMapsApiLoaded = true;
-      callApiPost('getMapsApiKey').then(keyData => {
-        if (keyData && keyData.success && keyData.mapsApiKey) {
-          const script = document.createElement('script');
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${keyData.mapsApiKey}&callback=initMainMap&language=ja`;
-          script.async = true;
-          script.defer = true;
-          document.head.appendChild(script);
-        } else {
-          window.googleMapsApiLoaded = false;
-        }
-      }).catch(err => {
-        window.googleMapsApiLoaded = false;
-      });
     }
 
     logDebug("[loadData] Awaiting fetchSystemSummary in background...");
@@ -763,6 +768,22 @@ window.onPageEnter = function(id) {
   if (id === 'storage-register') initStorageRegisterPage();
   if (id === 'storage-list') initStorageListPage();
   if (id === 'bulletin' && typeof fetchBulletinPosts === 'function') fetchBulletinPosts();
+
+  // エリア（MAP）画面表示時: display:none解除に伴うリサイズ同期
+  if (id === 'areas' && window.mainMapInstance && window.google && window.google.maps) {
+    let center = window.currentMapState?.center;
+    if (!center && Array.isArray(window.masterPins) && window.masterPins.length > 0) {
+      const p = window.masterPins.find(pin => pin && typeof pin.latitude === 'number' && typeof pin.longitude === 'number');
+      if (p) center = { lat: p.latitude, lng: p.longitude };
+    }
+    if (center) {
+      window.mainMapInstance.setCenter(center);
+    }
+    google.maps.event.trigger(window.mainMapInstance, 'resize');
+    if (center) {
+      window.mainMapInstance.setCenter(center);
+    }
+  }
 };
 
 function initRankingPage() {
