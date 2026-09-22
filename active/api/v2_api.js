@@ -675,8 +675,7 @@ function processPostAction(action, postData, e) {
           success: true,
           registered: true,
           staffId: identity.staffId,
-          staffName: identity.staffName,
-          lineUserId: identity.lineUserId
+          staffName: identity.staffName
         };
       } else {
         return {

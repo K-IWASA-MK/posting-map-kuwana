@@ -148,12 +148,24 @@ window.setPinInProgress = function(rowId, action) {
     }
   }
 
+  // --- Identity Safety Gate (Verified後のみ業務Write許可) ---
+  let _identityVerified = false;
+  let _identitySyncPromise = null;
+
+  function waitForIdentityVerified() {
+    if (_identityVerified) return Promise.resolve(true);
+    if (_identitySyncPromise) return _identitySyncPromise;
+    return Promise.reject(new Error("IDENTITY_NOT_INITIALIZED"));
+  }
+  window.waitForIdentityVerified = waitForIdentityVerified;
+
   // Promise Chain によるFIFO直列通信制御
   pinActionPromiseChain = pinActionPromiseChain.then(async () => {
     try {
+      await waitForIdentityVerified();
       await callApiPost('setPinInProgress', { rowId: rowId, pinAction: action });
     } catch (err) {
-      logDebug(`[setPinInProgress] Error: ${err.message}`);
+      logDebug(`[setPinInProgress] Error/Blocked: ${err.message}`);
     }
   });
 
@@ -1182,6 +1194,15 @@ window.submitFlyerStock = async function() {
   btn.textContent = "更新中...";
 
   try {
+    await waitForIdentityVerified();
+  } catch (authErr) {
+    alert("本人確認が完了していないか、未登録のため更新できません。");
+    btn.disabled = false;
+    btn.textContent = "チラシ枚数を更新";
+    return;
+  }
+
+  try {
     const res = await callApiPost('updateFlyerStock', {
       location: location,
       count: count,
@@ -1412,50 +1433,95 @@ async function safeInitApp() {
             console.warn("Failed to clean OAuth query parameters:", e);
           }
 
-          setLoadingProgress(50, 'VERIFYING IDENTITY...');
+          const existingUserInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+          const hasExistingStaffId = existingUserInfo.id && String(existingUserInfo.id).trim() !== '';
 
-          // Backendから正規のStaff Identity（表示用ID/名前）を確認
-          let identityRes = null;
-          try {
-            identityRes = await callApiPost('getStaffIdentity', {});
-          } catch (apiErr) {
-            console.warn("getStaffIdentity call failed:", apiErr);
-          }
-
-          if (identityRes && identityRes.success && identityRes.registered) {
-            // ① 登録済み: BackendのIdentityを正としてlocalStorageへ表示用として同期
-            logDebug("STAFF IDENTITY VERIFIED: " + identityRes.staffId);
-            const verifiedUserInfo = {
-              last: identityRes.staffName || profile.displayName || '',
-              first: '',
-              id: identityRes.staffId,
-              lineUserId: profile.userId,
-              picture: profile.pictureUrl || ''
-            };
-            localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
-            setLoadingProgress(100, 'READY');
-
+          // 【Optimistic First Paint】既存 user_info.id がある場合は Identity API を待たずに即時先行表示！
+          if (hasExistingStaffId) {
+            logDebug("Optimistic First Paint: existing staffId found. Launching main app immediately.");
             if (typeof renderSettings === 'function') {
               renderSettings();
             }
             updateBottomNavVisibility();
             showMainApp();
           } else {
-            // ② 未登録: localStorageの古いStaff IDを無効化し、既存初回登録フローへ
-            logDebug("STAFF NOT REGISTERED OR IDENTITY MISMATCH. PROCEEDING TO REGISTRATION...");
-            setLoadingProgress(60, 'REGISTERING...');
+            // 初回・未登録端末: 従来どおり Identity 検証または登録完了までローディングを維持
+            setLoadingProgress(50, 'VERIFYING IDENTITY...');
+          }
 
-            const initialUserInfo = {
-              last: profile.displayName || '',
-              first: '',
-              id: '',
-              lineUserId: profile.userId,
-              picture: profile.pictureUrl || ''
-            };
-            localStorage.setItem('user_info', JSON.stringify(initialUserInfo));
+          // 【Backend Identity 非同期同期】getStaffIdentity をバックグラウンド Promise で実行
+          _identitySyncPromise = callApiPost('getStaffIdentity', {})
+            .then(identityRes => {
+              if (identityRes && identityRes.success && identityRes.registered) {
+                // ① 登録済み: Backend の検証済み Identity を正として localStorage へ同期
+                logDebug("STAFF IDENTITY VERIFIED (BG): " + identityRes.staffId);
+                const verifiedUserInfo = {
+                  last: identityRes.staffName || profile.displayName || '',
+                  first: '',
+                  id: identityRes.staffId,
+                  lineUserId: profile.userId,
+                  picture: profile.pictureUrl || ''
+                };
+                localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
+                _identityVerified = true;
 
-            await triggerBackgroundRegistration(profile);
-            setLoadingProgress(100, 'READY');
+                if (typeof renderSettings === 'function') {
+                  renderSettings();
+                }
+                updateBottomNavVisibility();
+
+                // 初回起動ユーザーの場合はここで画面を表示
+                if (!hasExistingStaffId) {
+                  setLoadingProgress(100, 'READY');
+                  showMainApp();
+                }
+                return true;
+              } else {
+                // ② 未登録または不一致: キャッシュを無効化し、初回登録フローへ
+                logDebug("STAFF NOT REGISTERED OR IDENTITY MISMATCH. PROCEEDING TO REGISTRATION...");
+                _identityVerified = false;
+
+                const initialUserInfo = {
+                  last: profile.displayName || '',
+                  first: '',
+                  id: '',
+                  lineUserId: profile.userId,
+                  picture: profile.pictureUrl || ''
+                };
+                localStorage.setItem('user_info', JSON.stringify(initialUserInfo));
+
+                // 既存表示していた場合でも未登録なら画面を戻して登録完了までロック
+                $('app').classList.add('hidden');
+                $('app').classList.add('opacity-0');
+                const loadingEl = $('loading');
+                if (loadingEl) { loadingEl.classList.remove('hidden'); loadingEl.classList.remove('opacity-0'); }
+                setLoadingProgress(60, 'REGISTERING...');
+
+                return triggerBackgroundRegistration(profile).then(() => {
+                  setLoadingProgress(100, 'READY');
+                  _identityVerified = true;
+                  showMainApp();
+                  return true;
+                }).catch(rErr => {
+                  _identityVerified = false;
+                  throw rErr;
+                });
+              }
+            })
+            .catch(err => {
+              console.warn("Identity verification failed:", err);
+              logDebug("Identity verification failed: " + err.message);
+              _identityVerified = false;
+              throw err;
+            });
+
+          // 初回起動時のみ、非同期 Promise の完了を待ってから抜ける
+          if (!hasExistingStaffId) {
+            try {
+              await _identitySyncPromise;
+            } catch (waitErr) {
+              console.warn("First-time identity wait encountered error:", waitErr);
+            }
           }
         } catch (err) {
           console.error("LIFF PROFILE / AUTH ERROR", err);
@@ -1757,6 +1823,15 @@ window.openTransferRequestDialog = function(name, id, loc, count, storageId) {
     if (btn) { btn.textContent = '送信中...'; btn.disabled = true; }
     isSubmittingTransfer = true;
 
+    try {
+      await waitForIdentityVerified();
+    } catch (authErr) {
+      alert("本人確認が完了していないため要請を送信できません。");
+      if (btn) { btn.textContent = '要請を送信する'; btn.disabled = false; }
+      isSubmittingTransfer = false;
+      return;
+    }
+
     const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
     const requestUserId = userInfo.id ? String(userInfo.id).trim() : 'UNKNOWN';
     const requestId = window.generateRequestId ? window.generateRequestId('req_tr') : `req_tr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -1991,6 +2066,15 @@ window.submitBulletinPost = async function() {
   btn.disabled = true;
 
   try {
+    await waitForIdentityVerified();
+  } catch (authErr) {
+    alert("本人確認が完了していないため投稿できません。");
+    btn.textContent = originalText;
+    btn.disabled = false;
+    return;
+  }
+
+  try {
     const res = await callApiPost('createBulletinPost', {
       staffId: staffId,
       staffName: staffName,
@@ -2107,6 +2191,15 @@ window.openBulletinContactDialog = function(targetStaffId) {
     const btn = document.getElementById('btn-bulletin-contact-submit');
     if (btn) { btn.textContent = '連絡中...'; btn.disabled = true; }
     isSubmittingContact = true;
+
+    try {
+      await waitForIdentityVerified();
+    } catch (authErr) {
+      alert("本人確認が完了していないため連絡を送信できません。");
+      if (btn) { btn.textContent = '連絡する'; btn.disabled = false; }
+      isSubmittingContact = false;
+      return;
+    }
 
     const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
     const requestUserId = userInfo.id ? String(userInfo.id).trim() : (window.currentUser && window.currentUser.id ? String(window.currentUser.id).trim() : 'UNKNOWN');
