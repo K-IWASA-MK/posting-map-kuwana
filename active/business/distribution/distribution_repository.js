@@ -60,16 +60,26 @@ if (typeof DistributionRepository === 'undefined') {
       return null;
     }
 
-    fetchRankingData() {
+    fetchRankingData(requestLineUserId = "") {
       const sheet = this.getDistributionSheet();
       if (!sheet) return [];
 
       const lastRow = sheet.getLastRow();
       if (lastRow < 2) return [];
 
-      // A: rowId, B: cityName, C: townName, D: completedAt, E: count, F: staffId, G: staffName
-      const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+      // A: rowId, B: cityName, C: townName, D: completedAt, E: count, F: staffId, G: staffName ... P: lineUserId (col 16)
+      const numCols = Math.max(sheet.getLastColumn(), 16);
+      const values = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
       const staffMap = {};
+      const cleanReqLineId = String(requestLineUserId || "").trim();
+
+      // 名簿逆引き用キャッシュ（P列が空のレガシー行の安全な補完のため）
+      let rosterList = [];
+      try {
+        if (typeof StaffRepository !== 'undefined' && StaffRepository.getInstance) {
+          rosterList = StaffRepository.getInstance().findAll() || [];
+        }
+      } catch (eRoster) {}
 
       for (let i = 0; i < values.length; i++) {
         const row = values[i];
@@ -77,11 +87,23 @@ if (typeof DistributionRepository === 'undefined') {
         const count = parseFloat(row[4]) || 0;
         const staffId = row[5] ? String(row[5]).trim() : "";
         const staffName = row[6] ? String(row[6]).trim() : "";
+        let rowLineUserId = row[15] ? String(row[15]).trim() : "";
 
-        // 必須条件: completedAt が存在、staffId が存在、count > 0
-        if (!rawCompletedAt || !staffId || count <= 0) continue;
+        // P列が空の場合、名簿と照合（staffId と名前が完全一致する場合のみ安全に解決）
+        if (!rowLineUserId && staffId) {
+          const matched = rosterList.find(m => m.id === staffId && (!staffName || m.name === staffName));
+          if (matched && matched.lineUserId) {
+            rowLineUserId = matched.lineUserId;
+          }
+        }
 
-        // 日時正規化処理（Date型または文字列からミリ秒タイムスタンプへ安全にパース）
+        // 集計の内部識別キー: lineUserId を最優先。なければ staffId。
+        const groupKey = rowLineUserId || staffId;
+
+        // 必須条件: completedAt が存在、groupKey が存在、count > 0
+        if (!rawCompletedAt || !groupKey || count <= 0) continue;
+
+        // 日時正規化処理
         let timeVal = 0;
         if (rawCompletedAt instanceof Date && !isNaN(rawCompletedAt.getTime())) {
           timeVal = rawCompletedAt.getTime();
@@ -97,8 +119,10 @@ if (typeof DistributionRepository === 'undefined') {
           timeVal = rawCompletedAt;
         }
 
-        if (!staffMap[staffId]) {
-          staffMap[staffId] = {
+        if (!staffMap[groupKey]) {
+          staffMap[groupKey] = {
+            groupKey: groupKey,
+            lineUserId: rowLineUserId,
             staffId: staffId,
             name: staffName || staffId,
             count: 0,
@@ -106,14 +130,13 @@ if (typeof DistributionRepository === 'undefined') {
           };
         }
 
-        staffMap[staffId].count += count;
+        staffMap[groupKey].count += count;
 
-        // staffName は completedAt が最新のレコードを採用
-        if (timeVal > staffMap[staffId].latestTimestamp) {
-          staffMap[staffId].latestTimestamp = timeVal;
-          if (staffName) {
-            staffMap[staffId].name = staffName;
-          }
+        // 最新の表示用 staffName / staffId を採用
+        if (timeVal > staffMap[groupKey].latestTimestamp) {
+          staffMap[groupKey].latestTimestamp = timeVal;
+          if (staffName) staffMap[groupKey].name = staffName;
+          if (staffId) staffMap[groupKey].staffId = staffId;
         }
       }
 
@@ -124,7 +147,7 @@ if (typeof DistributionRepository === 'undefined') {
         if (b.count !== a.count) {
           return b.count - a.count;
         }
-        return a.staffId.localeCompare(b.staffId);
+        return (a.staffId || "").localeCompare(b.staffId || "");
       });
 
       let currentRank = 0;
@@ -136,28 +159,51 @@ if (typeof DistributionRepository === 'undefined') {
         }
         previousCount = item.count;
 
+        const isMe = !!(cleanReqLineId && item.lineUserId && item.lineUserId === cleanReqLineId);
+
+        // APIレスポンスには lineUserId を一切含めない（isMe と表示用ラベルのみ）
         return {
           rank: currentRank,
           staffId: item.staffId,
           name: item.name,
-          count: item.count
+          count: item.count,
+          isMe: isMe
         };
       });
+    }
+
+    fetchRankingPayload(requestLineUserId = "") {
+      const ranking = this.fetchRankingData(requestLineUserId);
+      let mySummary = null;
+      for (let i = 0; i < ranking.length; i++) {
+        if (ranking[i].isMe) {
+          mySummary = {
+            rank: ranking[i].rank,
+            count: ranking[i].count
+          };
+          break;
+        }
+      }
+      return {
+        mySummary: mySummary,
+        ranking: ranking
+      };
     }
 
     /**
      * 最新の配布実績レコードを取得（SSOT配布実績固定マスターシートの全行から、D列タイムスタンプ降順で最大 limit 件）
      */
-    fetchLatestRecords(limit = 20) {
+    fetchLatestRecords(limit = 20, requestLineUserId = "") {
       const sheet = this.getDistributionSheet();
       if (!sheet) return [];
 
       const lastRow = sheet.getLastRow();
       if (lastRow < 2) return [];
 
-      // 固定マスター型シートの全エリア行（単一Range Readで一括取得: A〜I列）
-      const values = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+      const numCols = Math.max(sheet.getLastColumn(), 16);
+      const values = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
       const records = [];
+      const cleanReqLineId = String(requestLineUserId || "").trim();
 
       for (let i = 0; i < values.length; i++) {
         const row = values[i];
@@ -170,6 +216,7 @@ if (typeof DistributionRepository === 'undefined') {
         const staffName = row[6] ? String(row[6]).trim() : "";
         const gpsStatus = row[7] === "OK" ? "OK" : "NO";
         const photoStatus = row[8] === "OK" ? "OK" : "NO";
+        const rowLineId = row[15] ? String(row[15]).trim() : "";
 
         // D列（配布日時）が存在する完了レコードのみを対象
         if (!rawCompletedAt) continue;
@@ -204,6 +251,9 @@ if (typeof DistributionRepository === 'undefined') {
           timeStr = "--:--";
         }
 
+        const isMe = !!(cleanReqLineId && rowLineId && rowLineId === cleanReqLineId);
+
+        // APIレスポンスには lineUserId を含めない
         records.push({
           recordId: `REC_${timeVal}_${staffId || 'STAFF'}_${rowId}`,
           rowId: rowId,
@@ -215,11 +265,11 @@ if (typeof DistributionRepository === 'undefined') {
           staffId: staffId || 'S001',
           staffName: staffName || staffId || 'S001',
           gpsStatus: gpsStatus,
-          photoStatus: photoStatus
+          photoStatus: photoStatus,
+          isMe: isMe
         });
       }
 
-      // D列の実際の配布日時（timestamp）の降順、同一timestampの場合は rowId 降順（第2キー）で決定論的ソート
       records.sort((a, b) => {
         if (b.timestamp !== a.timestamp) {
           return b.timestamp - a.timestamp;

@@ -26,27 +26,55 @@ if (typeof FlyerRepository === 'undefined') {
       return null;
     }
 
-    findAllStocks() {
+    findAllStocks(requestLineUserId = "") {
       const s = this.getStorageSheet();
       if (!s) return [];
 
       const lastRow = s.getLastRow();
       if (lastRow < 2) return [];
 
-      const values = s.getRange(2, 1, lastRow - 1, 6).getValues();
-      return values.map(r => ({
-        id: r[0],
-        staffId: r[1],
-        staffName: r[2],
-        location: r[3],
-        count: parseFloat(r[4]) || 0,
-        updatedAt: (r[5] && typeof r[5].getMonth === 'function') ? Utilities.formatDate(r[5], "JST", "MM/dd HH:mm") : (r[5] ? String(r[5]).trim() : "")
-      }));
+      const numCols = Math.max(s.getLastColumn(), 7);
+      const values = s.getRange(2, 1, lastRow - 1, numCols).getValues();
+      const cleanReqLineId = String(requestLineUserId || "").trim();
+
+      return values.map(r => {
+        const rowLineId = String(r[6] || "").trim();
+        const isMe = !!(cleanReqLineId && rowLineId === cleanReqLineId);
+        return {
+          id: r[0],
+          staffId: r[1],
+          staffName: r[2],
+          location: r[3],
+          count: parseFloat(r[4]) || 0,
+          updatedAt: (r[5] && typeof r[5].getMonth === 'function') ? Utilities.formatDate(r[5], "JST", "MM/dd HH:mm") : (r[5] ? String(r[5]).trim() : ""),
+          isMe: isMe
+        };
+      });
     }
 
-    updateStock(location, count, staffName, staffId) {
+    findStockPayload(requestLineUserId = "") {
+      const stocks = this.findAllStocks(requestLineUserId);
+      let myStock = null;
+      for (let i = 0; i < stocks.length; i++) {
+        if (stocks[i].isMe) {
+          myStock = {
+            count: stocks[i].count,
+            location: stocks[i].location,
+            updatedAt: stocks[i].updatedAt
+          };
+          break;
+        }
+      }
+      return {
+        myStock: myStock,
+        stocks: stocks
+      };
+    }
+
+    updateStock(location, count, staffName, staffId, lineUserId = "") {
       const cleanStaffId = String(staffId || "").trim();
       const cleanStaffName = String(staffName || "").trim();
+      const cleanLineUserId = String(lineUserId || "").trim();
       if (!cleanStaffId || !cleanStaffName) {
         return { success: false, code: "INVALID_ARGUMENT", message: "Staff info required" };
       }
@@ -66,27 +94,32 @@ if (typeof FlyerRepository === 'undefined') {
         const now = new Date();
         const updatedAt = Utilities.formatDate(now, "JST", "MM/dd HH:mm");
 
+        const numCols = Math.max(s.getLastColumn(), 7);
         let values = [];
         if (lastRow >= 2) {
-          values = s.getRange(2, 1, lastRow - 1, 6).getValues();
+          values = s.getRange(2, 1, lastRow - 1, numCols).getValues();
         }
 
         let targetRow = 0;
-        for (let i = 0; i < values.length; i++) {
-          if (values[i][1] === staffId) {
-            targetRow = i + 2;
-            break;
+        // 所有者の判定は lineUserId を唯一の判定キーとする（staffId では照合しない）
+        if (cleanLineUserId) {
+          for (let i = 0; i < values.length; i++) {
+            const rowLineId = String(values[i][6] || "").trim();
+            if (rowLineId === cleanLineUserId) {
+              targetRow = i + 2;
+              break;
+            }
           }
         }
 
         if (targetRow > 0) {
-          // updateStock() は現在保有しているチラシ枚数および保管場所を最新の入力値で保存する。加算・減算・差分計算は一切行わない。
+          // updateStock() は現在保有しているチラシ枚数および保管場所を最新の入力値で保存する。
           const finalCount = count;
-          s.getRange(targetRow, 3, 1, 4).setValues([[staffName, location, finalCount, updatedAt]]);
+          s.getRange(targetRow, 3, 1, 5).setValues([[cleanStaffName, location, finalCount, updatedAt, cleanLineUserId]]);
         } else {
           const newRow = lastRow + 1;
           const newId = "ST" + String(newRow - 1).padStart(3, '0');
-          s.getRange(newRow, 1, 1, 6).setValues([[newId, staffId, staffName, location, count, updatedAt]]);
+          s.getRange(newRow, 1, 1, 7).setValues([[newId, cleanStaffId, cleanStaffName, location, count, updatedAt, cleanLineUserId]]);
         }
         return { success: true };
       } finally {

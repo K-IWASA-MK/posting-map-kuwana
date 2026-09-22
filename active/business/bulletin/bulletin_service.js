@@ -57,21 +57,30 @@
       return sheet;
     }
 
-    getPosts() {
+    getPosts(requestLineUserId = "") {
       try {
         const sheet = this.getBulletinSheet();
         const lastRow = sheet.getLastRow();
         if (lastRow < 2) return { success: true, posts: [] };
 
-        const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
-        const posts = values.map(r => ({
-          updatedAt: (r[0] && typeof r[0].getMonth === 'function')
-            ? Utilities.formatDate(r[0], "JST", "yyyy/MM/dd HH:mm")
-            : (r[0] ? String(r[0]).trim() : ""),
-          staffId: String(r[1] || '').trim(),
-          staffName: String(r[2] || '').trim(),
-          message: String(r[3] || '').trim()
-        })).filter(p => p.message !== "");
+        const numCols = Math.max(sheet.getLastColumn(), 5);
+        const values = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+        const cleanReqLineId = String(requestLineUserId || "").trim();
+
+        const posts = values.map((r, idx) => {
+          const rowLineId = String(r[4] || "").trim();
+          const isMe = !!(cleanReqLineId && rowLineId === cleanReqLineId);
+          return {
+            id: `BP_${idx + 2}`,
+            updatedAt: (r[0] && typeof r[0].getMonth === 'function')
+              ? Utilities.formatDate(r[0], "JST", "yyyy/MM/dd HH:mm")
+              : (r[0] ? String(r[0]).trim() : ""),
+            staffId: String(r[1] || '').trim(),
+            staffName: String(r[2] || '').trim(),
+            message: String(r[3] || '').trim(),
+            isMe: isMe
+          };
+        }).filter(p => p.message !== "");
 
         posts.reverse();
         return { success: true, posts: posts };
@@ -84,6 +93,7 @@
       const staffId = data && data.staffId ? String(data.staffId).trim() : '';
       const staffName = data && data.staffName ? String(data.staffName).trim() : '';
       const message = data && data.message ? String(data.message).trim() : '';
+      const cleanLineUserId = String((data && (data.resolvedLineUserId || data.lineUserId || (data.user && data.user.lineUserId))) || "").trim();
 
       if (!staffId || !message) {
         return { success: false, message: "IDまたはメッセージが不足しています。" };
@@ -104,7 +114,7 @@
         const now = new Date();
         const formattedDate = Utilities.formatDate(now, "JST", "yyyy/MM/dd HH:mm:ss");
 
-        sheet.appendRow([formattedDate, staffId, staffName, message]);
+        sheet.appendRow([formattedDate, staffId, staffName, message, cleanLineUserId]);
 
         return {
           success: true,

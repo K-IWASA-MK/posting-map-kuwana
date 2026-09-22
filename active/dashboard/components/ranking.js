@@ -4,17 +4,23 @@ window.renderRankingCard = function(rankingData, myStaffId) {
 
   let myRank = -1;
   let myCount = 0;
-  if (myStaffId) {
-    const idx = rankingData.findIndex(r => r.staffId === myStaffId);
-    if (idx !== -1) {
-      myRank = rankingData[idx].rank || (idx + 1);
-      myCount = rankingData[idx].count || 0;
+
+  // Backend提供の集計サマリまたは isMe フラグを優先（staffIdによるクライアント側突合を廃止）
+  if (typeof window !== 'undefined' && window._myRankingSummary) {
+    myRank = window._myRankingSummary.rank || -1;
+    myCount = window._myRankingSummary.count || 0;
+  } else {
+    const meItem = rankingData.find(r => r.isMe === true) || (myStaffId ? rankingData.find(r => r.staffId === myStaffId) : null);
+    if (meItem) {
+      const idx = rankingData.indexOf(meItem);
+      myRank = meItem.rank || (idx + 1);
+      myCount = meItem.count || 0;
     }
   }
 
   const rowsHtml = rankingData.map((item, index) => {
     const rank = item.rank || (index + 1);
-    const isMe = myStaffId && item.staffId === myStaffId;
+    const isMe = item.isMe === true || (myStaffId && item.staffId === myStaffId);
     const meBg = isMe ? 'style="border-color: rgba(0, 183, 255, 0.45); background: rgba(0, 183, 255, 0.08); box-shadow: 0 0 15px rgba(0,183,255,0.06);"' : '';
     const nameColor = isMe ? 'text-[#00B7FF]' : 'text-white/80';
 

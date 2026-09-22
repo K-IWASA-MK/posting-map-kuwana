@@ -140,6 +140,8 @@
         const requestTime = Utilities.formatDate(now, "JST", "yyyy/MM/dd HH:mm:ss");
 
         if (targetRow === 0) {
+          const cleanReqLineId = String((data && (data.resolvedLineUserId || data.lineUserId || (data.user && data.user.lineUserId))) || "").trim();
+          const cleanHolderLineId = String(holderLineUserId || "").trim();
           s.appendRow([
             requestTime,
             requestUserName,
@@ -152,7 +154,9 @@
             requestId,
             "PROCESSING",
             "",
-            ""
+            "",
+            cleanReqLineId,
+            cleanHolderLineId
           ]);
           targetRow = s.getLastRow();
         } else {
@@ -271,24 +275,32 @@
       }
     }
 
-    getTransferRequests() {
+    getTransferRequests(requestLineUserId = "") {
       const s = this.getMonthlySheet('transfer');
       if (!s) return [];
       const lastRow = s.getLastRow();
       if (lastRow < 2) return [];
-      const numCols = Math.max(s.getLastColumn(), 8);
+      const numCols = Math.max(s.getLastColumn(), 14);
       const values = s.getRange(2, 1, lastRow - 1, numCols).getValues();
-      return values.map((r, i) => ({
-        rowNumber: i + 2,
-        requestTime: (r[0] && typeof r[0].getMonth === 'function') ? Utilities.formatDate(r[0], "JST", "yyyy/MM/dd HH:mm:ss") : String(r[0] || ''),
-        requesterName: r[1],
-        requesterId: r[2],
-        holderName: r[3],
-        holderId: r[4],
-        contactMethod: r[5],
-        contactValue: r[6],
-        status: r[7] || "要請中"
-      }));
+      const cleanReqLineId = String(requestLineUserId || "").trim();
+
+      return values.map((r, i) => {
+        const reqLineId = String(r[12] || "").trim();
+        const holdLineId = String(r[13] || "").trim();
+        const isMe = !!(cleanReqLineId && (reqLineId === cleanReqLineId || holdLineId === cleanReqLineId));
+        return {
+          rowNumber: i + 2,
+          requestTime: (r[0] && typeof r[0].getMonth === 'function') ? Utilities.formatDate(r[0], "JST", "yyyy/MM/dd HH:mm:ss") : String(r[0] || ''),
+          requesterName: r[1],
+          requesterId: r[2],
+          holderName: r[3],
+          holderId: r[4],
+          contactMethod: r[5],
+          contactValue: r[6],
+          status: r[7] || "要請中",
+          isMe: isMe
+        };
+      });
     }
 
     resolveTransferRequest(data) {
@@ -308,18 +320,26 @@
           return { success: false, message: "Invalid row number" };
         }
 
-        const operatorId = data.liffUserId;
-        if (!operatorId) {
-          return { success: false, message: "Permission denied" };
+        const operatorLineId = String((data && (data.resolvedLineUserId || data.lineUserId || (data.user && data.user.lineUserId) || data.liffUserId)) || "").trim();
+        if (!operatorLineId) {
+          return { success: false, message: "Permission denied: LINE User ID required" };
         }
 
-        const requesterId = String(s.getRange(rowNumber, 3).getValue()).trim();
-        const holderId = String(s.getRange(rowNumber, 5).getValue()).trim();
+        const numCols = Math.max(s.getLastColumn(), 14);
+        const rowVals = s.getRange(rowNumber, 1, 1, numCols).getValues()[0];
+        const requesterLineId = String(rowVals[12] || "").trim();
+        const holderLineId = String(rowVals[13] || "").trim();
+        const legacyRequesterId = String(rowVals[2] || "").trim();
+        const legacyHolderId = String(rowVals[4] || "").trim();
 
         const admins = typeof getDeploymentAdmins === 'function' ? getDeploymentAdmins() : [];
-        const isAdmin = admins.includes(operatorId);
+        const isAdmin = admins.includes(operatorLineId);
 
-        if (operatorId !== requesterId && operatorId !== holderId && !isAdmin) {
+        // lineUserId による厳格な本人権限判定（未マイグレーションのレガシー行は staffId フォールバック）
+        const isRequester = requesterLineId ? operatorLineId === requesterLineId : operatorLineId === legacyRequesterId;
+        const isHolder = holderLineId ? operatorLineId === holderLineId : operatorLineId === legacyHolderId;
+
+        if (!isRequester && !isHolder && !isAdmin) {
           return { success: false, message: "Permission denied" };
         }
 

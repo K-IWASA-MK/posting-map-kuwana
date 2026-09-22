@@ -227,22 +227,45 @@ function processGetActionLegacy(action, e) {
           response = { success: false, error: err.toString() };
         }
         break;
-      case 'getRanking':
-        response = { success: true, ranking: DistributionService.getInstance().getRankingData() };
+      case 'getRanking': {
+        const rankPayload = DistributionService.getInstance().getRankingPayload("");
+        response = { success: true, mySummary: rankPayload.mySummary, ranking: rankPayload.ranking };
         break;
+      }
       case 'getLatestDistribution':
         try {
           const records = typeof DistributionRepository !== 'undefined' && DistributionRepository.getInstance
-            ? DistributionRepository.getInstance().fetchLatestRecords(20)
+            ? DistributionRepository.getInstance().fetchLatestRecords(20, "")
             : [];
           response = { success: true, records: records };
         } catch (err) {
           response = { success: false, error: err.toString(), records: [] };
         }
         break;
-      case 'getRoster':
-        response = { success: true, roster: StaffService.getInstance().getRoster() };
+      case 'getRoster': {
+        const rawRoster = StaffService.getInstance().getRoster();
+        let stocks = [];
+        let ranking = [];
+        try {
+          stocks = FlyerRepository.getInstance().findAllStocks("");
+          ranking = DistributionRepository.getInstance().fetchRankingData("");
+        } catch (eAgg) {}
+        const aggregatedRoster = rawRoster.map(r => {
+          const staffStocks = stocks.filter(st => st.staffId === r.id);
+          const stockTotal = staffStocks.reduce((acc, st) => acc + (Number(st.count) || 0), 0);
+          const staffRank = ranking.find(rk => rk.staffId === r.id);
+          const deliveredTotal = staffRank ? Number(staffRank.count || 0) : 0;
+          return {
+            id: r.id,
+            name: r.name,
+            registeredAt: r.registeredAt,
+            stockTotal: stockTotal,
+            deliveredTotal: deliveredTotal
+          };
+        });
+        response = { success: true, roster: aggregatedRoster };
         break;
+      }
       case 'resetRoster':
         response = { success: true, message: setupRosterSheet() };
         break;
@@ -261,11 +284,13 @@ function processGetActionLegacy(action, e) {
       case 'getDeliveryStats':
         response = DistributionService.getInstance().getDeliveryStats();
         break;
-      case 'getFlyerStock':
-        response = { success: true, stocks: FlyerService.getInstance().getFlyerStock() };
+      case 'getFlyerStock': {
+        const stockPayload = FlyerService.getInstance().getFlyerStock("");
+        response = { success: true, myStock: stockPayload.myStock, stocks: stockPayload.stocks };
         break;
+      }
       case 'getTransferRequests':
-        response = { success: true, requests: TransferService.getInstance().getTransferRequests() };
+        response = { success: true, requests: TransferService.getInstance().getTransferRequests("") };
         break;
 
 
@@ -616,6 +641,8 @@ function processPostAction(action, postData, e) {
     postData.resolvedLineUserId = identity.lineUserId;
   }
 
+  const reqLineUserId = (postData && postData.user && postData.user.lineUserId) ? String(postData.user.lineUserId).trim() : "";
+
   switch (action) {
 
     case 'getStaffIdentity': {
@@ -689,19 +716,42 @@ function processPostAction(action, postData, e) {
         return { success: false, error: err.toString() };
       }
 
-    case 'getRanking':
-      return { success: true, ranking: DistributionService.getInstance().getRankingData() };
+    case 'getRanking': {
+      const rankPayload = DistributionService.getInstance().getRankingPayload(reqLineUserId);
+      return { success: true, mySummary: rankPayload.mySummary, ranking: rankPayload.ranking };
+    }
     case 'getLatestDistribution':
       try {
         const records = typeof DistributionRepository !== 'undefined' && DistributionRepository.getInstance
-          ? DistributionRepository.getInstance().fetchLatestRecords(postData.limit || 20)
+          ? DistributionRepository.getInstance().fetchLatestRecords(postData.limit || 20, reqLineUserId)
           : [];
         return { success: true, records: records };
       } catch (err) {
         return { success: false, error: err.toString(), records: [] };
       }
-    case 'getRoster':
-      return { success: true, roster: StaffService.getInstance().getRoster() };
+    case 'getRoster': {
+      const rawRoster = StaffService.getInstance().getRoster();
+      let stocks = [];
+      let ranking = [];
+      try {
+        stocks = FlyerRepository.getInstance().findAllStocks("");
+        ranking = DistributionRepository.getInstance().fetchRankingData("");
+      } catch (eAgg) {}
+      const aggregatedRoster = rawRoster.map(r => {
+        const staffStocks = stocks.filter(st => st.staffId === r.id);
+        const stockTotal = staffStocks.reduce((acc, st) => acc + (Number(st.count) || 0), 0);
+        const staffRank = ranking.find(rk => rk.staffId === r.id);
+        const deliveredTotal = staffRank ? Number(staffRank.count || 0) : 0;
+        return {
+          id: r.id,
+          name: r.name,
+          registeredAt: r.registeredAt,
+          stockTotal: stockTotal,
+          deliveredTotal: deliveredTotal
+        };
+      });
+      return { success: true, roster: aggregatedRoster };
+    }
     case 'resetRoster':
       return { success: true, message: setupRosterSheet() };
     case 'resetDeviceManagement':
@@ -733,22 +783,25 @@ function processPostAction(action, postData, e) {
       return TransferService.getInstance().requestFlyerTransfer(postData);
     case 'resolveTransferRequest':
       return TransferService.getInstance().resolveTransferRequest(postData);
-    case 'getFlyerStock':
-      return { success: true, stocks: FlyerService.getInstance().getFlyerStock() };
+    case 'getFlyerStock': {
+      const stockPayload = FlyerService.getInstance().getFlyerStock(reqLineUserId);
+      return { success: true, myStock: stockPayload.myStock, stocks: stockPayload.stocks };
+    }
     case 'getTransferRequests':
-      return { success: true, requests: TransferService.getInstance().getTransferRequests() };
+      return { success: true, requests: TransferService.getInstance().getTransferRequests(reqLineUserId) };
     case 'updateFlyerStock':
       return FlyerService.getInstance().updateFlyerStock(
         postData.location,
         parseInt(postData.count, 10) || 0,
         postData.staffName,
-        postData.staffId
+        postData.staffId,
+        postData.resolvedLineUserId || reqLineUserId
       );
     case 'getGlobalPinStatus':
       return PinStatusService.getInstance().getStatus();
     case 'getBulletinPosts':
       return typeof BulletinService !== 'undefined' && BulletinService.getInstance
-        ? BulletinService.getInstance().getPosts()
+        ? BulletinService.getInstance().getPosts(reqLineUserId)
         : { success: false, message: 'BulletinService not available' };
     case 'createBulletinPost':
       return typeof BulletinService !== 'undefined' && BulletinService.getInstance

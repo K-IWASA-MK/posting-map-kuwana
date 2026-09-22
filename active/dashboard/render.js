@@ -392,10 +392,7 @@ function renderStorageList(stocks) {
   const container = $('storage-list-container');
   if (!container) return;
 
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const myStaffId = userInfo.id ? String(userInfo.id).trim() : '';
-
-  // テスト用データおよび「自分のデータ」を除外（他人の在庫のみ共有表示）
+  // テスト用データおよび「自分のデータ（isMe）」を除外（他人の在庫のみ共有表示）
   if (stocks && stocks.length > 0) {
     stocks = stocks.filter(s => {
       const name = s.staffName || '';
@@ -404,8 +401,8 @@ function renderStorageList(stocks) {
       // テストデータの除外
       if (name.includes('テスト') || id.toUpperCase().includes('TEST')) return false;
 
-      // 自分のレコードは在庫一覧（共有一覧）から除外
-      if (myStaffId && id === myStaffId) return false;
+      // 自分のレコードは在庫一覧（共有一覧）から除外（Backend判定済みの isMe フラグを優先）
+      if (s.isMe === true) return false;
 
       return true;
     });
@@ -510,14 +507,11 @@ function renderBulletinList(posts) {
   const container = $('bulletin-list-container');
   if (!container) return;
 
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const myStaffId = userInfo.id ? String(userInfo.id).trim() : (window.currentUser && window.currentUser.id ? String(window.currentUser.id).trim() : '');
-
   let displayPosts = Array.isArray(posts) ? posts.slice() : [];
   if (displayPosts.length > 0) {
     displayPosts = displayPosts.filter(p => {
-      const id = p.staffId ? String(p.staffId).trim() : '';
-      if (myStaffId && id === myStaffId) return false;
+      // 自分の投稿は除外（Backend判定済みの isMe フラグを優先）
+      if (p.isMe === true) return false;
       return true;
     });
   }

@@ -91,8 +91,12 @@ if (typeof DistributionService === 'undefined') {
       return this.repository.fetchDeliveryStats();
     }
 
-    getRankingData() {
-      return this.repository.fetchRankingData();
+    getRankingData(requestLineUserId = "") {
+      return this.repository.fetchRankingData(requestLineUserId);
+    }
+
+    getRankingPayload(requestLineUserId = "") {
+      return this.repository.fetchRankingPayload(requestLineUserId);
     }
   };
   DistributionService.instance = null;

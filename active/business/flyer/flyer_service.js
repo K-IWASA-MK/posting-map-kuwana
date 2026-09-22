@@ -19,12 +19,12 @@ if (typeof FlyerService === 'undefined') {
       return FlyerService.instance;
     }
 
-    getFlyerStock() {
-      return this.repository.findAllStocks();
+    getFlyerStock(requestLineUserId = "") {
+      return this.repository.findStockPayload(requestLineUserId);
     }
 
-    updateFlyerStock(location, count, staffName, staffId) {
-      return this.repository.updateStock(location, count, staffName, staffId);
+    updateFlyerStock(location, count, staffName, staffId, lineUserId = "") {
+      return this.repository.updateStock(location, count, staffName, staffId, lineUserId);
     }
   };
   FlyerService.instance = null;

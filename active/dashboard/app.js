@@ -403,6 +403,7 @@ function prefetchRanking() {
     .then(data => {
       if (data && data.success) {
         rankingData = data.ranking || [];
+        window._myRankingSummary = data.mySummary || null;
         _rankingFetched = true;
         logDebug("[prefetchRanking] Ranking pre-fetched in background.");
         // 現在ランキングページを表示中であれば再描画
@@ -747,6 +748,7 @@ function initRankingPage() {
     p.then(data => {
       if (data && data.success) {
         rankingData = data.ranking || [];
+        window._myRankingSummary = data.mySummary || null;
         _rankingFetched = true;
       }
       if (typeof renderRanking === 'function') renderRanking();
@@ -952,9 +954,14 @@ async function fetchFlyerStock() {
       if (currentSeq !== _flyerStockReqSeq) {
         return null;
       }
-      if (data && data.success && Array.isArray(data.stocks)) {
-        _stockData = data.stocks;
-        _stockFetched = true;
+      if (data && data.success) {
+        if (Array.isArray(data.stocks)) {
+          _stockData = data.stocks;
+          _stockFetched = true;
+        }
+        if (data.myStock) {
+          window._myStockData = data.myStock;
+        }
       }
       return data;
     } catch (err) {
@@ -968,18 +975,18 @@ async function fetchFlyerStock() {
   return _activeFlyerStockPromise;
 }
 
-// 在庫登録フォームへのデータ反映（ユーザー入力完全保護）
+// 在庫登録フォームへのデータ反映（Backend判定済みの myStock / isMe を最優先）
 function applyMyStockToForm(options = {}) {
   const { isAsyncResponse = false } = options;
   const countInput = $('storage-register-count');
   const locSelect = $('storage-register-location');
   if (!countInput) return;
 
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const staffId = userInfo.id || '';
-  if (!staffId || !Array.isArray(_stockData) || _stockData.length === 0) return;
-
-  const myStock = _stockData.find(s => String(s.staffId) === String(staffId));
+  // Backend側が判定した myStock または isMe フラグを優先（staffIdによる照合は行わない）
+  let myStock = window._myStockData || null;
+  if (!myStock && Array.isArray(_stockData) && _stockData.length > 0) {
+    myStock = _stockData.find(s => s.isMe === true) || null;
+  }
   if (!myStock) return;
 
   // 【ユーザー入力保護（枚数）】
@@ -1184,13 +1191,14 @@ window.submitFlyerStock = async function() {
 
     if (res && res.success) {
       alert("✓ チラシ枚数を更新しました");
+      window._myStockData = { location: location, count: count, updatedAt: "たった今" };
       // 成功した登録結果を _stockData に即時反映し、キャッシュ有効状態を維持する！
       if (!Array.isArray(_stockData)) _stockData = [];
-      const idx = _stockData.findIndex(s => String(s.staffId) === String(staffId));
+      const idx = _stockData.findIndex(s => s.isMe === true);
       if (idx >= 0) {
-        _stockData[idx] = { ..._stockData[idx], location: location, count: count, staffName: staffName };
+        _stockData[idx] = { ..._stockData[idx], location: location, count: count, staffName: staffName, isMe: true };
       } else {
-        _stockData.push({ staffId: staffId, staffName: staffName, location: location, count: count });
+        _stockData.unshift({ staffId: staffId, staffName: staffName, location: location, count: count, isMe: true });
       }
       _stockFetched = true;
 
@@ -1758,6 +1766,7 @@ window.openTransferRequestDialog = function(name, id, loc, count, storageId) {
         requestId: requestId,
         requestUserId: requestUserId,
         holderUserId: currentTransferRequest.holderUserId,
+        storageId: currentTransferRequest.storageId || '',
         contactMethod: contactMethod,
         contactValue: contactValue
       });

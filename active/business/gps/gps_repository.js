@@ -143,8 +143,9 @@ if (typeof GPSRepository === 'undefined') {
             if (cell) targetRow = cell.getRow();
           }
           if (targetRow) {
+            const cleanLineUserId = String(data.resolvedLineUserId || data.lineUserId || (data.user && data.user.lineUserId) || "").trim();
             if (isComplete) {
-              sheet.getRange(targetRow, 4, 1, 12).setValues([[
+              sheet.getRange(targetRow, 4, 1, 13).setValues([[
                 completedAt,
                 countVal,
                 data.staffId || "",
@@ -156,10 +157,11 @@ if (typeof GPSRepository === 'undefined') {
                 gpsTimestamp,
                 pFileId,
                 pUrl,
-                pTimestamp
+                pTimestamp,
+                cleanLineUserId
               ]]);
             } else {
-              sheet.getRange(targetRow, 4, 1, 12).setValues([["", "", "", "", "", "", "", "", "", "", "", ""]]); // Revert D to O
+              sheet.getRange(targetRow, 4, 1, 13).setValues([["", "", "", "", "", "", "", "", "", "", "", "", ""]]); // Revert D to P
             }
             updateSuccess = true;
           }

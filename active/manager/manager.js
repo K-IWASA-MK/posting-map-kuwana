@@ -2510,10 +2510,8 @@ function generateRecordsReportPdfHtml(state) {
     rosterRowsHtml = `<tr><td colspan="4" class="text-muted" style="padding: 8px;">登録データはありません</td></tr>`;
   } else {
     rosterRowsHtml = rosterList.map(r => {
-      const staffStocks = stocksList.filter(st => st.staffId === r.id);
-      const stockTotal = staffStocks.reduce((acc, st) => acc + (Number(st.count) || 0), 0);
-      const staffRank = rankingList.find(rk => rk.staffId === r.id);
-      const deliveredTotal = staffRank ? Number(staffRank.count || 0) : 0;
+      const stockTotal = Number(r.stockTotal !== undefined ? r.stockTotal : (stocksList.filter(st => st.staffId === r.id).reduce((acc, st) => acc + (Number(st.count) || 0), 0)));
+      const deliveredTotal = Number(r.deliveredTotal !== undefined ? r.deliveredTotal : (rankingList.find(rk => rk.staffId === r.id)?.count || 0));
       const isUnregistered = !r.name || r.name === '未登録';
 
       return `
@@ -3064,10 +3062,8 @@ function generateRecordsCsv(state) {
     lines.push(['(データなし)', '', '', ''].map(formatCsvField).join(','));
   } else {
     rosterList.forEach(r => {
-      const staffStocks = stocksList.filter(st => st.staffId === r.id);
-      const stockTotal = staffStocks.reduce((acc, st) => acc + (Number(st.count) || 0), 0);
-      const staffRank = rankingList.find(rk => rk.staffId === r.id);
-      const deliveredTotal = staffRank ? Number(staffRank.count || 0) : 0;
+      const stockTotal = Number(r.stockTotal !== undefined ? r.stockTotal : (stocksList.filter(st => st.staffId === r.id).reduce((acc, st) => acc + (Number(st.count) || 0), 0)));
+      const deliveredTotal = Number(r.deliveredTotal !== undefined ? r.deliveredTotal : (rankingList.find(rk => rk.staffId === r.id)?.count || 0));
       lines.push([r.id || '--', r.name || '未登録', `${stockTotal.toLocaleString()} 枚`, `${deliveredTotal.toLocaleString()} 枚`].map(formatCsvField).join(','));
     });
   }
