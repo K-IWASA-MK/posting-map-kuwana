@@ -53,16 +53,14 @@
 サービスを暫定的に停止し、新規のアクセスおよびデータ書き込みを即座に遮断する。データや設定リソースは削除しない。
 
 ### 手順
-1. **DISTRICT_REGISTRY 無効化**:
+1. **DISTRICT_REGISTRY 無効化 (主たる即時遮断)**:
    - 親GASの Script Properties から `DISTRICT_REGISTRY` を取得。
    - 対象地区の `enabled` を `false` に更新して保存。
-   - *効果*: 親GAS Gateway レベルで全APIリクエストが拒絶される（`HTTP 403 / DISTRICT_DISABLED`）。
-2. **SYSTEM_INFO 停止フラグ設定**:
-   - 対象地区のスプレッドシート `SYSTEM_INFO` の `active` を `FALSE` に更新。
-3. **アクティブセッションの即時失効**:
-   - CacheService / PropertiesService 上の該当地区の Dashboard セッショントークンを全件削除（強制ログアウト）。
-4. **外部公開停止**:
-   - LINE LIFF の公開ステータスを非公開に変更するか、メンテナンスメッセージを設定。
+   - *効果*: 親GAS Gateway レベルで全APIリクエストが即座に拒絶される（`HTTP 403 / DISTRICT_DISABLED`）。
+2. **アクティブセッションの即時失効**:
+   - CacheService 上の該当地区の Dashboard セッショントークンを全件削除（強制ログアウト）。
+3. **外部公開停止**:
+   - LINE LIFF の公開ステータスを非公開に変更するか、メンテナンス画面へ転送。
 
 - **所要時間**: 約 5 分
 - **復旧方法**: `enabled: true` および `active: TRUE` に戻すことで即時復旧可能。
@@ -111,7 +109,7 @@
 
 #### Step 5: 個人情報の削除・匿名化 & Pure DB アーカイブ
 - `DATA_LIFECYCLE.md` のプライバシー規程に基づき、スプレッドシート内のスタッフ名簿（`STAFF` シート）の氏名・電話番号・メールアドレス等の個人識別情報を不可逆的に削除・上書き（マスク）。
-- 匿名化処理後のスプレッドシートを組織のデータ保持ポリシー（例: 法定保存期間 3年間 等、※正式期間は要意思決定）に従ってアーカイブフォルダへ移動し、共有権限を管理者のみに絞り込む。
+- 匿名化処理後のスプレッドシートを組織のデータ保持ポリシー（**TBD / Decision Required**: 法定要件・組織合意に基づき決定）に従ってアーカイブフォルダへ移動し、共有権限を管理者のみに絞り込む。
 
 #### Step 6: DISTRICT_REGISTRY からのエントリ抹消
 - 親GAS Script Properties の `DISTRICT_REGISTRY` を取得。

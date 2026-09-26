@@ -1423,18 +1423,18 @@ Universal POSTING MAP が「運用可能（Operable）」であると判定さ�
 Phase 20 で確立された監視項目を恒久的な運用指標として整理する。
 詳細仕様: [ADR-021](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-021_PRODUCTION_MONITORING_SPECIFICATION.md)
 
-| 監視対象 (Signal) | 暫定閾値 (Threshold) | Severity | 検知手法 (Detection) | 一次対応 (Immediate Action) | エスカレーション | 参照 Runbook |
+| 監視対象 (Signal) | 目標閾値 (Threshold) | Severity | 検知手法 (Detection) | 一次対応 (Immediate Action) | エスカレーション | 参照 Runbook |
 |:---|:---|:---:|:---|:---|:---|:---|
-| **API Errors** (5xx系) | エラー率 > 1% (5分間) | SEV-2 | Cloud Logging / Stackdriver | GAS実行ログ解析、特定地区遮断 | 運用リード | [DeploymentTroubleshooting.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/troubleshooting/DeploymentTroubleshooting.md) |
-| **Queue Backlog** | 未同期キュー滞留 > 50件 | SEV-3 | クライアントログ / 報告 | オフライン同期エンドポイント確認 | 開発リード | [ADR-012](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md) |
+| **API Errors** (5xx系) | **TBD / Decision Required** | SEV-2 | Cloud Logging / Stackdriver | GAS実行ログ解析、特定地区遮断 | 運用リード | [DeploymentTroubleshooting.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/troubleshooting/DeploymentTroubleshooting.md) |
+| **Queue Backlog** | **TBD / Decision Required** | SEV-3 | クライアントログ / 報告 | オフライン同期エンドポイント確認 | 開発リード | [ADR-012](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md) |
 | **Duplicate Events** | 同一 requestId 受信 | SEV-3 | API 監査ログ (200 OK 応答) | 冪等性ブロック機能の動作確認 | 担当エンジニア | [API_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/api/API_CONTRACT.md) |
-| **Latency** | p95 レイテンシ > 5,000ms | SEV-3 | GAS Executions 実行時間 | スプレッドシート行数・キャッシュ確認 | 開発リード | [ADR-015](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-015_PERFORMANCE_CONTRACT.md) |
-| **GAS Script Errors** | 実行失敗数 > 5件/分 | SEV-2 | Apps Script エラー通知 | Google Workspace 障害情報確認 | 運用リード | [BACKUP_RESTORE_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/BACKUP_RESTORE_RUNBOOK.md) |
+| **Latency** | **TBD / Decision Required** | SEV-3 | GAS Executions 実行時間 | スプレッドシート行数・キャッシュ確認 | 開発リード | [ADR-015](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-015_PERFORMANCE_CONTRACT.md) |
+| **GAS Script Errors** | **TBD / Decision Required** | SEV-2 | Apps Script エラー通知 | Google Workspace 障害情報確認 | 運用リード | [BACKUP_RESTORE_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/BACKUP_RESTORE_RUNBOOK.md) |
 | **Spreadsheet Lock** | ロック取得タイムアウト発生 | SEV-2 | APIログ `LOCK_TIMEOUT` | 書き込み競合プロセスの特定・解除 | 開発リード | [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) |
 | **Map Failure** | `REQUEST_DENIED` 発生 | SEV-2 | クライアント側エラー報告 | Maps API Key クォータ・制限確認 | 運用リード | [DISTRICT_PROVISIONING_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md) |
 | **Auth / BOLA Failure** | 認証失敗連続発生 / 不正地区 | SEV-1 | セキュリティ監視アラート | 対象IP / トークンの一時遮断 | MASTER | [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) |
 
-*※注: 正式な SLO 閾値は本番実測データの蓄積を経て確定する（現時点では暫定値 / Decision Required）。*
+*※注: 正式な SLO 閾値は、本番実測データの蓄積および運用体制・SLAの合意を経て確定する（現時点では指標枠組みのみ定義し、閾値はすべて Decision Required とする）。*
 
 ---
 
@@ -1475,10 +1475,13 @@ Phase 20 で確立された監視項目を恒久的な運用指標として整�
 3. **Data Schema Version (`v1.0.0`)**: 12シート Pure DB のデータ構造。
 4. **District Provisioning Spec Version (`v1.0.0`)**: プロビジョニング手順・マスター構造。
 
-### 地区互換性追跡
-各地区の `SYSTEM_INFO` シートに、プロビジョニング時の基準バージョンを記録する：
-- `engine_baseline_version`: プロビジョニング時の Universal Engine バージョン（例: `v1.0.0`）
-- `schema_version`: スキーマバージョン（例: `v1.0.0`）
+### 地区互換性追跡 (DESIGNED / PROPOSED)
+> [!IMPORTANT]
+> **実装と設計の分離 (IMPLEMENTED vs DESIGNED)**:
+> - **現行実装 (IMPLEMENTED / VERIFIED)**:
+>   現行 Universal Engine v1.0 の `SYSTEM_INFO` における必須キーは、Integrity Guard 用の **「地区コード」**、および **「契約終了日」** 等の基本情報のみである（Key-Value 形式）。
+> - **将来拡張設計 (DESIGNED / PROPOSED - TBD)**:
+>   各地区がどの Universal Baseline で展開されたかをスプレッドシート側で追跡するため、`engine_baseline_version` および `schema_version` を `SYSTEM_INFO` へ記録する仕様は **将来のスキーマ改訂時の検討項目（DESIGNED）** として位置付ける。現行のプロビジョニングにおいてこれらのキーが存在しなくてもエラーとしてはならない。
 
 ---
 
@@ -1500,14 +1503,14 @@ Create (作成) ──► Use (利用) ──► Retain (保持) ──► Archi
 
 | データ区分 | 主なデータ項目 | 保持期間 (標準方針) | 契約終了 / 廃止時対応 |
 |:---|:---|:---|:---|
-| **Staff Identity** | 氏名、電話番号、メール、lineUserId | 契約期間中 + 1年間 | 氏名・連絡先を不可逆マスク / 削除 |
-| **Activity Records** | 配布実績、担当町丁目、完了日時 | 契約期間中 + 3年間 | 統計集計後に個人識別子を分離 |
-| **GPS / 位置情報** | 緯度、経度、測位ログ | 業務完了後 90日間 | 即時パージ（長期間の生ログ保持禁止） |
-| **Photos (現場資材)** | ドライブ内写真、サムネイル | 業務完了後 180日間 | アーカイブ移動後、指定期間で削除 |
-| **Ranking Data** | 個人ランキング集計値 | 契約期間中 | 地区廃止時に集計データごとアーカイブ |
-| **Audit Evidence** | 操作ログ、アクセス証跡 | 法定期間または 3年間 | コールドストレージへ移管保全 |
+| **Staff Identity** | 氏名、電話番号、メール、lineUserId | **TBD / Decision Required**<br>(組織規程・個人情報保護方針に基づき決定) | 氏名・連絡先を不可逆マスク / 削除 |
+| **Activity Records** | 配布実績、担当町丁目、完了日時 | **TBD / Decision Required**<br>(業務実績監査要件に基づき決定) | 統計集計後に個人識別子を分離 |
+| **GPS / 位置情報** | 緯度、経度、測位ログ | **TBD / Decision Required**<br>(短期パージ原則。長期間の生ログ保持禁止) | 即時パージ（生ログ完全消去） |
+| **Photos (現場資材)** | ドライブ内写真、サムネイル | **TBD / Decision Required**<br>(資材管理要件に基づき決定) | アーカイブ移動後、指定期間で削除 |
+| **Ranking Data** | 個人ランキング集計値 | **TBD / Decision Required**<br>(契約期間管理要件に基づき決定) | 地区廃止時に集計データごとアーカイブ |
+| **Audit Evidence** | 操作ログ、アクセス証跡 | **TBD / Decision Required**<br>(法的要件・規約合意に基づき決定) | コールドストレージへ移管保全 |
 
-*※法的要件や党組織の個別ポリシーにより保持期間の調整が必要な場合は要意思決定（Decision Required）。*
+*※各データの法定保持期間・組織ポリシー・削除手順の詳細は、組織規程の確定に基づき正式決定する（Decision Required）。*
 
 ---
 

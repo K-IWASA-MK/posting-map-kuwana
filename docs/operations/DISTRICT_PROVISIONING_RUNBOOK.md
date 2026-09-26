@@ -111,12 +111,11 @@
 - **Action**:
   1. 共通 Spreadsheet Template を対象フォルダに複製（Copy）する。
   2. ファイル名を `POSTING_MAP_DB_<districtId>` にリネーム。
-  3. 新規複製したスプレッドシートの `SYSTEM_INFO` シートを設定：
-     - `district_id`: Stage 1 で決定した `districtId` を正確に入力。
-     - `district_name`: 地区表示名（例: 桑名市・桑名郡）
-     - `manager_pin`: 初期管理者PIN（英数字8桁以上、推測困難なランダム文字列）
-     - `contract_expiry`: 契約有効期限（ISO 8601 YYYY-MM-DD）
-     - `active`: `FALSE`（Acceptance完了まで非公開を維持）
+  3. 新規複製したスプレッドシートの `SYSTEM_INFO` シートを設定（Key-Value形式: A列=キー、B列=値）：
+     - `地区コード` (必須): Stage 1 で決定した `districtId` を正確に入力（Integrity Guard 照合対象）。
+     - `契約終了日` (必須): 契約有効期限（YYYY-MM-DD）。
+     - `管理者PIN`: 初期管理者PIN（英数字8桁以上、推測困難なランダム文字列）。
+     - ※注: `engine_baseline_version` や `schema_version` 等のメタデータ記録は将来拡張設計（DESIGNED）であり、現行 v1.0 スキーマにおける必須キーではない。
   4. 12シート標準構成（`DATA_DICTIONARY.md` 準拠）のカラム構造・ヘッダーがTemplateと100%一致することを確認。
   5. スプレッドシートID（`spreadsheetId`）を取得。
 - **Validation**:
@@ -254,10 +253,9 @@
 - **Input**:
   - Acceptance 完了エビデンス
 - **Action**:
-  1. 対象スプレッドシートの `SYSTEM_INFO` シートの `active` フラグを `TRUE` に変更。
-  2. 親GAS Script Properties の `DISTRICT_REGISTRY` において、当該地区の `enabled` を `true` に更新。
-  3. 地区ステータスを `ACTIVE` に変更。
-  4. Phase 20 / 本番監視システムに当該地区を監視対象として登録。
+  1. 親GAS Script Properties の `DISTRICT_REGISTRY` において、当該地区の `enabled` を `true` に更新（Gateway レベルでの本番ルーティング有効化）。
+  2. 地区ステータスを正式に `ACTIVE` に更新・記録。
+  3. Phase 20 / 本番監視システムに当該地区を監視対象として登録。
 - **Validation**:
   - 一般配布員端末から H App が正常に稼働開始できること。
   - 管理者が Dashboard に正常ログインできること。
