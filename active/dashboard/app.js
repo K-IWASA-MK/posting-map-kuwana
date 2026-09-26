@@ -297,9 +297,12 @@ function setSyncStatus(state) {
 
 let isRegistering = false;
 let registrationError = false;
+let activeRegistrationPromise = null;
 function triggerBackgroundRegistration(profile) {
   window.liffProfile = profile;
-  if (isRegistering) return Promise.resolve();
+  if (activeRegistrationPromise) {
+    return activeRegistrationPromise;
+  }
   isRegistering = true;
   window.isRegistering = true;
   registrationError = false;
@@ -314,15 +317,13 @@ function triggerBackgroundRegistration(profile) {
   }
 
   logDebug("API START (初回登録・非同期)");
-  return callApiPost('registerStaff', {
+  activeRegistrationPromise = callApiPost('registerStaff', {
     lastName: profile.displayName,
     firstName: "(LINE)",
     lineUserId: profile.userId
   }).then(res => {
-    isRegistering = false;
-    window.isRegistering = false;
     logDebug("API OK (初回登録完了)");
-    if (res && res.success) {
+    if (res && res.success && res.id && String(res.id).trim() !== '') {
       const registeredInfo = {
         last: profile.displayName,
         first: "",
@@ -345,16 +346,15 @@ function triggerBackgroundRegistration(profile) {
         renderSettings();
       }
       updateBottomNavVisibility();
-      showMainApp();
+      return res;
     } else {
-      throw new Error("GAS registration returned success=false");
+      const errMsg = (res && res.error) ? res.error : "GAS registration returned invalid response (missing id)";
+      throw new Error(errMsg);
     }
   }).catch(err => {
-    isRegistering = false;
-    window.isRegistering = false;
     registrationError = true;
     window.registrationError = true;
-    logDebug("Background registration failed: " + err.message);
+    logDebug("Background registration failed: " + (err ? err.message : err));
 
     const updatedIdEl = $('storage-register-staff-id');
     if (updatedIdEl) {
@@ -362,7 +362,7 @@ function triggerBackgroundRegistration(profile) {
       updatedIdEl.style.color = '#ef4444';
       updatedIdEl.style.cursor = 'pointer';
       updatedIdEl.onclick = () => {
-        triggerBackgroundRegistration(profile);
+        window.retryRegistration();
       };
     }
 
@@ -376,16 +376,32 @@ function triggerBackgroundRegistration(profile) {
         loadingStatusEl.textContent = '再試行中...';
         loadingStatusEl.style.color = 'inherit';
         loadingStatusEl.onclick = null;
-        triggerBackgroundRegistration(profile);
+        window.retryRegistration();
       };
     }
+    throw err;
+  }).finally(() => {
+    isRegistering = false;
+    window.isRegistering = false;
+    activeRegistrationPromise = null;
   });
+
+  return activeRegistrationPromise;
 }
 
 // 登録再試行用のグローバルハンドラーを公開
 window.retryRegistration = () => {
   if (window.liffProfile) {
-    triggerBackgroundRegistration(window.liffProfile);
+    return triggerBackgroundRegistration(window.liffProfile).then(() => {
+      const verifiedInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+      if (verifiedInfo && verifiedInfo.id) {
+        setLoadingProgress(100, 'READY');
+        _identityVerified = true;
+        showMainApp();
+      }
+    }).catch(err => {
+      logDebug("Retry registration failed: " + (err ? err.message : err));
+    });
   }
 };
 
@@ -1589,7 +1605,7 @@ async function safeInitApp() {
           // 【Backend Identity 非同期同期】getStaffIdentity をバックグラウンド Promise で実行
           _identitySyncPromise = callApiPost('getStaffIdentity', {})
             .then(identityRes => {
-              if (identityRes && identityRes.success && identityRes.registered) {
+              if (identityRes && identityRes.success && identityRes.registered && identityRes.staffId && String(identityRes.staffId).trim() !== '') {
                 // ① 登録済み: Backend の検証済み Identity を正として localStorage へ同期
                 logDebug("STAFF IDENTITY VERIFIED (BG): " + identityRes.staffId);
                 const verifiedUserInfo = {
@@ -1628,6 +1644,7 @@ async function safeInitApp() {
                 localStorage.setItem('user_info', JSON.stringify(initialUserInfo));
 
                 // 既存表示していた場合でも未登録なら画面を戻して登録完了までロック
+                mainAppVisible = false;
                 $('app').classList.add('hidden');
                 $('app').classList.add('opacity-0');
                 const loadingEl = $('loading');
@@ -1635,12 +1652,17 @@ async function safeInitApp() {
                 setLoadingProgress(60, 'REGISTERING...');
 
                 return triggerBackgroundRegistration(profile).then(() => {
+                  const verifiedInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+                  if (!verifiedInfo.id) {
+                    throw new Error("Registration finished but staffId is missing in storage");
+                  }
                   setLoadingProgress(100, 'READY');
                   _identityVerified = true;
                   showMainApp();
                   return true;
                 }).catch(rErr => {
                   _identityVerified = false;
+                  logDebug("Registration halted: " + (rErr ? rErr.message : rErr));
                   throw rErr;
                 });
               }
