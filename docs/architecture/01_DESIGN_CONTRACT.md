@@ -1245,3 +1245,317 @@ Multi-region Validation
 ```
 
 **この順序を、実装開始後の勝手な短縮・統合・並べ替えの基準にしない。変更が必要な場合はADRまたは本計画の改訂として記録する。**
+
+---
+
+# 26. Universal 製品ライフサイクル規程 (Universal Product Lifecycle Architecture)
+
+## 26.1 Universal Completion Declaration (Universal Engine 完成宣言)
+
+Universal POSTING MAP は、Phase 0 から Phase 21 に至る全再構築フェーズの検証完了をもって、**「Universal Engine v1.0」として正式に完成** したことをここに宣言する。
+
+### Universal Engine 完成の定義
+1. **アーキテクチャの完成**:
+   - 単独アプリ、単独リポジトリ、単独ドメイン、単一親 Standalone GAS プロジェクト、単一 Web App URL による全国動的ルーティング構造が確立されていること。
+2. **再構築フェーズの終了と製品ライフサイクルの開始**:
+   - 以後、開発作業は「再構築（Reconstruction）」から「製品ライフサイクル管理（Product Lifecycle Operations: 展開・運用・監視・復旧・更新・廃止）」へと正式に昇格・移行する。
+3. **地域差＝データ原則の達成**:
+   - 新規地域への展開に際し、実行プログラム（`active/`）のソースコード改変・複製・条件分岐の追加が一切不要であり、データ（`data/`、スプレッドシート、設定）の投入のみで安全・自律的に稼働可能である状態。
+
+---
+
+## 26.2 Universal Release Baseline & Freeze Policy (凍結規程)
+
+Universal Engine の完成状態を固定し、無秩序な改変を防ぐため、以下の凍結ポリシー（Freeze Policy）を適用する。
+詳細仕様: [UNIVERSAL_RELEASE_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_RELEASE_BASELINE.md)
+
+### 凍結対象 (Frozen Scope)
+- **Universal Engine Core (`active/**`)**: フロントエンド、バックエンドGAS、共通ライブラリ
+- **API Contract (`docs/api/API_CONTRACT.md`)**: 全27アクションおよび通信プロトコル
+- **Data Schema (`docs/data/DATA_DICTIONARY.md`)**: 12シート構成およびカラム定義
+- **Identity / Tenant Boundary**: LINE User ID からの正規導出、DISTRICT_REGISTRY ルーティング、SYSTEM_INFO Integrity Guard
+- **Offline / Idempotency Model**: Durable Queue、requestId による重複遮断
+- **Universal Invariants**: INV-001 〜 INV-009
+
+### 凍結後のRuntime変更プロトコル (Universal Gap Protocol)
+新地区の展開や運用において、共通Runtimeの変更が必要となった場合は、**直ちに作業を停止（HARD STOP）** し、以下の手続きを経なければならない。
+1. **原因分析**: 地区データ不備か、Universal Engine の共通構造的欠陥（Universal Gap）かを厳格に切り分け。
+2. **ADR策定**: 変更理由、全国影響範囲、代替案を明記した ADR を起票。
+3. **Scope Lock & 最小侵襲変更**: MASTER 承認を受けた範囲のみを変更。
+4. **全件回帰テスト (Regression)**: `npm test` 全スイートおよび新旧全地区の互換性を検証。
+5. **セキュリティ監査**: SEC-001〜SEC-007 の境界破壊がないことを監査。
+6. **Universal Version Up**: Semantic Versioning に基づく全体バージョン更新。
+
+> [!CAUTION]
+> 地区固有の都合や暫定対処を理由として、`active/` にパッチを直接当てる行為は永久に禁止する。
+
+---
+
+## 26.3 District Provisioning Lifecycle (新地区プロビジョニング規程)
+
+今後、「新地区追加」は開発ではなく **「Provisioning（データ・設定投入）」** として扱う。
+詳細手順: [DISTRICT_PROVISIONING_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md)
+
+### 標準プロビジョニング経路
+```text
+地区選定
+  ↓
+地区コード (districtId) 確定・正規化
+  ↓
+行政・地域データ取得 (e-Stat / GeoJSON / CSV)
+  ↓
+データ完全性検証 (境界・世帯数突合)
+  ↓
+Spreadsheet Template 複製 (Pure DB)
+  ↓
+SYSTEM_INFO 設定 (district_id / 初期設定)
+  ↓
+DISTRICT_REGISTRY 登録 (親GAS Script Properties)
+  ↓
+地区 Secrets 設定 (GOOGLE_MAPS_API_KEY_<districtId>)
+  ↓
+Google Maps API Key 制限設定 (HTTPリファラー / 許可API)
+  ↓
+外部連携設定 (LINE Login / LIFF / Contract)
+  ↓
+Provisioning Gate 検証
+  ↓
+API Smoke Test
+  ↓
+H App 実機検証
+  ↓
+Dashboard 実機検証
+  ↓
+Tenant Isolation (越境遮断) 検証
+  ↓
+District Production Acceptance (受入検査)
+  ↓
+ACTIVE (本番運用開始)
+```
+
+> [!IMPORTANT]
+> プロビジョニング手順の遂行中に `active/` 配下のコード変更が必要と判明した場合、それはプロビジョニング失敗を意味する。直ちに作業を HARD STOP し、原因分析を行う。
+
+---
+
+## 26.4 District Lifecycle State (地区ライフサイクル状態モデル)
+
+各地区は、ライフサイクルを通じて以下の定義された状態を遷移する。
+
+```text
+       ┌──────────────┐
+       │   PLANNED    │
+       └──────┬───────┘
+              │ [計画確定・データ調達開始]
+              ▼
+       ┌──────────────┐
+       │ PROVISIONING │
+       └──────┬───────┘
+              │ [リソース構築・設定完了]
+              ▼
+       ┌──────────────┐
+       │  VALIDATING  │
+       └──────┬───────┘
+              │ [Acceptance Gate 100% PASS]
+              ▼
+       ┌──────────────┐ ◄── (再開) ──┐
+       │    ACTIVE    │             │
+       └──────┬───────┘             │
+              │ (インシデント/未納)    │ (解消)
+              ▼                     │
+       ┌──────────────┐             │
+       │  SUSPENDED   ├─────────────┘
+       └──────┬───────┘
+              │ [解約合意 / 契約満了]
+              ▼
+       ┌────────────────┐
+       │ DEPROVISIONING │
+       └──────┬─────────┘
+              │ [鍵Revoke・データ退避・Registry抹消]
+              ▼
+       ┌────────────────┐
+       │ DECOMMISSIONED │
+       └────────────────┘
+```
+
+### 状態マトリクス
+
+| 状態名 | Entry Condition (開始条件) | Allowed Operations (許可される操作) | Exit Condition (終了条件) | 必須 Evidence (証跡) |
+|:---|:---|:---|:---|:---|
+| **PLANNED** | 展開対象自治体・選挙区の決定 | 地区ID確定、マスターデータ調達・検証 | 境界・住所データ整合確認 | 地区基本情報票、e-Stat突合ログ |
+| **PROVISIONING** | マスターデータ調達完了 | スプレッドシート複製、Registry登録、API Key設定 | 全インフラリソース構築完了 | リソースID一覧、GCP制限設定証跡 |
+| **VALIDATING** | リソース構築完了 | テストアクセス、実機検証、API Smoke Test | Production Acceptance 20項目全件PASS | 受入検品レポート、実機ログ |
+| **ACTIVE** | Production Acceptance 合格 + MASTER承認 | 配布員・管理者の通常業務利用、監視 | 契約終了、または緊急停止事由の発生 | 昇格承認記録、本番稼働ログ |
+| **SUSPENDED** | 支払遅延、契約更新協議中、緊急障害 | 一時停止、障害調査、復旧作業 | 障害解消・契約更新、または解約合意 | 停止理由書、Registry `enabled:false` 記録 |
+| **DEPROVISIONING** | 正式解約合意、契約満了確定 | バックアップ取得、鍵Revoke、個人情報消去 | 全リソース回収・Registry抹消完了 | 最終バックアップURL、鍵削除証跡 |
+| **DECOMMISSIONED** | 廃止作業完了検証合格 | アーカイブデータの保管・法的照会対応のみ | （終局状態） | 廃止完了報告書、アクセス拒絶ログ |
+
+---
+
+## 26.5 Definition of Operable (運用準備完了基準)
+
+Universal POSTING MAP が「運用可能（Operable）」であると判定されるための必須チェックリストである。
+*※未実証・未確定項目を PASS 扱いとしてはならず、状態を厳格に区別する。*
+
+- [ ] **Universal Release Baseline 固定**: v1.0.0 ベースラインコミットおよび凍結規程が確定していること。
+- [ ] **District Provisioning Runbook 存在**: 属人的判断を排除した手順書が存在すること。
+- [ ] **District Configuration Inventory 存在**: 全稼働地区のID・DB・設定一覧が保全されていること。
+- [ ] **Backup 取得方法確立**: Pure DB およびメタデータの日次・手動バックアップ手順が確立していること。
+- [ ] **Restore 手順確立**: スプレッドシート破損等の障害時に差し替え復旧できる手順が存在すること。
+- [ ] **Restore 検証可能 (Drill)**: バックアップからの復旧訓練が定期実施可能であること。
+- [ ] **GAS 障害切り分け手順存在**: Google障害、クォータ枯渇、権限失効時の切り分け手順が存在すること。
+- [ ] **Spreadsheet 障害復旧手順存在**: ロック競合、セル上限、Integrity Guard 不一致の復旧手順が存在すること。
+- [ ] **Secret Rotation 手順存在**: APIキー等の定常ローテーション手順が存在すること。
+- [ ] **Maps Key Revoke 手順存在**: 鍵漏洩疑惑時に即座に失効できる手順が存在すること。
+- [ ] **LINE / LIFF 設定管理方法確立**: 地区別チャネルの作成・更新・削除手順が確立していること。
+- [ ] **DISTRICT_REGISTRY 管理方法確立**: 親GAS Script Properties の安全な更新手順が確立していること。
+- [ ] **Deployment ID 管理方法確立**: 単一親GAS Web App のデプロイID管理方法が確立していること。
+- [ ] **Monitoring 確認可能**: 本番ログ、エラーレート、レイテンシが観測可能であること。
+- [ ] **Incident 対応経路存在**: SEV-1〜SEV-3 の初動・エスカレーション体制が存在すること。
+- [ ] **District Suspend 可能**: 稼働中地区を他地区に影響を与えず即座に一時停止できること。
+- [ ] **District Deprovision 可能**: 解約地区を安全に廃止・個人情報消去できること。
+- [ ] **Evidence 保存可能**: 全運用操作の証跡が保存・追跡可能であること。
+
+---
+
+## 26.6 Monitoring & SLO Framework (監視およびサービスレベル規程)
+
+Phase 20 で確立された監視項目を恒久的な運用指標として整理する。
+詳細仕様: [ADR-021](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-021_PRODUCTION_MONITORING_SPECIFICATION.md)
+
+| 監視対象 (Signal) | 暫定閾値 (Threshold) | Severity | 検知手法 (Detection) | 一次対応 (Immediate Action) | エスカレーション | 参照 Runbook |
+|:---|:---|:---:|:---|:---|:---|:---|
+| **API Errors** (5xx系) | エラー率 > 1% (5分間) | SEV-2 | Cloud Logging / Stackdriver | GAS実行ログ解析、特定地区遮断 | 運用リード | [DeploymentTroubleshooting.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/troubleshooting/DeploymentTroubleshooting.md) |
+| **Queue Backlog** | 未同期キュー滞留 > 50件 | SEV-3 | クライアントログ / 報告 | オフライン同期エンドポイント確認 | 開発リード | [ADR-012](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md) |
+| **Duplicate Events** | 同一 requestId 受信 | SEV-3 | API 監査ログ (200 OK 応答) | 冪等性ブロック機能の動作確認 | 担当エンジニア | [API_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/api/API_CONTRACT.md) |
+| **Latency** | p95 レイテンシ > 5,000ms | SEV-3 | GAS Executions 実行時間 | スプレッドシート行数・キャッシュ確認 | 開発リード | [ADR-015](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-015_PERFORMANCE_CONTRACT.md) |
+| **GAS Script Errors** | 実行失敗数 > 5件/分 | SEV-2 | Apps Script エラー通知 | Google Workspace 障害情報確認 | 運用リード | [BACKUP_RESTORE_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/BACKUP_RESTORE_RUNBOOK.md) |
+| **Spreadsheet Lock** | ロック取得タイムアウト発生 | SEV-2 | APIログ `LOCK_TIMEOUT` | 書き込み競合プロセスの特定・解除 | 開発リード | [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) |
+| **Map Failure** | `REQUEST_DENIED` 発生 | SEV-2 | クライアント側エラー報告 | Maps API Key クォータ・制限確認 | 運用リード | [DISTRICT_PROVISIONING_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md) |
+| **Auth / BOLA Failure** | 認証失敗連続発生 / 不正地区 | SEV-1 | セキュリティ監視アラート | 対象IP / トークンの一時遮断 | MASTER | [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) |
+
+*※注: 正式な SLO 閾値は本番実測データの蓄積を経て確定する（現時点では暫定値 / Decision Required）。*
+
+---
+
+## 26.7 Incident Response Lifecycle (インシデント対応規程)
+
+### Severity 定義
+- **SEV-1 (Critical)**: 全地区停止、テナント分離の崩壊（他地区データ漏洩）、認証バイパス、機密情報重大漏洩。
+- **SEV-2 (Major)**: 単一地区の業務停止、ポスティング確定処理の不能、Dashboard全面障害、Maps API全面停止。
+- **SEV-3 (Minor)**: 一部画面の描画遅延、オフライン同期の散発的遅延、軽微なUI表示不整合。
+
+### 対応ライフサイクルフロー
+```text
+[1. Detect (検知)]
+       ↓
+[2. Contain (初動封じ込め / 地区一時停止・アクセス遮断)]
+       ↓
+[3. Preserve Evidence (ログ・スプレッドシート差分の保全)]
+       ↓
+[4. Diagnose (原因分析・影響範囲特定)]
+       ↓
+[5. Recover (リストア / 設定修正 / フェイルオーバー)]
+       ↓
+[6. Verify (復旧検証・健全性確認)]
+       ↓
+[7. Postmortem (事後検証・根本原因解明)]
+       ↓
+[8. ADR / Prevent Recurrence (再発防止策・恒久化)]
+```
+
+---
+
+## 26.8 Versioning & District Compatibility (階層的バージョニング)
+
+製品全体の一貫性と追跡可能性を維持するため、以下の4層のバージョン境界を運用する。
+
+1. **Universal Engine Version (`v1.0.0`)**: 共通Runtime全体のバージョン。
+2. **API Contract Version (`v2.0.0`)**: フロント・バックエンド通信インターフェース。
+3. **Data Schema Version (`v1.0.0`)**: 12シート Pure DB のデータ構造。
+4. **District Provisioning Spec Version (`v1.0.0`)**: プロビジョニング手順・マスター構造。
+
+### 地区互換性追跡
+各地区の `SYSTEM_INFO` シートに、プロビジョニング時の基準バージョンを記録する：
+- `engine_baseline_version`: プロビジョニング時の Universal Engine バージョン（例: `v1.0.0`）
+- `schema_version`: スキーマバージョン（例: `v1.0.0`）
+
+---
+
+## 26.9 District Production Acceptance Gate (受入検査規程)
+
+新地区を `ACTIVE` に昇格させる前に、20項目の必須検査を執行する。
+詳細チェック項目は [DISTRICT_PROVISIONING_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md) 第4章に規定されており、**全件 PASS が必須条件** である。1項目でも FAIL した地区は本番稼働させてはならない。
+
+---
+
+## 26.10 Data Retention & Privacy Lifecycle (個人情報・データ保持規程)
+
+詳細規程: [DATA_LIFECYCLE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/data/DATA_LIFECYCLE.md)
+
+### データライフサイクル
+```text
+Create (作成) ──► Use (利用) ──► Retain (保持) ──► Archive (保管) ──► Delete / Anonymize (消去)
+```
+
+| データ区分 | 主なデータ項目 | 保持期間 (標準方針) | 契約終了 / 廃止時対応 |
+|:---|:---|:---|:---|
+| **Staff Identity** | 氏名、電話番号、メール、lineUserId | 契約期間中 + 1年間 | 氏名・連絡先を不可逆マスク / 削除 |
+| **Activity Records** | 配布実績、担当町丁目、完了日時 | 契約期間中 + 3年間 | 統計集計後に個人識別子を分離 |
+| **GPS / 位置情報** | 緯度、経度、測位ログ | 業務完了後 90日間 | 即時パージ（長期間の生ログ保持禁止） |
+| **Photos (現場資材)** | ドライブ内写真、サムネイル | 業務完了後 180日間 | アーカイブ移動後、指定期間で削除 |
+| **Ranking Data** | 個人ランキング集計値 | 契約期間中 | 地区廃止時に集計データごとアーカイブ |
+| **Audit Evidence** | 操作ログ、アクセス証跡 | 法定期間または 3年間 | コールドストレージへ移管保全 |
+
+*※法的要件や党組織の個別ポリシーにより保持期間の調整が必要な場合は要意思決定（Decision Required）。*
+
+---
+
+## 26.11 Secret Lifecycle (機密情報統合管理規程)
+
+詳細規程: [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) 第3章
+
+1. **命名規則の強制**:
+   - 地区別 Google Maps API Key: `GOOGLE_MAPS_API_KEY_<DISTRICT_ID>`
+   - Legacy（無印 `GOOGLE_MAPS_API_KEY`）へのフォールバックは新規地区では禁止し、段階的に完全廃止する。
+2. **保管と伝達の境界**:
+   - ローカル環境（`.env`）から Git への混入を `.gitignore` で完全遮断。
+   - 親GASの Script Properties へ直接設定し、ソースコードやドキュメントに平文を記載しない。
+3. **GCP 側の二重制限**:
+   - HTTP リファラー制限および許可 API 制限を必須とする。
+4. **漏洩・インシデント時対応**:
+   - 漏洩疑惑が発生した場合は、即時に GCP Console から当該キーを Revoke し、新キーを発行・置換する。
+
+---
+
+## 26.12 Traceability to Lifecycle (製品ライフサイクルトレーサビリティ)
+
+再構築フェーズにおける要件追跡（REQ → DESIGN → API → TEST → EVIDENCE）を拡張し、製品ライフサイクル全体における追跡性を以下の通り確立する。
+
+```text
+【開発・設計境界】
+  Requirements (要件)
+       ↓
+  Supreme Design Contract / Invariants (最高位設計契約: 本書)
+       ↓
+  Universal Release Baseline (UNIVERSAL_RELEASE_BASELINE.md: FROZEN)
+       ↓
+【展開・受入境界】
+  District Provisioning (DISTRICT_PROVISIONING_RUNBOOK.md)
+       ↓
+  District Production Acceptance (受入検査 20項目)
+       ↓
+【運用・保全境界】
+  Active Operations & Monitoring (SLO / ADR-021)
+       ↓
+  Incident / Backup & Restore (BACKUP_RESTORE_RUNBOOK.md)
+       ↓
+  Universal Version Upgrade (ADR / Regression / Security Audit)
+       ↓
+【終了境界】
+  District Deprovisioning & Data Retention (DISTRICT_DEPROVISIONING_RUNBOOK.md)
+       ↓
+  Audit Evidence Preservation (証跡保全)
+```
+
+**本書の規定は、Universal POSTING MAP の製品寿命が続く限り、すべての開発者・運用者・AI社員に対する最高位拘束力を持つ。**

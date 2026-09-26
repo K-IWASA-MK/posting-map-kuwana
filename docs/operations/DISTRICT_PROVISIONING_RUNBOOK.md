@@ -1,0 +1,303 @@
+# District Provisioning Runbook (新地区標準プロビジョニング手順書)
+
+- **Version**: 1.0.0
+- **Status**: OFFICIAL STANDARD (SSOT)
+- **Target**: Universal POSTING MAP Engine v1.0
+- **Supreme Authority**: [AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md)
+- **Release Baseline**: [UNIVERSAL_RELEASE_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_RELEASE_BASELINE.md)
+- **Security Baseline**: [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md)
+- **Parent GAS Routing**: [UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md)
+
+---
+
+## 1. 目的と最上位原則
+
+本書は、日本全国の新しい自治体・地域（以下「新地区」）を Universal POSTING MAP に投入し、安全・確実・反復可能に本番稼働（ACTIVE）させるための **唯一の標準運用手順書（SSOT）** である。
+
+### 最重要不変原則
+1. **Zero Code Duplication / Zero Runtime Modification**:
+   - 新地区追加は **「データ投入（Provisioning）」** であり、開発ではない。
+   - `active/` 配下のソースコード、HTML、共通GASスクリプトを1行たりとも変更してはならない。
+   - プロビジョニング中に `active/` 変更が必要と判明した場合は、直ちに **HARD STOP（プロビジョニング失敗）** とする。
+2. **単一親GAS・単一Web App維持**:
+   - 新地区のために `clasp create` 等で別GASプロジェクトを作成することは永久に禁止する。
+   - 全地区は単一の親GAS Standalone Web App URLを共有し、`DISTRICT_REGISTRY` によってスプレッドシート（DB）を動的分離する。
+3. **再現性・自律性の担保**:
+   - 各ステップには明確な 入力・アクション・検証・エビデンス・ロールバック・HARD STOP条件 を規定し、属人的判断を排除する。
+
+---
+
+## 2. プロビジョニング全体フロー
+
+```text
+[Stage 1: 地区計画・ID確定]
+       ↓
+[Stage 2: マスターデータ調達 & 検証 (CSV / GeoJSON)]
+       ↓
+[Stage 3: Spreadsheet Pure DB プロビジョニング (Template複製 & 整合性ガード)]
+       ↓
+[Stage 4: DISTRICT_REGISTRY & Routing 登録]
+       ↓
+[Stage 5: 地区別 Secrets & Maps API Key 設定 (GCP制限)]
+       ↓
+[Stage 6: 外部サービス連携設定 (LINE / LIFF / Contract)]
+       ↓
+[Stage 7: Production Acceptance Verification (実機・API・セキュリティ検品)]
+       ↓
+[Stage 8: ACTIVE 昇格 & 監視開始]
+```
+
+---
+
+## 3. 各ステージ詳細手順
+
+### Stage 1: 地区計画・ID確定 (District Planning & ID Formalization)
+
+- **Preconditions**:
+  - 新規展開対象の自治体・選挙区・支部が正式に決定していること。
+- **Input**:
+  - 自治体名（例: 三重県桑名市）
+  - 自治体コード（JIS X 0402 / 総務省全国地方公共団体コード、例: `242055`）
+  - 選挙種別（衆院小選挙区、参院選挙区、首長選、一般市議選 等）
+- **Action**:
+  1. 地区ID（`districtId`）を正規化命名規則に従い確定する。
+     - 規則: 英大文字、数字、ハイフンのみ（例: `KUWANA`, `MIE-04`, `AICHI-01`）。
+     - 空白・特殊文字・小文字は禁止。
+  2. プロビジョニング管理簿に `districtId`、対象自治体、担当者を記録。
+- **Validation**:
+  - `districtId` が既存の登録済み地区と重複していないこと。
+- **Evidence**:
+  - 地区基本情報記録シート（またはチケット）
+- **Rollback**:
+  - 計画取消（リソース作成前のため実作業なし）
+- **HARD STOP Condition**:
+  - 自治体コードまたは選挙区の境界定義が曖昧・未確定の場合。
+
+---
+
+### Stage 2: マスターデータ調達 & 検証 (Master Data Acquisition & Verification)
+
+- **Preconditions**:
+  - Stage 1 で自治体コードおよび境界定義が確定していること。
+- **Input**:
+  - e-Stat（国勢調査小地域境界データ・国勢調査人口世帯数）
+  - 法務省登記所備付地図 / デジタル庁アドレス・ベース・レジストリ（町丁目名・街区）
+- **Action**:
+  1. 国勢調査小地域境界（GeoJSON）および住所マスター（`address_master.csv`）を生成。
+  2. 自治体マスター（`municipality_master.csv`）を整備。
+  3. `scripts/build-district-master.py` または小地域統合ツールを実行し、飛び地（MultiPolygon）の統合および丁目・小地域コードの正規化を実施。
+- **Validation**:
+  - GeoJSONの構文チェック（RFC 7946準拠、WGS84座標系）。
+  - 住所マスターの `townId`、`町丁目名`、`世帯数`、`人口` の欠損・不整合ゼロ確認。
+  - データ監査スキル `official-data-confirmation-audit` のパス。
+- **Evidence**:
+  - 生成されたマスターデータファイル群
+  - データ監査ログ（レコード件数、世帯数合計一致証跡）
+- **Rollback**:
+  - 生成データの破棄・スクリプト修正・再生成
+- **HARD STOP Condition**:
+  - 公式統計データと世帯数・人口の不整合が解明できない場合。
+
+---
+
+### Stage 3: Spreadsheet Pure DB プロビジョニング (Spreadsheet Provisioning)
+
+- **Preconditions**:
+  - Google Drive 内に Universal 共通 Spreadsheet Template が存在すること。
+- **Input**:
+  - 共通 Spreadsheet Template ID
+  - 配置先 Google Drive フォルダ ID
+  - `districtId`
+- **Action**:
+  1. 共通 Spreadsheet Template を対象フォルダに複製（Copy）する。
+  2. ファイル名を `POSTING_MAP_DB_<districtId>` にリネーム。
+  3. 新規複製したスプレッドシートの `SYSTEM_INFO` シートを設定：
+     - `district_id`: Stage 1 で決定した `districtId` を正確に入力。
+     - `district_name`: 地区表示名（例: 桑名市・桑名郡）
+     - `manager_pin`: 初期管理者PIN（英数字8桁以上、推測困難なランダム文字列）
+     - `contract_expiry`: 契約有効期限（ISO 8601 YYYY-MM-DD）
+     - `active`: `FALSE`（Acceptance完了まで非公開を維持）
+  4. 12シート標準構成（`DATA_DICTIONARY.md` 準拠）のカラム構造・ヘッダーがTemplateと100%一致することを確認。
+  5. スプレッドシートID（`spreadsheetId`）を取得。
+- **Validation**:
+  - `SYSTEM_INFO` の `district_id` とリクエスト `districtId` が完全一致すること（Integrity Guard）。
+  - コンテナバインドスクリプト（Apps Script）が **存在しない** こと（Pure DB の完全維持）。
+- **Evidence**:
+  - 新規スプレッドシートの URL / ID
+  - `SYSTEM_INFO` 設定スナップショット
+- **Rollback**:
+  - 複製したスプレッドシートの完全削除（ゴミ箱破棄）
+- **HARD STOP Condition**:
+  - スプレッドシート内にコンテナバインドスクリプトが混入している場合。
+  - 12シートのヘッダー構成が Template と異なる場合。
+
+---
+
+### Stage 4: DISTRICT_REGISTRY & Routing 登録 (Routing Configuration)
+
+- **Preconditions**:
+  - Stage 3 で `spreadsheetId` が発行されていること。
+  - 親GAS Script Properties へのアクセス権限を有すること。
+- **Input**:
+  - `districtId`
+  - `spreadsheetId`
+  - （写真保存用がある場合）`storageFolderId`
+- **Action**:
+  1. 親GASの Script Properties から `DISTRICT_REGISTRY` を取得。
+  2. JSON をパースし、新規エントリを追加：
+     ```json
+     {
+       "spreadsheetId": "<NEW_SPREADSHEET_ID>",
+       "storageFolderId": "<NEW_FOLDER_ID>",
+       "name": "<DISTRICT_NAME>",
+       "enabled": false
+     }
+     ```
+     ※ Acceptance完了までは `enabled: false` または検証専用フラグとする。
+  3. 更新した JSON を `DISTRICT_REGISTRY` に保存。
+- **Validation**:
+  - JSON 構文が妥当であること。
+  - 既存の他地区設定が1件も破壊・消失・変更されていないこと（テナント分離保全）。
+- **Evidence**:
+  - `DISTRICT_REGISTRY` 更新前後の比較ログ（他地区不変の確認）
+- **Rollback**:
+  - `DISTRICT_REGISTRY` を更新前スナップショットへ即座に戻す。
+- **HARD STOP Condition**:
+  - `DISTRICT_REGISTRY` のパース失敗、または他地区IDが意図せず書き換わった場合。
+
+---
+
+### Stage 5: 地区別 Secrets & Maps API Key 設定 (Secrets & API Restrictions)
+
+- **Preconditions**:
+  - GCP プロジェクト管理者権限を有すること。
+  - `districtId` が確定していること。
+- **Input**:
+  - GCP Console アクセス
+  - `districtId`
+  - クライアント配信元ドメイン（GitHub Pages 等の公開URL）
+- **Action**:
+  1. GCP Console にて、当該地区専用の Google Maps API Key を新規発行。
+  2. **API制限**: Maps JavaScript API, Places API, Geocoding API のみに厳格制限。
+  3. **アプリケーション制限**: HTTP リファラー制限を適用（本番Web Appドメイン、LINE LIFF URLのみを許可。ワイルドカード `*` 単独の全開放は禁止）。
+  4. 親GASの Script Properties に以下を設定：
+     - キー名: `GOOGLE_MAPS_API_KEY_<districtId>`
+     - 値: 発行したAPIキー
+- **Validation**:
+  - キー名が `GOOGLE_MAPS_API_KEY_<districtId>` で完全一致していること（SEC-007 準拠）。
+  - APIキー実値が Git、ログ、チャット、ドキュメントに露出していないこと。
+- **Evidence**:
+  - Script Properties 設定完了ログ（キー名のみ。値は `[SECURED]`）
+  - GCP API制限 / HTTPリファラー制限の設定スクリーンショットまたは設定JSON
+- **Rollback**:
+  - GCP Console で該当APIキーを即時 Revoke（削除）。
+  - Script Properties から該当キーを削除。
+- **HARD STOP Condition**:
+  - APIキーを HTTP リファラー無制限（全開放）で作成しようとした場合。
+  - APIキー実値をGit等にコミットした場合。
+
+---
+
+### Stage 6: 外部サービス連携設定 (LINE / LIFF / Contract)
+
+- **Preconditions**:
+  - 当該地区用の LINE Developers チャネル（Messaging API / LINE Login）が存在すること。
+- **Input**:
+  - LINE Login チャネル ID
+  - LIFF ID
+  - 契約終了日
+- **Action**:
+  1. LINE Developers にて LIFF アプリを作成し、Endpoint URL に Universal H App の公開URLを設定。
+  2. 地区の `SYSTEM_INFO` シートに `contract_expiry`（契約終了日）を設定。
+  3. クライアント配信設定ファイル（`data/config.js` または地区用ビルド設定）に `districtId` と `liffId` をバインド。
+- **Validation**:
+  - LINE ログインから LIFF アプリが正常に起動すること。
+  - LIFF 初期化時に `liffToken` が正しく取得できること。
+- **Evidence**:
+  - LIFF 設定画面情報（機密情報はマスク）
+- **Rollback**:
+  - LIFF アプリの削除または非公開化。
+- **HARD STOP Condition**:
+  - LINE チャネルシークレットをクライアント側 JS にハードコードした場合。
+
+---
+
+### Stage 7: Production Acceptance Verification (実機・API・セキュリティ検品)
+
+- **Preconditions**:
+  - Stage 1〜6 がすべて完了していること。
+- **Input**:
+  - 検証用テスター端末（スマートフォン実機 iOS/Android）
+  - 管理者用ブラウザ（PC）
+- **Action**:
+  - 本書第4章「District Production Acceptance Gate」の全20項目を順次実行・検品する。
+- **Validation**:
+  - 全20項目がすべて **PASS** すること（1項目でもFAILなら不合格）。
+- **Evidence**:
+  - Production Acceptance レポート
+  - 実機スクリーンショット
+  - API Smoke Test 通信ログ
+- **Rollback**:
+  - 発見された不具合の是正（データ・設定のみ。`active/` は不可侵）。
+  - 是正不能な場合は Stage 4 の `DISTRICT_REGISTRY` 削除および Stage 3 の DB 破棄。
+- **HARD STOP Condition**:
+  - 他地区のデータが閲覧・更新できる（テナント分離破壊）。
+  - `active/` のコード修正を行わないと動かない事象が判明した場合。
+
+---
+
+### Stage 8: ACTIVE 昇格 & 監視開始 (Activation & Monitoring)
+
+- **Preconditions**:
+  - Stage 7 の Production Acceptance が 100% PASS していること。
+  - MASTER による正式承認が得られていること。
+- **Input**:
+  - Acceptance 完了エビデンス
+- **Action**:
+  1. 対象スプレッドシートの `SYSTEM_INFO` シートの `active` フラグを `TRUE` に変更。
+  2. 親GAS Script Properties の `DISTRICT_REGISTRY` において、当該地区の `enabled` を `true` に更新。
+  3. 地区ステータスを `ACTIVE` に変更。
+  4. Phase 20 / 本番監視システムに当該地区を監視対象として登録。
+- **Validation**:
+  - 一般配布員端末から H App が正常に稼働開始できること。
+  - 管理者が Dashboard に正常ログインできること。
+  - エラーログが Cloud Logging / Executions に発生していないこと。
+- **Evidence**:
+  - ACTIVE 昇格完了通知
+  - 初回稼働ログ証跡
+- **Rollback**:
+  - `enabled: false` および `active: FALSE` への即時切り戻し（一時停止）。
+- **HARD STOP Condition**:
+  - 昇格直後に予期せぬシステム例外・アクセス拒絶が発生した場合。
+
+---
+
+## 4. District Production Acceptance Gate (受入検査規程)
+
+新地区を `ACTIVE` に昇格させる前に、以下の全項目について独立検品を実施する。
+
+| No | 検査項目 | 検証内容 | 合否基準 |
+|:---:|:---|:---|:---:|
+| 1 | **districtId 正規化** | 英大文字・数字・ハイフンのみ、他地区と重複なし | PASS / FAIL |
+| 2 | **DISTRICT_REGISTRY 整合** | 親GAS Registry に登録され、対象 spreadsheetId と一致 | PASS / FAIL |
+| 3 | **SYSTEM_INFO Integrity Guard** | DB側 `district_id` とリクエスト `districtId` が一致 | PASS / FAIL |
+| 4 | **Pure DB 完全性** | スプレッドシート内にバインドスクリプトが存在しない | PASS / FAIL |
+| 5 | **12シート構造整合** | `DATA_DICTIONARY.md` 定義の全12シート・ヘッダー完全一致 | PASS / FAIL |
+| 6 | **地区別 Maps Key 運用** | `GOOGLE_MAPS_API_KEY_<districtId>` が設定済み | PASS / FAIL |
+| 7 | **Legacy Fallback 不使用** | 新規地区において無印 `GOOGLE_MAPS_API_KEY` を参照しない | PASS / FAIL |
+| 8 | **Maps API 制限確認** | HTTPリファラー制限および許可API制限が有効 | PASS / FAIL |
+| 9 | **LINE / LIFF 認証** | LIFF 経由で `lineUserId` が正常取得され偽装不可 | PASS / FAIL |
+| 10 | **H App 起動検証** | スマートフォン実機で地図・町丁目ポリゴンが描画される | PASS / FAIL |
+| 11 | **Posting Flow 完走** | 配布開始 → 完了 → 確定までの一連フローが正常完走 | PASS / FAIL |
+| 12 | **Offline Queue & 復旧** | 機内モードでの配布記録保存 → オンライン復帰で自動同期 | PASS / FAIL |
+| 13 | **Idempotency (冪等性)** | 通信切断時の再送で `requestId` による二重登録遮断 | PASS / FAIL |
+| 14 | **Dashboard PIN 認証** | 正しいPINでログイン成功、不正PINで明確に拒絶 | PASS / FAIL |
+| 15 | **Session District Binding** | 発行されたセッショントークンが該当地区にのみ有効 | PASS / FAIL |
+| 16 | **Tenant Isolation (越境遮断)** | 当該セッションで他地区のデータ取得・更新を試行し完全拒絶 | PASS / FAIL |
+| 17 | **No lineUserId Exposure** | APIレスポンスに他者の `lineUserId` が一切含まれない | PASS / FAIL |
+| 18 | **Manager PIN 秘匿** | `getSystemInfo` 等のパブリックAPIでPINが露出しない | PASS / FAIL |
+| 19 | **Formula Injection 耐性** | スタッフ名・連絡先等に数式文字を入力しても無害化される | PASS / FAIL |
+| 20 | **実機レンダリング & パフォーマンス** | 地図描画・ポリゴン表示が遅延なくスムーズに動作する | PASS / FAIL |
+
+> [!CAUTION]
+> 上記のいずれか1項目でも FAIL した場合、当該地区の `ACTIVE` 昇格は **厳格に却下（HARD STOP）** される。

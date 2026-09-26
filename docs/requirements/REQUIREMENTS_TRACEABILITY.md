@@ -91,16 +91,29 @@
 
 ---
 
+### 2.5 Product Lifecycle Domain (製品ライフサイクル・展開運用境界)
+
+| REQ-ID | 要件 | 不変条件 / Design Contract | 仕様書 / Runbook | ADR / Standard | Implementation Target | Verification | Status |
+|:---|:---|:---|:---|:---|:---|:---|:---|
+| **REQ-LIFE-001** | Release Baseline & Freeze Policy | Universal Engine v1.0 完成後の共通Runtime・API・Schemaの凍結とUniversal Gap管理 | `01_DESIGN_CONTRACT.md` §26.2<br>`UNIVERSAL_RELEASE_BASELINE.md` | [ADR-022](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-022_MULTI_REGION_ARCHITECTURE_SPECIFICATION.md) | `active/**`<br>`index.html` | Git Baseline Commit固定、回帰テスト通過 | **VERIFIED** |
+| **REQ-LIFE-002** | District Provisioning & Acceptance Gate | 共通コード変更ゼロによる新地区投入、および20項目受入検査によるACTIVE昇格判定 | `01_DESIGN_CONTRACT.md` §26.3, §26.9<br>`DISTRICT_PROVISIONING_RUNBOOK.md` | [ADR-010](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-010.md)<br>[ADR-022](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-022_MULTI_REGION_ARCHITECTURE_SPECIFICATION.md) | `DISTRICT_REGISTRY`<br>`SYSTEM_INFO`<br>`data/` | Acceptance Gate 20項目全件合格証跡 | **VERIFIED** |
+| **REQ-LIFE-003** | Security Baseline (SEC-001〜007) | サーバーセッション、数式注入防御、テナント分離、PIN秘匿、地区別MapsKeyの恒久境界 | `01_DESIGN_CONTRACT.md` §26.11<br>`SECURITY_BASELINE.md` | [ADR-016](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-016_SECURITY_ARCHITECTURE.md)<br>[ADR-023](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-023_DASHBOARD_SHARED_PIN_SESSION_SPECIFICATION.md) | `active/api/`<br>`active/business/`<br>`active/dashboard/` | SEC-001〜007 専用回帰テストスイート通過 | **VERIFIED** |
+| **REQ-LIFE-004** | Backup & Restore Architecture | Pure DB・メタデータの日次保全、秘密情報の平文除外、リストア手順および定期訓練 | `01_DESIGN_CONTRACT.md` §26.5<br>`BACKUP_RESTORE_RUNBOOK.md` | `DATA_LIFECYCLE.md` | Google Drive / Backup Folder | リストア手順・整合性検証チェックリスト | **VERIFIED** |
+| **REQ-LIFE-005** | District Deprovisioning & Privacy | 一時停止と完全廃止の分離、API Key即時Revoke、個人情報消去、Registry抹消 | `01_DESIGN_CONTRACT.md` §26.4, §26.10<br>`DISTRICT_DEPROVISIONING_RUNBOOK.md` | `DATA_LIFECYCLE.md` | 親GAS Properties<br>GCP Console<br>Spreadsheet | 廃止完了検証チェックリスト通過 | **VERIFIED** |
+| **REQ-LIFE-006** | Continuous Monitoring & Incident SLO | APIエラー、レイテンシ、排他ロック、障害Severity定義、復旧エスカレーション | `01_DESIGN_CONTRACT.md` §26.6, §26.7<br>`UNIVERSAL_RELEASE_BASELINE.md` | [ADR-021](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-021_PRODUCTION_MONITORING_SPECIFICATION.md) | Cloud Logging<br>GAS Executions | 暫定SLO定義、インシデントフロー確立 | **VERIFIED** |
+
+---
+
 ## 3. ステータス集計と分析
 
 ### 3.1 ステータス内訳
 
 | ステータス | 件数 | 割合 | 主な対象項目 |
 |:---|:---:|:---:|:---|
-| **VERIFIED** | **30** | 85.7% | 4層分離、Universal Engine、自由配布モデル、SSOT、ScriptLock、LINE認証、Git境界、8-Stage Protocol 等 |
-| **GAP** | **4** | 11.4% | `requestId` 冪等性照合ロジック (REQ-DATA-008, REQ-API-006)、GAS高負荷耐性実測 (REQ-API-012)、構造化監査ログ基盤 (REQ-API-013)（Gate 5以降の実装・テスト対象） |
-| **FUTURE IMPLEMENTATION** | **1** | 2.9% | 機械的 PreToolUse 自動フック (`hooks.json` / MCP ガバナンス設定: REQ-GOV-007) |
-| **合計** | **35** | 100.0% | 全要件追跡項目 |
+| **VERIFIED** | **36** | 87.8% | 4層分離、Universal Engine、自由配布モデル、SSOT、ScriptLock、LINE認証、Git境界、8-Stage Protocol、製品ライフサイクル全般 等 |
+| **GAP** | **4** | 9.8% | `requestId` 冪等性照合ロジック (REQ-DATA-008, REQ-API-006)、GAS高負荷耐性実測 (REQ-API-012)、構造化監査ログ基盤 (REQ-API-013)（Gate 5以降の実装・テスト対象） |
+| **FUTURE IMPLEMENTATION** | **1** | 2.4% | 機械的 PreToolUse 自動フック (`hooks.json` / MCP ガバナンス設定: REQ-GOV-007) |
+| **合計** | **41** | 100.0% | 全要件追跡項目 |
 
 ※ REQ-API-012 の一部（GAS 同時実行集中時の Google インフラ内部クォータ挙動）は「UNDETERMINED（外部依存のため未確定）」として内包・取り扱います。
 

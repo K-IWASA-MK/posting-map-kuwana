@@ -1,8 +1,16 @@
-# POSTING MAP 量産・新地区完全自律展開手順書 (COPY RUNBOOK)
+# POSTING MAP 量産・新地区完全自律展開手順書 (COPY RUNBOOK) [DEPRECATED]
 
-本ドキュメントは、完成版POSTING MAPリポジトリから新しい地区（`<TARGET_DISTRICT_CODE>`）を複製し、独立した本番システムとして完全稼働させるための**確定手順書（全6ステージ）**である。
+> [!CAUTION]
+> **【永久廃止 / DEPRECATED】**:
+> 本書は、リポジトリ物理複製およびGAS個別作成を前提としていた旧第1世代アーキテクチャの手順書であり、**Universal Engine v1.0 の完成に伴い永久に廃止（DEPRECATED）** されました。
+ >
+> [AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md) 第1条に基づき、リポジトリの複製やGASプロジェクトの新設は絶対禁止です。
+> 新地区の追加・本番展開は、必ず以下の公式最新手順書を参照してください：
+> 👉 **[District Provisioning Runbook (新地区標準プロビジョニング手順書)](DISTRICT_PROVISIONING_RUNBOOK.md)**
 
 ---
+
+本ドキュメントは、過去の第1世代アーキテクチャにおける参考記録（Historical Reference）として保全されています。
 
 ## 🏛️ 最上位絶対原則
 
