@@ -3,6 +3,11 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..');
 
 console.log("====================================================");
 console.log("🖥️ PHASE 14: CHROME REAL-BROWSER T0-T2 SLA BENCHMARK");
@@ -113,7 +118,7 @@ async function runChromeMeasurement(scenarioName, { isOnline = true, hasUserInfo
   const measurementsT2 = [];
   const measurementsFCP = [];
 
-  const targetUrl = 'file:///Volumes/SSD_DATA/posting-map-universal/active/dashboard/index.html';
+  const targetUrl = pathToFileURL(path.join(REPO_ROOT, 'active/dashboard/index.html')).href;
 
   for (let r = 1; r <= runs; r++) {
     const chrome = new ChromeController();

@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 console.log("====================================================");
 console.log("🔄 PHASE 18: UNIVERSAL MIGRATION ARCHITECTURE ANCHOR SUITE");
 console.log("====================================================");
 
-const REPO_ROOT = '/Volumes/SSD_DATA/posting-map-universal';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..');
 
 // ─── Gate 1: Data Mapping & Additive Schema Contract ───────────────
 console.log("\n▶ [GATE 1] Data Mapping & Additive Schema Evolution Contract");

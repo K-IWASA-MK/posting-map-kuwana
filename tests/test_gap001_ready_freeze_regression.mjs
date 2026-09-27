@@ -19,12 +19,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
 
 console.log('====================================================');
 console.log('🧪 GAP-001 READY FREEZE REGRESSION AUDIT (READY-001 ~ READY-010)');
 console.log('====================================================\n');
 
-const REPO_ROOT = '/Volumes/SSD_DATA/posting-map-universal';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..');
 const appJsPath = path.join(REPO_ROOT, 'active/dashboard/app.js');
 const appJsContent = fs.readFileSync(appJsPath, 'utf8');
 

@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 console.log("====================================================");
 console.log("🚀 PHASE 17: PRODUCTION DEPLOYMENT & VERIFICATION SUITE");
 console.log("====================================================");
 
-const REPO_ROOT = '/Volumes/SSD_DATA/posting-map-universal';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..');
 const TARGET_DEPLOYMENT_ID = 'AKfycbyjeoNc8CeTT6AyNdTSBTqLFGHs23vUaQiavSlsPKjVmMBZ5hE_KlJqN8RI12cgb7S-';
 const TARGET_WEBAPP_URL = `https://script.google.com/macros/s/${TARGET_DEPLOYMENT_ID}/exec`;
 
