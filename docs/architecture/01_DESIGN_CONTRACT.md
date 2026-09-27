@@ -1267,7 +1267,7 @@ Universal POSTING MAP は、Phase 0 から Phase 21 に至る全再構築フェ�
 ## 26.2 Universal Release Baseline & Freeze Policy (凍結規程)
 
 Universal Engine の完成状態を固定し、無秩序な改変を防ぐため、以下の凍結ポリシー（Freeze Policy）を適用する。
-詳細仕様: [UNIVERSAL_RELEASE_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_RELEASE_BASELINE.md)
+詳細仕様: [UNIVERSAL_RELEASE_BASELINE.md](UNIVERSAL_RELEASE_BASELINE.md)
 
 ### 凍結対象 (Frozen Scope)
 - **Universal Engine Core (`active/**`)**: フロントエンド、バックエンドGAS、共通ライブラリ
@@ -1294,7 +1294,7 @@ Universal Engine の完成状態を固定し、無秩序な改変を防ぐため
 ## 26.3 District Provisioning Lifecycle (新地区プロビジョニング規程)
 
 今後、「新地区追加」は開発ではなく **「Provisioning（データ・設定投入）」** として扱う。
-詳細手順: [DISTRICT_PROVISIONING_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md)
+詳細手順: [DISTRICT_PROVISIONING_RUNBOOK.md](../operations/DISTRICT_PROVISIONING_RUNBOOK.md)
 
 ### 標準プロビジョニング経路
 ```text
@@ -1421,18 +1421,18 @@ Universal POSTING MAP が「運用可能（Operable）」であると判定さ�
 ## 26.6 Monitoring & SLO Framework (監視およびサービスレベル規程)
 
 Phase 20 で確立された監視項目を恒久的な運用指標として整理する。
-詳細仕様: [ADR-021](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-021_PRODUCTION_MONITORING_SPECIFICATION.md)
+詳細仕様: [ADR-021](decisions/ADR-021_PRODUCTION_MONITORING_SPECIFICATION.md)
 
 | 監視対象 (Signal) | 目標閾値 (Threshold) | Severity | 検知手法 (Detection) | 一次対応 (Immediate Action) | エスカレーション | 参照 Runbook |
 |:---|:---|:---:|:---|:---|:---|:---|
-| **API Errors** (5xx系) | **TBD / Decision Required** | SEV-2 | Cloud Logging / Stackdriver | GAS実行ログ解析、特定地区遮断 | 運用リード | [DeploymentTroubleshooting.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/troubleshooting/DeploymentTroubleshooting.md) |
-| **Queue Backlog** | **TBD / Decision Required** | SEV-3 | クライアントログ / 報告 | オフライン同期エンドポイント確認 | 開発リード | [ADR-012](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md) |
-| **Duplicate Events** | 同一 requestId 受信 | SEV-3 | API 監査ログ (200 OK 応答) | 冪等性ブロック機能の動作確認 | 担当エンジニア | [API_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/api/API_CONTRACT.md) |
-| **Latency** | **TBD / Decision Required** | SEV-3 | GAS Executions 実行時間 | スプレッドシート行数・キャッシュ確認 | 開発リード | [ADR-015](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-015_PERFORMANCE_CONTRACT.md) |
-| **GAS Script Errors** | **TBD / Decision Required** | SEV-2 | Apps Script エラー通知 | Google Workspace 障害情報確認 | 運用リード | [BACKUP_RESTORE_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/BACKUP_RESTORE_RUNBOOK.md) |
-| **Spreadsheet Lock** | ロック取得タイムアウト発生 | SEV-2 | APIログ `LOCK_TIMEOUT` | 書き込み競合プロセスの特定・解除 | 開発リード | [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) |
-| **Map Failure** | `REQUEST_DENIED` 発生 | SEV-2 | クライアント側エラー報告 | Maps API Key クォータ・制限確認 | 運用リード | [DISTRICT_PROVISIONING_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md) |
-| **Auth / BOLA Failure** | 認証失敗連続発生 / 不正地区 | SEV-1 | セキュリティ監視アラート | 対象IP / トークンの一時遮断 | MASTER | [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) |
+| **API Errors** (5xx系) | **TBD / Decision Required** | SEV-2 | Cloud Logging / Stackdriver | GAS実行ログ解析、特定地区遮断 | 運用リード | [BACKUP_RESTORE_RUNBOOK.md](../operations/BACKUP_RESTORE_RUNBOOK.md) |
+| **Queue Backlog** | **TBD / Decision Required** | SEV-3 | クライアントログ / 報告 | オフライン同期エンドポイント確認 | 開発リード | [ADR-012](decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md) |
+| **Duplicate Events** | 同一 requestId 受信 | SEV-3 | API 監査ログ (200 OK 応答) | 冪等性ブロック機能の動作確認 | 担当エンジニア | [API_CONTRACT.md](../api/API_CONTRACT.md) |
+| **Latency** | **TBD / Decision Required** | SEV-3 | GAS Executions 実行時間 | スプレッドシート行数・キャッシュ確認 | 開発リード | [ADR-015](decisions/ADR-015_PERFORMANCE_CONTRACT.md) |
+| **GAS Script Errors** | **TBD / Decision Required** | SEV-2 | Apps Script エラー通知 | Google Workspace 障害情報確認 | 運用リード | [BACKUP_RESTORE_RUNBOOK.md](../operations/BACKUP_RESTORE_RUNBOOK.md) |
+| **Spreadsheet Lock** | ロック取得タイムアウト発生 | SEV-2 | APIログ `LOCK_TIMEOUT` | 書き込み競合プロセスの特定・解除 | 開発リード | [SECURITY_BASELINE.md](../security/SECURITY_BASELINE.md) |
+| **Map Failure** | `REQUEST_DENIED` 発生 | SEV-2 | クライアント側エラー報告 | Maps API Key クォータ・制限確認 | 運用リード | [DISTRICT_PROVISIONING_RUNBOOK.md](../operations/DISTRICT_PROVISIONING_RUNBOOK.md) |
+| **Auth / BOLA Failure** | 認証失敗連続発生 / 不正地区 | SEV-1 | セキュリティ監視アラート | 対象IP / トークンの一時遮断 | MASTER | [SECURITY_BASELINE.md](../security/SECURITY_BASELINE.md) |
 
 *※注: 正式な SLO 閾値は、本番実測データの蓄積および運用体制・SLAの合意を経て確定する（現時点では指標枠組みのみ定義し、閾値はすべて Decision Required とする）。*
 
@@ -1488,13 +1488,13 @@ Phase 20 で確立された監視項目を恒久的な運用指標として整�
 ## 26.9 District Production Acceptance Gate (受入検査規程)
 
 新地区を `ACTIVE` に昇格させる前に、20項目の必須検査を執行する。
-詳細チェック項目は [DISTRICT_PROVISIONING_RUNBOOK.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md) 第4章に規定されており、**全件 PASS が必須条件** である。1項目でも FAIL した地区は本番稼働させてはならない。
+詳細チェック項目は [DISTRICT_PROVISIONING_RUNBOOK.md](../operations/DISTRICT_PROVISIONING_RUNBOOK.md) 第4章に規定されており、**全件 PASS が必須条件** である。1項目でも FAIL した地区は本番稼働させてはならない。
 
 ---
 
 ## 26.10 Data Retention & Privacy Lifecycle (個人情報・データ保持規程)
 
-詳細規程: [DATA_LIFECYCLE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/data/DATA_LIFECYCLE.md)
+詳細規程: [DATA_LIFECYCLE.md](../data/DATA_LIFECYCLE.md)
 
 ### データライフサイクル
 ```text
@@ -1516,7 +1516,7 @@ Create (作成) ──► Use (利用) ──► Retain (保持) ──► Archi
 
 ## 26.11 Secret Lifecycle (機密情報統合管理規程)
 
-詳細規程: [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md) 第3章
+詳細規程: [SECURITY_BASELINE.md](../security/SECURITY_BASELINE.md) 第3章
 
 1. **命名規則の強制**:
    - 地区別 Google Maps API Key: `GOOGLE_MAPS_API_KEY_<DISTRICT_ID>`

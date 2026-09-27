@@ -81,7 +81,7 @@ READ ONLY監査において、現場配布員向けUI（Hアプリ）の現行�
 
 ### (5) Universal原則の適合
 - `active/dashboard/` 配下のスクリプトに特定地区名（KUWANA等）、特定Spreadsheet ID、特定GAS URLのハードコードは一切含めない。
-- すべて [data/config.js](file:///Volumes/SSD_DATA/posting-map-universal/data/config.js)（`window.PMS_CLIENT_CONFIG`）および [data/address_master.csv](file:///Volumes/SSD_DATA/posting-map-universal/data/address_master.csv) から動的解決する。
+- すべて [data/config.js](../../../data/config.js)（`window.PMS_CLIENT_CONFIG`）および [data/address_master.csv](../../../data/address_master.csv) から動的解決する。
 
 ---
 
@@ -103,5 +103,5 @@ READ ONLY監査において、現場配布員向けUI（Hアプリ）の現行�
 ## 4. Compliance & Verification (適合性検証)
 
 本決定書の有効性は、以下の総合検証テストスイートによって機械的に検証・証明される：
-- [tests/test_h_app_core_verification.mjs](file:///Volumes/SSD_DATA/posting-map-universal/tests/test_h_app_core_verification.mjs)
+- [tests/test_h_app_core_verification.mjs](../../../tests/test_h_app_core_verification.mjs)
   - 起動導線、Identity境界、Google Maps設定、Loader二重化抑止、活動入口2段階タップ、状態表示SSOT、Phase境界、Universal原則の8大検証を全数PASSすること。

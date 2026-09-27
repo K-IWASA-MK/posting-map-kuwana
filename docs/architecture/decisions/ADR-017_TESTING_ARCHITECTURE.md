@@ -23,7 +23,7 @@ Universal POSTING MAP では、Phase 7〜15 の実装過程において既に 74
 - 重複テストの作成を厳禁とし、テストカバレッジのトレーサビリティをアンカーテストで自動保証する。
 - 実行環境の境界（Node.js VM vs Chrome CDP vs 実機受入プロトコル）を明確に分離する。
 - 弱電波環境（Weak Network）における客観的実測・観測指針を規定し、勝手な新規SLAの捏造を排除する。
-- レガシーテスト・Phase 12除外コードの隔離（`tests/legacy/`）を公式化する。
+- レガシーテスト・Phase 12除外コードの完全排除（Git履歴へ委ねる）を公式化する。
 
 ---
 
@@ -128,14 +128,14 @@ Phase 16 における Weak Network 検証において、以下の規程を遵守
 
 ---
 
-## 5. Decision: Quarantine Policy for Legacy Tests
+## 5. Decision: Legacy Quarantine Elimination & Purge Policy (CURRENT TREE IS THE TRUTH)
 
-以下のファイルは現役テストスイートから正式に隔離され、`tests/legacy/` に配置される：
-- `tests/legacy/test_bulletin_lifecycle.mjs`（Phase 12 で除外された掲示板機能のコード）
-- `tests/legacy/dashboard_verification_gate.mjs`（外部 Playwright 依存）
-- `tests/legacy/test_initial_display_sync.mjs`（外部 Playwright 依存）
+以下のレガシーコードおよび外部依存テストは、CURRENT TREE IS THE TRUTH 原則に基づき、Current Tree から完全に排除・削除され、Git履歴へ委ねられる：
+- `test_bulletin_lifecycle.mjs`（Phase 12 で除外された掲示板機能のコード）
+- `dashboard_verification_gate.mjs`（外部 Playwright 依存）
+- `test_initial_display_sync.mjs`（外部 Playwright 依存）
 
-これらは現役テストの自動実行対象から除外され、全回帰テストにおいて 100% の再現性とクリーンな実行を維持する。
+これらは現役テストの自動実行対象から完全に除外され、全回帰テストにおいて 100% の再現性とクリーンな実行を維持する。
 
 ---
 

@@ -3,12 +3,12 @@
 - **Version**: 1.0.0
 - **Status**: OFFICIAL SECURITY STANDARD (SSOT)
 - **Target**: Universal POSTING MAP Engine v1.0
-- **Supreme Authority**: [AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md) §8
-- **Release Baseline**: [UNIVERSAL_RELEASE_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_RELEASE_BASELINE.md)
+- **Supreme Authority**: [AGENTS.md](../../AGENTS.md) §8
+- **Release Baseline**: [UNIVERSAL_RELEASE_BASELINE.md](../architecture/UNIVERSAL_RELEASE_BASELINE.md)
 - **Related ADRs**:
-  - [ADR-016: Security Architecture](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-016_SECURITY_ARCHITECTURE.md)
-  - [ADR-023: Dashboard Shared PIN Session Specification](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-023_DASHBOARD_SHARED_PIN_SESSION_SPECIFICATION.md)
-  - [ADR-022: Multi-Region Architecture Specification](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-022_MULTI_REGION_ARCHITECTURE_SPECIFICATION.md)
+  - [ADR-016: Security Architecture](../architecture/decisions/ADR-016_SECURITY_ARCHITECTURE.md)
+  - [ADR-023: Dashboard Shared PIN Session Specification](../architecture/decisions/ADR-023_DASHBOARD_SHARED_PIN_SESSION_SPECIFICATION.md)
+  - [ADR-022: Multi-Region Architecture Specification](../architecture/decisions/ADR-022_MULTI_REGION_ARCHITECTURE_SPECIFICATION.md)
 
 ---
 

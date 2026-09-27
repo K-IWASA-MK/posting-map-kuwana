@@ -4,13 +4,13 @@
 - **Status**: RELEASED / FROZEN
 - **Baseline Commit**: `7a6fda8846dee9cccf81c60c8ee8119d00285504`
 - **Release Date**: 2026-09-27
-- **Supreme Authority**: [AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md)
-- **Master Plan**: [01_DESIGN_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/01_DESIGN_CONTRACT.md)
+- **Supreme Authority**: [AGENTS.md](../../AGENTS.md)
+- **Master Plan**: [01_DESIGN_CONTRACT.md](01_DESIGN_CONTRACT.md)
 - **Related Specifications**:
-  - API契約: [API_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/api/API_CONTRACT.md)
-  - データ辞書: [DATA_DICTIONARY.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/data/DATA_DICTIONARY.md)
-  - セキュリティ基準: [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md)
-  - 親GAS動的ルーティング設計: [UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md)
+  - API契約: [API_CONTRACT.md](../api/API_CONTRACT.md)
+  - データ辞書: [DATA_DICTIONARY.md](../data/DATA_DICTIONARY.md)
+  - セキュリティ基準: [SECURITY_BASELINE.md](../security/SECURITY_BASELINE.md)
+  - 親GAS動的ルーティング設計: [UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md](UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md)
 
 ---
 

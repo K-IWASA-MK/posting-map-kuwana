@@ -727,7 +727,7 @@ AI エージェントは単一の全能権限を持たず、責務に応じた�
 - **読み書きのフェーズ分離**: 探索・調査・監査フェーズでは WRITE ツールを一切提供せず、READ ツールのみで実行する。
 
 ### (5) Workspace Boundary (リポジトリ境界・他地区参照禁止【永久原則】)
-- リポジトリの Git root（`/Volumes/SSD_DATA/posting-map-universal`）を操作・探索の絶対境界とする。
+- リポジトリの Git root を操作・探索の絶対境界とする。
 - SSD 上に存在する他地区（OKAYAMA-02, KUWANA 等）のリポジトリやフォルダーへの参照・探索・実行は、MCP レベルで強制遮断される。
 
 ### (6) Secret Isolation & Masking

@@ -28,7 +28,7 @@ model: inherit
 2. **最小構成（Lean）への引き算**:
    「新地区を1地区増やすために本当に必要なもの」だけを残し、製造工程・中間ファイル・手作業を極限まで削ぎ落とすこと。
 3. **次回量産パイプラインの昇格・一元化**:
-   最適化された製造ラインを、次回以降「地区名」と「ドメイン」の2入力だけで自律完走する**正式な新地区製造ワークフロー（`district-deployment/workflow.md`）**として昇格・確定させること（余計な新Skill増設を排した完全引き算の徹底）。
+   最適化された製造ラインを、次回以降「地区名」と「ドメイン」の2入力だけで自律完走する**正式な新地区プロビジョニング手順（`docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md`）**として昇格・確定させること（余計な新Skill増設を排した完全引き算の徹底）。
 
 
 ---
@@ -101,7 +101,7 @@ model: inherit
 - **実行内容**:
   1. 不要スクリプト・不要ワーカー・実証記録機構の安全パージ。
   2. 重複ルール・ワークフローの統合・改編。
-  3. 次回以降の新地区製造を自律完走させる**正式な新地区製造ワークフロー（`district-deployment/workflow.md`）の確定**（新Skill不設の引き算徹底）。
+  3. 次回以降の新地区製造を自律完走させる**正式な新地区プロビジョニング手順（`docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md`）の確定**（新Skill不設の引き算徹底）。
 
 ### Stage 4: Universal Regression & Auditor Handover（回帰検証・監査引渡し）
 - **動作**: `run_command` を解禁し、全テスト・全品質ゲートを実行。
@@ -116,7 +116,7 @@ model: inherit
 
 1. **`Lean Architecture Blueprint`**:
    現行の全資産依存関係、4分類マトリクス（残す/統合/廃止/新設）、および次世代最小パイプライン設計書。
-2. **決定論的Lean新地区製造ワークフロー（`district-deployment/workflow.md`）**:
+2. **決定論的Lean新地区プロビジョニング手順（`docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md`）**:
    桑名市製造および次回以降の全地区量産を2入力（地区名・ドメイン）で完走させる決定論的プロトコル。
 3. **Auditor検品パッケージ**:
    構造改革後もUniversal Engineと全ゲートが100%健全に機能している客観的証跡ログ。

@@ -3,9 +3,9 @@
 - **Version**: 1.0.0
 - **Status**: OFFICIAL STANDARD (SSOT)
 - **Target**: Universal POSTING MAP Engine v1.0
-- **Supreme Authority**: [AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md)
-- **Security Baseline**: [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md)
-- **Data Lifecycle**: [DATA_LIFECYCLE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/data/DATA_LIFECYCLE.md)
+- **Supreme Authority**: [AGENTS.md](../../AGENTS.md)
+- **Security Baseline**: [SECURITY_BASELINE.md](../security/SECURITY_BASELINE.md)
+- **Data Lifecycle**: [DATA_LIFECYCLE.md](../data/DATA_LIFECYCLE.md)
 
 ---
 

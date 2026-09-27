@@ -25,7 +25,7 @@
 - Rollback procedure
 ```
 
-本仕様書は、Phase 18 で確定した [ADR-019: Migration Architecture](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-019_MIGRATION_ARCHITECTURE.md) を前提とし、本番環境への切替（Cutover）および障害発生時の復元（Rollback）に関する 7 つの運用工程を公式な標準運用手順（SOP）として確定・固定するものである。
+本仕様書は、Phase 18 で確定した [ADR-019: Migration Architecture](ADR-019_MIGRATION_ARCHITECTURE.md) を前提とし、本番環境への切替（Cutover）および障害発生時の復元（Rollback）に関する 7 つの運用工程を公式な標準運用手順（SOP）として確定・固定するものである。
 
 本フェーズでは**切替手順の具体化と安全な実行条件の検証**を完了対象とし、実データの一括書き換えや強制切替は本手順に従い別途承認の下で実施する。
 

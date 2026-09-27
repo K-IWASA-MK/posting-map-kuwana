@@ -23,7 +23,6 @@ AI社員は、特定の高度な業務プロセスを執行する際、自己判
 
 ### 開発・検証業務の執行時
 - 開発・変更・完了報告を行う際は、必ず `.agents/workflows/development/workflow.md` をロードし、8-Stage Execution Protocol に厳格に従うこと。
-- ※旧新地区複製ワークフロー（`district-deployment/workflow.md`）は旧物理コピーモデル専用（DEPRECATED）であり、通常のAI開発・運用経路からは切断されている。
 
 ---
 

@@ -16,7 +16,7 @@ Code → Git → clasp push → GAS deployment → Production WebApp → API ver
 ```
 
 本システム（Universal POSTING MAP）では、「Git push で完了としない」「本番Runtimeでのエビデンスを完了条件とする」という鉄則を定めている。
-また、[DEPLOYMENT_REGISTRY.md](file:///Volumes/SSD_DATA/posting-map-universal/DEPLOYMENT_REGISTRY.md) にて以下の最高位原則が規定されている：
+また、[DEPLOYMENT_REGISTRY.md](../../../DEPLOYMENT_REGISTRY.md) にて以下の最高位原則が規定されている：
 > **Production の Web App URL はシステム資産である。**
 > 更新対象は URL ではなく、Deployment のコードのみとする。
 > URL を変更してはならない。

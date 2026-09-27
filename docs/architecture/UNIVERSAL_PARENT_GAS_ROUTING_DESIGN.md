@@ -5,18 +5,18 @@
 **Date**: 2026-09-23
 **Target**: POSTING MAP Universal Engine (Architecture Layer)
 **Related Documents**:
-- 最高位就業規則: [AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md)
-- 最高位設計契約: [01_DESIGN_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/01_DESIGN_CONTRACT.md)
-- アーキテクチャ決定: [ADR-010.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-010.md)
-- API契約: [API_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/api/API_CONTRACT.md) §6.1
-- データライフサイクル: [DATA_LIFECYCLE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/data/DATA_LIFECYCLE.md) §6
+- 最高位就業規則: [AGENTS.md](../../AGENTS.md)
+- 最高位設計契約: [01_DESIGN_CONTRACT.md](01_DESIGN_CONTRACT.md)
+- アーキテクチャ決定: [ADR-010.md](decisions/ADR-010.md)
+- API契約: [API_CONTRACT.md](../api/API_CONTRACT.md) §6.1
+- データライフサイクル: [DATA_LIFECYCLE.md](../data/DATA_LIFECYCLE.md) §6
 
 ---
 
 ## 1. 最上位原則とアーキテクチャ概要
 
 ### 1.1 基本憲法
-[AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md) 第1条に基づき、以下の不変構造を厳守する：
+[AGENTS.md](../../AGENTS.md) 第1条に基づき、以下の不変構造を厳守する：
 ```text
 単独アプリ ─── 単独リポジトリ ─── 単独Standalone GAS ─── 単独Web App ─── 単独ドメイン
 「地域差はすべてデータで扱う。アプリ、リポジトリ、GASを複製しない」

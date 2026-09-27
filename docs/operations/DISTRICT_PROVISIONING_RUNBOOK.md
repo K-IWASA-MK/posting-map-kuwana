@@ -3,10 +3,10 @@
 - **Version**: 1.0.0
 - **Status**: OFFICIAL STANDARD (SSOT)
 - **Target**: Universal POSTING MAP Engine v1.0
-- **Supreme Authority**: [AGENTS.md](file:///Volumes/SSD_DATA/posting-map-universal/AGENTS.md)
-- **Release Baseline**: [UNIVERSAL_RELEASE_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_RELEASE_BASELINE.md)
-- **Security Baseline**: [SECURITY_BASELINE.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/security/SECURITY_BASELINE.md)
-- **Parent GAS Routing**: [UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md)
+- **Supreme Authority**: [AGENTS.md](../../AGENTS.md)
+- **Release Baseline**: [UNIVERSAL_RELEASE_BASELINE.md](../architecture/UNIVERSAL_RELEASE_BASELINE.md)
+- **Security Baseline**: [SECURITY_BASELINE.md](../security/SECURITY_BASELINE.md)
+- **Parent GAS Routing**: [UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md](../architecture/UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md)
 
 ---
 
@@ -80,12 +80,13 @@
 - **Preconditions**:
   - Stage 1 で自治体コードおよび境界定義が確定していること。
 - **Input**:
-  - e-Stat（国勢調査小地域境界データ・国勢調査人口世帯数）
-  - 法務省登記所備付地図 / デジタル庁アドレス・ベース・レジストリ（町丁目名・街区）
+  - 国土交通省 街区レベル位置参照情報（大字・町丁目・小字境界・代表点）
+  - 総務省 e-Stat 令和2年国勢調査小地域境界データ（Shapefile / 世界測地系）および人口・世帯数（JINKO / SETAI）
+  - デジタル庁 アドレス・ベース・レジストリ（住所マスター原本）
 - **Action**:
-  1. 国勢調査小地域境界（GeoJSON）および住所マスター（`address_master.csv`）を生成。
-  2. 自治体マスター（`municipality_master.csv`）を整備。
-  3. `scripts/build-district-master.py` または小地域統合ツールを実行し、飛び地（MultiPolygon）の統合および丁目・小地域コードの正規化を実施。
+  1. `scripts/fetch-district-raw-data.py` を実行し、国土交通省および e-Stat 一次データを完全自律取得（ゼロ人間介入原則：`docs/architecture/DISTRICT_DATA_ACQUISITION_RULE.md` 厳格遵守）。
+  2. `census-small-area-master` プロトコルおよび `scripts/generate-boundaries-geojson.py` を実行し、国勢調査小地域（幾何・人口・世帯数）と国交省位置参照情報（小字・完成住所）を空間結合（Point in Polygon）。
+  3. 飛び地（MultiPolygon）の統合、水面等非居住区域の除外、丁目・小地域コードの正規化を実施し、マスター3点セット（`boundaries.geojson`, `address_master.csv`, `municipality_master.csv`）を生成。
 - **Validation**:
   - GeoJSONの構文チェック（RFC 7946準拠、WGS84座標系）。
   - 住所マスターの `townId`、`町丁目名`、`世帯数`、`人口` の欠損・不整合ゼロ確認。
@@ -229,10 +230,13 @@
   - 検証用テスター端末（スマートフォン実機 iOS/Android）
   - 管理者用ブラウザ（PC）
 - **Action**:
-  - 本書第4章「District Production Acceptance Gate」の全20項目を順次実行・検品する。
+  1. 機械的受入ゲート `node tests/test_registry_provisioning_gate.mjs` を実行し、Gate 1〜7（Registry整合、enabled検証、Pure DB完全性、フォールバック不発生、MapsKey等）の全件合格を確認する。
+  2. 本書第4章「District Production Acceptance Gate」の全20項目を順次実行・検品する。
 - **Validation**:
+  - `test_registry_provisioning_gate.mjs` が 100% PASS すること。
   - 全20項目がすべて **PASS** すること（1項目でもFAILなら不合格）。
 - **Evidence**:
+  - `test_registry_provisioning_gate.mjs` 実行ログ
   - Production Acceptance レポート
   - 実機スクリーンショット
   - API Smoke Test 通信ログ

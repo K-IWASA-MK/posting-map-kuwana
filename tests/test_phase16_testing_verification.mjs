@@ -53,10 +53,9 @@ for (const [category, items] of Object.entries(requirementsMatrix)) {
 }
 console.log(`  ✅ GATE 1 PASS: Master Plan 全 18 要件 (${totalMapped} マッピング) の対応テストファイルが完全実在`);
 
-// ─── Gate 2: レガシー・除外テストの隔離完全性 ──────────────────────────────
-console.log("\n▶ [GATE 2] Quarantined Legacy Test Isolation");
-assert.ok(fs.existsSync(LEGACY_DIR), "tests/legacy directory must exist");
-assert.ok(fs.existsSync(path.join(LEGACY_DIR, 'README.md')), "tests/legacy/README.md must exist");
+// ─── Gate 2: レガシー・除外テストの完全排除（CURRENT TREE IS THE TRUTH） ───
+console.log("\n▶ [GATE 2] Quarantined Legacy Test Purge & Isolation Audit");
+assert.ok(!fs.existsSync(LEGACY_DIR), "tests/legacy directory must NOT exist (purged to Git history)");
 
 const legacyFiles = [
   'test_bulletin_lifecycle.mjs',
@@ -65,10 +64,9 @@ const legacyFiles = [
 ];
 
 for (const f of legacyFiles) {
-  assert.ok(fs.existsSync(path.join(LEGACY_DIR, f)), `Legacy test must be quarantined in tests/legacy/${f}`);
   assert.ok(!fs.existsSync(path.join(TESTS_DIR, f)), `Legacy test must NOT exist in active tests/ root: ${f}`);
 }
-console.log("  ✅ GATE 2 PASS: Phase 12除外コード・Playwright依存コードが tests/legacy/ に完全隔離");
+console.log("  ✅ GATE 2 PASS: 廃止テストおよび tests/legacy/ が完全排除され、アクティブ tests/ ルートへの混入ゼロ");
 
 // ─── Gate 3: ゼロ外部依存（Zero External Dependency）静的監査 ───────────────
 console.log("\n▶ [GATE 3] Zero External Dependency Static Audit");
@@ -107,7 +105,7 @@ const adr17Content = fs.readFileSync(adr17Path, 'utf8');
 assert.ok(adr17Content.includes('ACCEPTED'), "ADR-017 status must be ACCEPTED");
 assert.ok(adr17Content.includes('4-Layer Testing Pyramid'), "ADR-017 must define 4-Layer Testing Pyramid");
 assert.ok(adr17Content.includes('Weak Network Evaluation Policy'), "ADR-017 must define Weak Network policy");
-assert.ok(adr17Content.includes('Quarantine Policy'), "ADR-017 must define Quarantine Policy");
+assert.ok(adr17Content.includes('Quarantine') && adr17Content.includes('Purge Policy'), "ADR-017 must define Quarantine Elimination & Purge Policy");
 
 console.log("  ✅ GATE 5 PASS: ADR-017 Testing Architecture と完全整合");
 

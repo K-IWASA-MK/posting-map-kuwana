@@ -10,7 +10,6 @@
   "scripts": {
     "test": "node tests/run_all_tests.mjs",
     "gate:minus-1": "node scripts/verify-gate-minus-1.mjs",
-    "test:dashboard:gate": "node tests/legacy/dashboard_verification_gate.mjs",
     "liff:acquire": "node scripts/acquire-liff-id.mjs",
     "check:ssot": "node scripts/validate-gas-endpoint-ssot.mjs",
     "verify:gas": "node scripts/verify-gas-deployment.mjs",

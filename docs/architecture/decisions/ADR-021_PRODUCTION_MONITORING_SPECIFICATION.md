@@ -12,10 +12,10 @@ POSTING MAP Universal Engine は、フィールドオペレーション（現場
    - Google Cloud Logging、Google Apps Script 実行ログ/ダッシュボード、ブラウザ標準 Web Performance API、IndexedDB（`DurableQueue`）等の既存機構を最大限に活用する。
    - Datadog、Sentry、New Relic、PagerDuty 等の外部有償SaaSや複雑なインシデント管理基盤、オンコールシステムは導入しない（Universal 設計境界およびコスト・運用最小化の徹底）。
 2. **性能契約の SSOT 厳守（Phase 14 / ADR-015）**:
-   - 性能指標・SLA目標値は、Phase 14 で確定した [ADR-015: Universal POSTING MAP Performance Contract & SLA Specification](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-015_PERFORMANCE_CONTRACT.md) および [docs/api/API_CONTRACT.md](file:///Volumes/SSD_DATA/posting-map-universal/docs/api/API_CONTRACT.md) 第20章を唯一の SSOT とする。
+   - 性能指標・SLA目標値は、Phase 14 で確定した [ADR-015: Universal POSTING MAP Performance Contract & SLA Specification](ADR-015_PERFORMANCE_CONTRACT.md) および [docs/api/API_CONTRACT.md](../../api/API_CONTRACT.md) 第20章を唯一の SSOT とする。
    - Phase 20 において勝手に新たな性能SLAを策定・再定義することは厳格に禁止する。
 3. **Freeze と DurableQueue の因果関係**:
-   - Phase 19（[ADR-020](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-020_CUTOVER_ROLLBACK_SPECIFICATION.md)）で定義した Freeze（書き込み停止・業務凍結）を厳格に実施する。
+   - Phase 19（[ADR-020](ADR-020_CUTOVER_ROLLBACK_SPECIFICATION.md)）で定義した Freeze（書き込み停止・業務凍結）を厳格に実施する。
    - `DurableQueue`（IndexedDB）の役割は、Freeze 開始時点で現場端末側に残存する未送信データを保護・保持することであり、DurableQueue の存在を理由に業務停止・Freeze を回避してはならない。
 4. **Severity 1〜3 の位置づけ（仕様の上位化禁止）**:
    - Severity 1〜3 は、Phase 20 の運用における現場・管理者のトリアージ（対応優先度判断）のための**最小補助分類**であり、マスタープランにない新規インフラ、SLA、監視基盤を要求するものではない。
@@ -63,7 +63,7 @@ POSTING MAP Universal Engine は、フィールドオペレーション（現場
 - **一次対応**:
   1. 発生している API アクション名（`updateRecordWithGPSPhoto`, `getRanking` 等）を特定。
   2. スプレッドシート側の列構造破損やシート名不一致（`DISTRICT_MISMATCH` 等）がないか確認。
-  3. 原因が直近デプロイのコード起因である場合、[ADR-020 Level 1 外科的ロールバックまたは直前GASバージョンへのロールバック](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-020_CUTOVER_ROLLBACK_SPECIFICATION.md) を発動。
+  3. 原因が直近デプロイのコード起因である場合、[ADR-020 Level 1 外科的ロールバックまたは直前GASバージョンへのロールバック](ADR-020_CUTOVER_ROLLBACK_SPECIFICATION.md) を発動。
 
 #### (2) queue backlog 監視運用
 - **検知メカニズム**:
@@ -99,7 +99,7 @@ POSTING MAP Universal Engine は、フィールドオペレーション（現場
 - **一次対応**:
   1. Web App タイムアウト（30秒）またはバッチタイムアウト（6分）の有無を確認。
   2. `UrlFetchApp` 日次クォータ（20,000回/日）の消費状況を Google Workspace 管理コンソールで確認。
-  3. `ScriptProperties`（`DISTRICT_REGISTRY` 等）の破損が疑われる場合は、[ADR-018](file:///Volumes/SSD_DATA/posting-map-universal/docs/architecture/decisions/ADR-018_PRODUCTION_DEPLOYMENT_SPECIFICATION.md) に基づきプロパティを再設定。
+  3. `ScriptProperties`（`DISTRICT_REGISTRY` 等）の破損が疑われる場合は、[ADR-018](ADR-018_PRODUCTION_DEPLOYMENT_SPECIFICATION.md) に基づきプロパティを再設定。
 
 #### (6) Spreadsheet lock 監視運用
 - **検知メカニズム**:

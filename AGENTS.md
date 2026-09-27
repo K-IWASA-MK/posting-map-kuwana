@@ -43,7 +43,6 @@ AI社員は作業フェーズに応じて、必ず以下の詳細規程・ワー
 - 検証・検品規程 & HARD STOP条件 (V1〜V4): [.agents/rules/verification-gates.md](.agents/rules/verification-gates.md)
 - 権限境界・Scope最小化・詳細禁止事項: [.agents/rules/agent-authority.md](.agents/rules/agent-authority.md)
 - AI社員基盤・アーキテクチャ体系: [docs/ai-foundation.md](docs/ai-foundation.md)
-- Legacy district-deployment workflow (.agents/workflows/district-deployment/workflow.md) is deprecated and must not be used.
 
 ## 8. 秘密情報ファイルの不可侵・非表示原則 (Confidentiality & Secret Protection) — ABSOLUTE
 - `.env`, `.secrets/*`, `*.json`（サービスアカウント等の鍵ファイル）, `*.pem` 等の機密ファイルを、`view_file`、`cat`、`read_file`、スクリプト実行等によりコンテキストやチャット画面・ログに展開・出力することを一切禁止する。
