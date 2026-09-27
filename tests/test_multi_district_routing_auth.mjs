@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 console.log('================================================================');
 console.log('🧪 MULTI-DISTRICT DYNAMIC ROUTING & AUTH BOUNDARY VERIFICATION');
@@ -98,9 +99,30 @@ global.PropertiesService = {
       },
       setProperty(key, val) {
         mockScriptProperties[key] = String(val);
+      },
+      setProperties(obj) {
+        for (const [k, v] of Object.entries(obj)) {
+          mockScriptProperties[k] = String(v);
+        }
       }
     };
   }
+};
+
+global.DriveApp = {
+  getFolderById(id) {
+    return {
+      getId() { return id; }
+    };
+  }
+};
+
+global.Utilities = {
+  computeDigest(algo, str) {
+    return Array.from(crypto.createHash('sha256').update(str).digest());
+  },
+  DigestAlgorithm: { SHA_256: 'SHA_256' },
+  Charset: { UTF_8: 'UTF_8' }
 };
 
 global.SpreadsheetApp = {
@@ -439,6 +461,86 @@ runTest("Scenario 9: 配布ランキングの地区別分離", () => {
   assert.equal(dataOkayama.ranking.length, 1);
   assert.equal(dataOkayama.ranking[0].staffId, "O001");
   assert.equal(dataOkayama.ranking[0].count, 250);
+});
+
+// -----------------------------------------------------------------------------
+// TEST 10: Generation 2 オブジェクト形式 Registry の解決
+// -----------------------------------------------------------------------------
+runTest("Scenario 10: Generation 2 オブジェクト形式 Registry の動的解決", () => {
+  const currentReg = JSON.parse(PropertiesService.getScriptProperties().getProperty("DISTRICT_REGISTRY"));
+  currentReg["GEN2_DISTRICT"] = {
+    spreadsheetId: "ss-kuwana-id",
+    name: "GEN2_DISTRICT",
+    enabled: true
+  };
+  PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", JSON.stringify(currentReg));
+  SpreadsheetResolver.getInstance().clearCache();
+
+  const resolvedId = SpreadsheetResolver.getInstance().getSpreadsheetId("GEN2_DISTRICT");
+  assert.equal(resolvedId, "ss-kuwana-id");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 11: enabled: false 地区のアクセス遮断
+// -----------------------------------------------------------------------------
+runTest("Scenario 11: enabled: false 地区のアクセス遮断", () => {
+  const currentReg = JSON.parse(PropertiesService.getScriptProperties().getProperty("DISTRICT_REGISTRY"));
+  currentReg["DISABLED_DISTRICT"] = {
+    spreadsheetId: "ss-kuwana-id",
+    name: "DISABLED_DISTRICT",
+    enabled: false
+  };
+  PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", JSON.stringify(currentReg));
+  SpreadsheetResolver.getInstance().clearCache();
+
+  assert.throws(() => {
+    SpreadsheetResolver.getInstance().getSpreadsheetId("DISABLED_DISTRICT");
+  }, /not found in DISTRICT_REGISTRY/);
+});
+
+// -----------------------------------------------------------------------------
+// TEST 12: bootstrapEnvironment による新地区追加時の既存地区保護
+// -----------------------------------------------------------------------------
+runTest("Scenario 12: bootstrapEnvironment による既存地区の保護と新地区追加", () => {
+  const initialReg = {
+    "EXISTING_A": { spreadsheetId: "ss-a-id", enabled: true }
+  };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(initialReg);
+  mockScriptProperties["TARGET_SPREADSHEET_ID"] = "legacy-ss-id";
+  const validToken = "super-secret-provisioning-token-123456";
+  mockScriptProperties["PROVISIONING_TOKEN_HASH"] = crypto.createHash('sha256').update(validToken).digest('hex');
+  SpreadsheetResolver.getInstance().clearCache();
+
+  // 新規地区スプレッドシートのモック（名前は districtId と完全一致）
+  const ssNewB = new MockSpreadsheet("ss-b-id", "NEW_DISTRICT_B");
+  mockSpreadsheets["ss-b-id"] = ssNewB;
+
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "bootstrapEnvironment",
+        districtId: "NEW_DISTRICT_B",
+        targetSpreadsheetId: "ss-b-id",
+        storageParentId: "folder-b-id",
+        provisioningToken: validToken
+      })
+    }
+  };
+
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+  assert.equal(data.success, true);
+  assert.equal(data.districtRegistryUpdated, true);
+
+  const updatedReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  assert.ok(updatedReg["EXISTING_A"], "EXISTING_A must be preserved");
+  assert.equal(updatedReg["EXISTING_A"].spreadsheetId, "ss-a-id");
+  assert.ok(updatedReg["NEW_DISTRICT_B"], "NEW_DISTRICT_B must be added");
+  assert.equal(updatedReg["NEW_DISTRICT_B"].spreadsheetId, "ss-b-id");
+  assert.equal(updatedReg["NEW_DISTRICT_B"].enabled, true);
+
+  // TARGET_SPREADSHEET_ID が上書きされていないこと（既存値保護）
+  assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id");
 });
 
 console.log('\n================================================================');

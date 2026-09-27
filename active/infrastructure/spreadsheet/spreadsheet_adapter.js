@@ -47,7 +47,17 @@ class SpreadsheetResolver {
 
         const normalizedKey = Object.keys(registry).find(k => k.trim().toUpperCase() === cleanDistrictId);
         if (normalizedKey && registry[normalizedKey]) {
-          return String(registry[normalizedKey]).trim();
+          const entry = registry[normalizedKey];
+          if (typeof entry === "object" && entry !== null) {
+            if (entry.enabled === false) {
+              throw new Error(`[SpreadsheetResolver] District "${cleanDistrictId}" not found in DISTRICT_REGISTRY.`);
+            }
+            if (entry.spreadsheetId) {
+              return String(entry.spreadsheetId).trim();
+            }
+          } else {
+            return String(entry).trim();
+          }
         }
 
         throw new Error(`[SpreadsheetResolver] District "${cleanDistrictId}" not found in DISTRICT_REGISTRY.`);

@@ -35,7 +35,8 @@ const testSuites = [
   'test_sec001_dashboard_auth_fix.mjs',
   'test_sec005_getsysteminfo_disclosure.mjs',
   'test_sec007_district_maps_api_key.mjs',
-  'test_gap001_ready_freeze_regression.mjs'
+  'test_gap001_ready_freeze_regression.mjs',
+  'test_registry_provisioning_gate.mjs'
 ];
 
 console.log("====================================================");

@@ -79,7 +79,11 @@ function handleGetMapsApiKey(districtId, sessionToken) {
       try {
         const regRaw = props.getProperty('DISTRICT_REGISTRY') || '{}';
         const registry = JSON.parse(regRaw);
-        isRegistered = Object.keys(registry).some(k => k.trim().toUpperCase() === cleanDistrictId);
+        const foundKey = Object.keys(registry).find(k => k.trim().toUpperCase() === cleanDistrictId);
+        if (foundKey) {
+          const entry = registry[foundKey];
+          isRegistered = (typeof entry === 'object' && entry !== null) ? entry.enabled !== false : !!entry;
+        }
       } catch (eReg) {
         console.error('[handleGetMapsApiKey] Failed to parse DISTRICT_REGISTRY:', eReg);
       }
@@ -696,14 +700,35 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Script Properties 設定
+    // Generation 2: DISTRICT_REGISTRY への追加・更新（既存他地区の完全保護）
+    const cleanDistrictId = String(districtId).trim().toUpperCase();
+    const regRaw = props.getProperty("DISTRICT_REGISTRY") || "{}";
+    let registry = {};
+    try {
+      registry = JSON.parse(regRaw);
+    } catch (eReg) {
+      registry = {};
+    }
+
+    registry[cleanDistrictId] = {
+      spreadsheetId: targetSpreadsheetId,
+      storageFolderId: storageParentId,
+      name: districtId,
+      enabled: true
+    };
+
     const newProps = {
-      DISTRICT_ID: districtId,
-      TARGET_SPREADSHEET_ID: targetSpreadsheetId,
-      SPREADSHEET_ID: targetSpreadsheetId,
+      DISTRICT_REGISTRY: JSON.stringify(registry),
       STORAGE_PARENT_ID: storageParentId,
       PROVISIONING_TOKEN_HASH: computeSha256(token.trim()).toLowerCase()
     };
+
+    // 初期環境向けGeneration 1互換（既存のTARGET_SPREADSHEET_IDが未設定の場合のみ初期設定）
+    if (!props.getProperty("TARGET_SPREADSHEET_ID")) {
+      newProps.TARGET_SPREADSHEET_ID = targetSpreadsheetId;
+      newProps.SPREADSHEET_ID = targetSpreadsheetId;
+      newProps.DISTRICT_ID = districtId;
+    }
 
     props.setProperties(newProps);
 
@@ -720,7 +745,8 @@ function doPost(e) {
       message: "Environment bootstrapped successfully.",
       districtId: districtId,
       targetSpreadsheetId: targetSpreadsheetId,
-      storageParentId: storageParentId
+      storageParentId: storageParentId,
+      districtRegistryUpdated: true
     })).setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'provisionDistrict') {
     const token = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)))
