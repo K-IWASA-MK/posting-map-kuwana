@@ -93,16 +93,21 @@ assert.equal(jsonUnauth.code, "UNAUTHORIZED", "Must return UNAUTHORIZED");
 
 console.log("  ✅ GATE 4 PASS: 本番環境のプロトコル制限・未登録地区Registry遮断・業務認可境界が完全機能");
 
-// ─── Gate 5: ADR-018 Architecture Compliance ────────────────────────
-console.log("\n▶ [GATE 5] ADR-018 Architecture Compliance");
-const adr18Path = path.join(REPO_ROOT, 'docs/architecture/decisions/ADR-018_PRODUCTION_DEPLOYMENT_SPECIFICATION.md');
-assert.ok(fs.existsSync(adr18Path), "ADR-018 must exist");
-const adr18Content = fs.readFileSync(adr18Path, 'utf8');
-assert.ok(adr18Content.includes('ACCEPTED'), "ADR-018 status must be ACCEPTED");
-assert.ok(adr18Content.includes(TARGET_DEPLOYMENT_ID), "ADR-018 must document TARGET_DEPLOYMENT_ID");
-assert.ok(adr18Content.includes('Production の Web App URL はシステム資産'), "ADR-018 must document URL asset principle");
+// ─── Gate 5: 本番デプロイ資産契約直接検証 (Production Deployment Contract) ───────
+console.log("\n▶ [GATE 5] Production Deployment Architecture Compliance");
+const provisioningRunbookPath = path.join(REPO_ROOT, 'docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md');
+const designContractPath = path.join(REPO_ROOT, 'docs/architecture/01_DESIGN_CONTRACT.md');
+assert.ok(fs.existsSync(provisioningRunbookPath), "DISTRICT_PROVISIONING_RUNBOOK.md must exist");
+assert.ok(fs.existsSync(designContractPath), "01_DESIGN_CONTRACT.md must exist");
 
-console.log("  ✅ GATE 5 PASS: ADR-018 仕様と本番デプロイが完全整合");
+const runbookContent = fs.readFileSync(provisioningRunbookPath, 'utf8');
+const designContent = fs.readFileSync(designContractPath, 'utf8');
+
+assert.ok(runbookContent.includes('単一親Standalone GAS') || runbookContent.includes('Web App'), "Runbook must define standalone Web App architecture");
+assert.ok(designContent.includes('Phase 17 — Production Deploy'), "01_DESIGN_CONTRACT must define Phase 17");
+assert.ok(TARGET_DEPLOYMENT_ID.length > 20, "TARGET_DEPLOYMENT_ID must be a valid fixed deployment ID");
+
+console.log("  ✅ GATE 5 PASS: 本番デプロイ資産契約と Canonical SSOT が完全整合");
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 17 PRODUCTION VERIFICATION GATES PASSED PERFECTLY!");

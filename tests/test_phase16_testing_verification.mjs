@@ -39,7 +39,7 @@ const requirementsMatrix = {
   realDevice: [
     { req: 'weak network', file: 'measure_chrome_real.mjs', desc: 'Chrome CDP 3G throttling measurement (300ms latency)' },
     { req: 'offline', file: 'measure_chrome_real.mjs', desc: 'Chrome CDP offline disconnection measurement' },
-    { req: 'iOS / Android / LINE', file: '../docs/architecture/decisions/ADR-017_TESTING_ARCHITECTURE.md', desc: 'Formal manual acceptance protocol defined' }
+    { req: 'iOS / Android / LINE', file: '../docs/architecture/01_DESIGN_CONTRACT.md', desc: 'Formal manual acceptance protocol defined' }
   ]
 };
 
@@ -97,17 +97,22 @@ assert.ok(!chromeRealContent.includes('weakPass'), "Must NOT introduce arbitrary
 
 console.log("  ✅ GATE 4 PASS: Chrome CDP による Weak Network 実測を網羅し、勝手な新規SLAは不設定");
 
-// ─── Gate 5: ADR-017 仕様整合性 ─────────────────────────────────────────────
-console.log("\n▶ [GATE 5] ADR-017 Architecture Documentation Alignment");
-const adr17Path = path.join(REPO_ROOT, 'docs/architecture/decisions/ADR-017_TESTING_ARCHITECTURE.md');
-assert.ok(fs.existsSync(adr17Path), "ADR-017 document must exist");
-const adr17Content = fs.readFileSync(adr17Path, 'utf8');
-assert.ok(adr17Content.includes('ACCEPTED'), "ADR-017 status must be ACCEPTED");
-assert.ok(adr17Content.includes('4-Layer Testing Pyramid'), "ADR-017 must define 4-Layer Testing Pyramid");
-assert.ok(adr17Content.includes('Weak Network Evaluation Policy'), "ADR-017 must define Weak Network policy");
-assert.ok(adr17Content.includes('Quarantine') && adr17Content.includes('Purge Policy'), "ADR-017 must define Quarantine Elimination & Purge Policy");
+// ─── Gate 5: Testing Architecture 契約整合性直接検証 ──────────────────────
+console.log("\n▶ [GATE 5] Testing Architecture Specification Alignment");
+const designContractPath = path.join(REPO_ROOT, 'docs/architecture/01_DESIGN_CONTRACT.md');
+const verifGatesPath = path.join(REPO_ROOT, '.agents/rules/verification-gates.md');
+assert.ok(fs.existsSync(designContractPath), "01_DESIGN_CONTRACT.md must exist");
+assert.ok(fs.existsSync(verifGatesPath), "verification-gates.md must exist");
 
-console.log("  ✅ GATE 5 PASS: ADR-017 Testing Architecture と完全整合");
+const designContractContent = fs.readFileSync(designContractPath, 'utf8');
+const verifGatesContent = fs.readFileSync(verifGatesPath, 'utf8');
+
+assert.ok(designContractContent.includes('Phase 16 — Testing'), "01_DESIGN_CONTRACT must define Phase 16 Testing");
+assert.ok(designContractContent.includes('Definition of Done'), "01_DESIGN_CONTRACT must define Definition of Done");
+assert.ok(verifGatesContent.includes('V1') && verifGatesContent.includes('V4'), "verification-gates must define V1 through V4 verification layers");
+assert.ok(designContractContent.includes('実機') || designContractContent.includes('Chrome'), "01_DESIGN_CONTRACT must define real-device evaluation");
+
+console.log("  ✅ GATE 5 PASS: Canonical SSOT (01_DESIGN_CONTRACT / verification-gates) と完全整合");
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 16 TESTING ANCHOR GATES PASSED PERFECTLY!");

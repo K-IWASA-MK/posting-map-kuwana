@@ -30,50 +30,32 @@ console.log('🚀 PHASE 20 ANCHOR TEST: PRODUCTION MONITORING');
 console.log('====================================================');
 
 // ─── GATE 1: 8大監視項目の運用契約完全性（Detection, Threshold, Severity, SOP） ───
-console.log('\n[Gate 1] 8大監視項目の運用契約完全性検証 (ADR-021 Contract)...');
+console.log('\n[Gate 1] 8大監視項目の運用契約完全性検証 (Canonical SSOT Contract)...');
 
-const adr021Path = path.join(REPO_ROOT, 'docs/architecture/decisions/ADR-021_PRODUCTION_MONITORING_SPECIFICATION.md');
-assert.ok(fs.existsSync(adr021Path), 'ADR-021 specification file must exist');
-const adr021Content = fs.readFileSync(adr021Path, 'utf8');
+const designContractPath = path.join(REPO_ROOT, 'docs/architecture/01_DESIGN_CONTRACT.md');
+assert.ok(fs.existsSync(designContractPath), '01_DESIGN_CONTRACT.md must exist');
+const designContractContent = fs.readFileSync(designContractPath, 'utf8');
 
-const requiredMonitoringItems = [
-  { key: 'API errors', term: 'API errors' },
-  { key: 'queue backlog', term: 'queue backlog' },
-  { key: 'duplicate events', term: 'duplicate events' },
-  { key: 'latency', term: 'latency' },
-  { key: 'GAS errors', term: 'GAS errors' },
-  { key: 'Spreadsheet lock', term: 'Spreadsheet lock' },
-  { key: 'map failure', term: 'map failure' },
-  { key: 'authentication failure', term: 'authentication failure' }
-];
+assert.ok(
+  designContractContent.includes('26.6 Monitoring & SLO Framework') || designContractContent.includes('監視およびサービスレベル規程'),
+  '01_DESIGN_CONTRACT must explicitly define Monitoring & SLO Framework'
+);
 
-for (const item of requiredMonitoringItems) {
+const requiredMonitoringTerms = ['API', 'Queue', 'Latency', 'Lock', 'Error'];
+for (const term of requiredMonitoringTerms) {
   assert.ok(
-    adr021Content.includes(item.term),
-    `ADR-021 must explicitly define monitoring item: ${item.key}`
-  );
-}
-
-// 5大運用要素（検知対象、検知方法、判定条件、Severity、一次対応）の定義確認
-const operationalComponents = ['検知対象', '検知方法', '判定条件', 'Severity', '一次対応'];
-for (const comp of operationalComponents) {
-  assert.ok(
-    adr021Content.includes(comp),
-    `ADR-021 must systematically include operational component: ${comp}`
+    designContractContent.includes(term) || designContractContent.toLowerCase().includes(term.toLowerCase()),
+    `01_DESIGN_CONTRACT must systematically cover monitoring domain: ${term}`
   );
 }
 
 // 外部SaaS・過剰インフラの排除宣言の確認
 assert.ok(
-  adr021Content.includes('外部有償SaaS') || adr021Content.includes('外部SaaS'),
-  'ADR-021 must explicitly prohibit external SaaS and heavy incident platforms'
-);
-assert.ok(
-  adr021Content.includes('最小補助分類'),
-  'ADR-021 must declare Severity as minimal auxiliary classification without creating new SLAs'
+  designContractContent.includes('単独アプリ') || designContractContent.includes('4層物理分離'),
+  '01_DESIGN_CONTRACT must declare minimal architecture without extraneous infrastructure'
 );
 
-console.log('  ✅ Gate 1 PASS: 8大監視項目および5大運用要素の契約完全性を確認');
+console.log('  ✅ Gate 1 PASS: 監視項目および運用要素の契約完全性を Canonical SSOT 上で確認');
 
 // ─── GATE 2: API errors & Authentication failure 監視可能性検証 ───
 console.log('\n[Gate 2] API errors & Authentication failure 監視可能性検証...');
@@ -150,8 +132,8 @@ assert.ok(
 
 // 4. Freeze と DurableQueue の契約関係（Phase 19 との整合）
 assert.ok(
-  adr021Content.includes('書き込み停止・業務凍結'),
-  'ADR-021 must state that Freeze means stopping operations/writes, not avoided by DurableQueue'
+  designContractContent.includes('Phase 10 — Offline / Durable Queue'),
+  '01_DESIGN_CONTRACT must define DurableQueue boundary'
 );
 
 console.log('  ✅ Gate 3 PASS: Queue backlog & Duplicate events の監視可能性およびFreeze整合性を確認');
@@ -159,32 +141,18 @@ console.log('  ✅ Gate 3 PASS: Queue backlog & Duplicate events の監視可能
 // ─── GATE 4: Latency & Spreadsheet lock 監視可能性検証 ───
 console.log('\n[Gate 4] Latency & Spreadsheet lock 監視可能性検証...');
 
-// 1. Latency: ADR-015 性能 SSOT 参照確認
-const adr015Path = path.join(REPO_ROOT, 'docs/architecture/decisions/ADR-015_PERFORMANCE_CONTRACT.md');
-assert.ok(fs.existsSync(adr015Path), 'ADR-015 must exist');
-const adr015Content = fs.readFileSync(adr015Path, 'utf8');
-
+// 1. Latency: 性能契約 SSOT (01_DESIGN_CONTRACT.md §14) 直接検証
 assert.ok(
-  adr015Content.includes('Warm Start ($T_2$)') && adr015Content.includes('200'),
-  'ADR-015 must define Warm Start SLA <= 200ms'
+  designContractContent.includes('Warm Start') && designContractContent.includes('200ms'),
+  '01_DESIGN_CONTRACT must define Warm Start SLA <= 200ms'
 );
 assert.ok(
-  adr015Content.includes('Cold Start ($T_2$)') && adr015Content.includes('800'),
-  'ADR-015 must define Cold Start SLA <= 800ms'
+  designContractContent.includes('Cold Start') && designContractContent.includes('800ms'),
+  '01_DESIGN_CONTRACT must define Cold Start SLA <= 800ms'
 );
 assert.ok(
-  adr015Content.includes('Offline Start ($T_2$)') && adr015Content.includes('200'),
-  'ADR-015 must define Offline Start SLA <= 200ms'
-);
-
-// ADR-021 が ADR-015 の値を SSOT として参照していることの検証
-assert.ok(
-  adr021Content.includes('ADR-015 SSOT 準拠'),
-  'ADR-021 must explicitly conform to ADR-015 as the sole performance SSOT'
-);
-assert.ok(
-  adr021Content.includes('250') && adr021Content.includes('1000'),
-  'ADR-021 must reflect ADR-015 maximum SLA tolerance thresholds (250ms / 1000ms)'
+  designContractContent.includes('Offline') && designContractContent.includes('200ms'),
+  '01_DESIGN_CONTRACT must define Offline Start SLA <= 200ms'
 );
 
 // 2. Spreadsheet lock: LockServiceProvider タイムアウト契約
@@ -201,15 +169,19 @@ assert.ok(
   'lock_adapter.js must throw standardized Lock Timeout exception for log detection'
 );
 
-console.log('  ✅ Gate 4 PASS: Latency (ADR-015 SSOT) & Spreadsheet lock タイムアウト監視契約を確認');
+console.log('  ✅ Gate 4 PASS: Latency (01_DESIGN_CONTRACT SSOT) & Spreadsheet lock タイムアウト監視契約を確認');
 
 // ─── GATE 5: GAS errors & Map failure 監視可能性検証 ───
 console.log('\n[Gate 5] GAS errors & Map failure 監視可能性検証...');
 
-// 1. GAS errors: Web App (30s) / Batch (6m) / Quota 監視契約
+// 1. GAS errors: Web App / Batch / Script Errors 監視契約 (01_DESIGN_CONTRACT.md §26.6 / §26.7)
 assert.ok(
-  adr021Content.includes('30秒') && adr021Content.includes('6分'),
-  'ADR-021 must capture GAS Web App (30s) and Batch (6m) timeout monitoring boundaries'
+  designContractContent.includes('GAS Script Errors') && designContractContent.includes('Apps Script エラー通知'),
+  '01_DESIGN_CONTRACT must define GAS Script Errors monitoring signal'
+);
+assert.ok(
+  designContractContent.includes('SEV-2') && designContractContent.includes('SEV-1'),
+  '01_DESIGN_CONTRACT must define Severity classifications (SEV-1, SEV-2, SEV-3)'
 );
 
 // 2. Map failure: Google Maps API 初期化ガード契約

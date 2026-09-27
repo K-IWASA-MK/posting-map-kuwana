@@ -345,16 +345,30 @@ console.log('  ✅ Gate 4 PASS: 10大検証対象（支部・対象地域・党�
 // ─── GATE 5: Universal Reproducibility (汎用再現性・成立判定) ───
 console.log('\n[Gate 5] Universal Reproducibility: 新地区成立・コード変更ゼロ判定...');
 
-const adr022Path = path.join(REPO_ROOT, 'docs/architecture/decisions/ADR-022_MULTI_REGION_ARCHITECTURE_SPECIFICATION.md');
-assert.ok(fs.existsSync(adr022Path), 'ADR-022 must exist as multi-region specification');
-const adr022Content = fs.readFileSync(adr022Path, 'utf8');
+// 1. 最高位憲法・正本契約におけるマルチリージョン原則の確認
+const designContractPath = path.join(REPO_ROOT, 'docs/architecture/01_DESIGN_CONTRACT.md');
+assert.ok(fs.existsSync(designContractPath), '01_DESIGN_CONTRACT.md must exist as Supreme Contract');
+const designContractContent = fs.readFileSync(designContractPath, 'utf8');
 
-// ADR-022 の 5 大原則および新地区プロビジョニング契約の確認
-assert.ok(adr022Content.includes('Runtime Identity'), 'ADR-022 must specify Runtime Identity');
-assert.ok(adr022Content.includes('Data-Driven Dynamic Binding'), 'ADR-022 must specify Data-Driven Dynamic Binding');
-assert.ok(adr022Content.includes('Strict Tenant Isolation'), 'ADR-022 must specify Strict Tenant Isolation');
-assert.ok(adr022Content.includes('Functional Independence'), 'ADR-022 must specify Functional Independence');
-assert.ok(adr022Content.includes('Zero-Code District Provisioning'), 'ADR-022 must specify Zero-Code District Provisioning');
+assert.ok(designContractContent.includes('Phase 21 — Generic / Multi-region Validation'), 'Design contract must specify Phase 21 validation');
+assert.ok(designContractContent.includes('地域が変わってもコードを複製・改変せず動作する'), 'Design contract must mandate generic engine without code duplication');
+assert.ok(designContractContent.includes('単独アプリ') && designContractContent.includes('単独リポジトリ') && designContractContent.includes('単独ドメイン'), 'Design contract must mandate single app, repo, and domain');
+
+// 2. 新地区標準運用手順書 (SSOT) におけるプロビジョニング契約の確認
+const provisioningRunbookPath = path.join(REPO_ROOT, 'docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md');
+assert.ok(fs.existsSync(provisioningRunbookPath), 'DISTRICT_PROVISIONING_RUNBOOK.md must exist as official runbook SSOT');
+const provisioningRunbookContent = fs.readFileSync(provisioningRunbookPath, 'utf8');
+
+assert.ok(provisioningRunbookContent.includes('Zero Code Duplication / Zero Runtime Modification'), 'Runbook must enforce Zero Code Duplication / Zero Runtime Modification');
+assert.ok(provisioningRunbookContent.includes('単一親GAS・単一Web App維持'), 'Runbook must enforce single parent GAS and Web App URL');
+assert.ok(provisioningRunbookContent.includes('DISTRICT_REGISTRY'), 'Runbook must enforce dynamic DB resolution via DISTRICT_REGISTRY');
+
+// 3. 最上位基本就業規則 (AGENTS.md) における不変契約の確認
+const agentsRulePath = path.join(REPO_ROOT, 'AGENTS.md');
+assert.ok(fs.existsSync(agentsRulePath), 'AGENTS.md must exist');
+const agentsRuleContent = fs.readFileSync(agentsRulePath, 'utf8');
+assert.ok(agentsRuleContent.includes('Universal Engine'), 'AGENTS.md must mandate Universal Engine');
+assert.ok(agentsRuleContent.includes('Regional differences are absorbed by data, not code duplication'), 'AGENTS.md must mandate data-driven regional separation');
 
 // 最終合否判定: Region B (KURASHIKI) を成立させるために active/ のコード変更が必要だったか？
 // ここまでの検証で、一切の active/ 変更なしに Region B が完全に独立成立したことが証明された

@@ -23,8 +23,9 @@ import path from 'node:path';
 const rootDir = process.cwd();
 
 // テスト対象ファイル
-const adr013Path = path.join(rootDir, 'docs/architecture/decisions/ADR-013_ACTIVITY_STATE_MACHINE.md');
 const designContractPath = path.join(rootDir, 'docs/architecture/01_DESIGN_CONTRACT.md');
+const apiContractPath = path.join(rootDir, 'docs/api/API_CONTRACT.md');
+const dataLifecyclePath = path.join(rootDir, 'docs/data/DATA_LIFECYCLE.md');
 const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
 const renderJsPath = path.join(rootDir, 'active/dashboard/render.js');
 const dbJsPath = path.join(rootDir, 'active/dashboard/db.js');
@@ -33,8 +34,9 @@ const pinStatusServicePath = path.join(rootDir, 'active/business/pin/pin_status_
 const gpsServicePath = path.join(rootDir, 'active/business/gps/gps_service.js');
 const gpsRepositoryPath = path.join(rootDir, 'active/business/gps/gps_repository.js');
 
-const adr013 = fs.readFileSync(adr013Path, 'utf8');
 const designContract = fs.readFileSync(designContractPath, 'utf8');
+const apiContract = fs.readFileSync(apiContractPath, 'utf8');
+const dataLifecycle = fs.readFileSync(dataLifecyclePath, 'utf8');
 const appJs = fs.readFileSync(appJsPath, 'utf8');
 const renderJs = fs.readFileSync(renderJsPath, 'utf8');
 const dbJs = fs.readFileSync(dbJsPath, 'utf8');
@@ -48,17 +50,16 @@ console.log('🚀 PHASE 11 ACTIVITY STATE MACHINE VERIFICATION SUITE');
 console.log('====================================================\n');
 
 // ----------------------------------------------------------------------------
-// 1. ADR-013 制定と仕様整合性
+// 1. Activity State Machine 契約と仕様整合性 (Canonical SSOT & Runtime 直接検証)
 // ----------------------------------------------------------------------------
-test('1. ADR-013 制定: 状態遷移、完了確定条件、業務ルール、ランキング集計条件が明文化されていること', () => {
-  assert.ok(adr013.includes('ADR-013: Activity State Machine'), 'ADR-013 が存在すること');
-  assert.ok(adr013.includes('Status**: ACCEPTED'), 'ADR-013 が ACCEPTED であること');
-  assert.ok(adr013.includes('clientEventId'), 'clientEventId について記述されていること');
-  assert.ok(adr013.includes('requestId'), 'requestId について記述されていること');
-  assert.ok(adr013.includes('activityId'), 'activityId について記述されていること');
-  assert.ok(adr013.includes('当月再操作不可'), '月次完了再操作禁止ルールが記述されていること');
-  assert.ok(adr013.includes('翌日0:00以降に再操作可能'), '未完了翌日再操作ルールが記述されていること');
-  assert.ok(adr013.includes('fetchRankingData'), 'ランキング確定条件が記述されていること');
+test('1. Activity State Machine 契約: 状態遷移、完了確定条件、業務ルール、ランキング集計条件が明文化されていること', () => {
+  assert.ok(designContract.includes('Phase 11 — Activity State Machine'), '01_DESIGN_CONTRACT に Phase 11 が定義されていること');
+  assert.ok(designContract.includes('現場ポスティングフロー 7段階パイプライン'), '01_DESIGN_CONTRACT に 7段階パイプラインが定義されていること');
+  assert.ok(apiContract.includes('現場ポスティングフロー 7段階ステートマシン'), 'API_CONTRACT に 7段階ステートマシンが定義されていること');
+  assert.ok(apiContract.includes('getRowStatus(rowId) === null'), 'API_CONTRACT に Backend永続化成功による確定条件が定義されていること');
+  assert.ok(apiContract.includes('requestId'), 'API_CONTRACT に requestId が記述されていること');
+  assert.ok(dataLifecycle.includes('ライフサイクル') && (dataLifecycle.includes('COMPLETED') || dataLifecycle.includes('DRAFT')), 'DATA_LIFECYCLE に配布実績ライフサイクルと状態確定モデルが記述されていること');
+  assert.ok(distRepoJs.includes('fetchRankingData'), 'distribution_repository.js に fetchRankingData が実動実装されていること');
 });
 
 // ----------------------------------------------------------------------------

@@ -23,8 +23,8 @@ import path from 'node:path';
 const rootDir = process.cwd();
 
 // テスト対象ファイル
-const adr014Path = path.join(rootDir, 'docs/architecture/decisions/ADR-014_DASHBOARD_SPECIFICATION.md');
 const designContractPath = path.join(rootDir, 'docs/architecture/01_DESIGN_CONTRACT.md');
+const apiContractPath = path.join(rootDir, 'docs/api/API_CONTRACT.md');
 const managerJsPath = path.join(rootDir, 'active/manager/manager.js');
 const managerHtmlPath = path.join(rootDir, 'active/manager/index.html');
 const v2ApiPath = path.join(rootDir, 'active/api/v2_api.js');
@@ -32,8 +32,8 @@ const pinStatusServicePath = path.join(rootDir, 'active/business/pin/pin_status_
 const distRepoPath = path.join(rootDir, 'active/business/distribution/distribution_repository.js');
 const masterCsvPath = path.join(rootDir, 'data/address_master.csv');
 
-const adr014 = fs.readFileSync(adr014Path, 'utf8');
 const designContract = fs.readFileSync(designContractPath, 'utf8');
+const apiContract = fs.readFileSync(apiContractPath, 'utf8');
 const managerJs = fs.readFileSync(managerJsPath, 'utf8');
 const managerHtml = fs.readFileSync(managerHtmlPath, 'utf8');
 const v2ApiJs = fs.readFileSync(v2ApiPath, 'utf8');
@@ -46,15 +46,15 @@ console.log('🖥️ PHASE 13 UNIVERSAL DASHBOARD VERIFICATION SUITE');
 console.log('====================================================\n');
 
 // ----------------------------------------------------------------------------
-// 1. ADR-014 制定と Universal 仕様整合性
+// 1. Dashboard 観測契約と Universal 仕様整合性 (Canonical SSOT 直接検証)
 // ----------------------------------------------------------------------------
-test('1. ADR-014 制定: Universal Engine 仕様、観測専用原則、テストデータ分離が明文化されていること', () => {
-  assert.ok(adr014.includes('ADR-014: Universal Dashboard 仕様確定および全体観測境界'), 'ADR-014 タイトル');
-  assert.ok(adr014.includes('Status**: ACCEPTED'), 'ADR-014 が ACCEPTED であること');
-  assert.ok(adr014.includes('Universal Engine（製品本体）'), 'Universal原則の明記');
-  assert.ok(adr014.includes('現在は桑名市 (KUWANA) のデータ'), 'テストデータ分離の明記');
-  assert.ok(adr014.includes('動的 N 件処理'), '件数を固定しない動的処理の明記');
-  assert.ok(adr014.includes('配布員は操作する。管理者は見る。'), '観測専用原則の明記');
+test('1. Dashboard 契約: Universal Engine 仕様、観測専用原則、6大品質受入条件が明文化されていること', () => {
+  assert.ok(designContract.includes('Phase 13 — Dashboard'), '01_DESIGN_CONTRACT に Phase 13 が定義されていること');
+  assert.ok(designContract.includes('Dashboardは管理者・運営側が地域全体を観測するための画面'), '観測専用原則の明記');
+  assert.ok(designContract.includes('管理者による現場個人への固定担当割当・活動強制は行わない'), '担当割当禁止の明記');
+  assert.ok(designContract.includes('Dashboard 6大品質受入条件'), 'Dashboard 6大品質受入条件の明記');
+  assert.ok(apiContract.includes('Dashboard Read API (全体観測契約)'), 'API_CONTRACT に全体観測契約が明記されていること');
+  assert.ok(apiContract.includes('getSystemSummary'), '全体サマリ観測APIが定義されていること');
 });
 
 // ----------------------------------------------------------------------------
@@ -182,8 +182,8 @@ test('8. スコープ除外の整合性: 除外対象機能が既存コードを
   assert.ok(managerJs.includes('renderMainStageMobile'), 'mobile ビューが温存されていること');
   assert.ok(managerJs.includes('renderMainStageBulletin'), 'bulletin ビューが温存されていること');
 
-  // ADR-014 でこれらが保証スコープから除外されていること
-  assert.ok(adr014.includes('スコープ除外（過剰設計・削除済み機能の境界固定）'), 'ADR-014 に除外が明記されていること');
+  // Canonical SSOT (01_DESIGN_CONTRACT.md) で管理者による現場個人への固定担当割当・活動強制を行わない原則が明記されていること
+  assert.ok(designContract.includes('管理者による現場個人への固定担当割当・活動強制は行わない'), '01_DESIGN_CONTRACT に現場強制割当不存在が明記されていること');
 });
 
 console.log('✅ ALL 8 PHASE 13 UNIVERSAL DASHBOARD VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

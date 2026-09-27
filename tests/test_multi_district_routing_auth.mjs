@@ -60,8 +60,19 @@ class MockSheet {
             sheet.rows[rowIdx][colIdx] = vals[r][c];
           }
         }
+      },
+      setValue(val) {
+        const rowIdx = row - 1;
+        const colIdx = col - 1;
+        if (!sheet.rows[rowIdx]) {
+          sheet.rows[rowIdx] = [];
+        }
+        sheet.rows[rowIdx][colIdx] = val;
       }
     };
+  }
+  appendRow(row) {
+    this.rows.push(row);
   }
 }
 
@@ -85,11 +96,36 @@ class MockSpreadsheet {
     this.sheets[name] = sheet;
     return sheet;
   }
+  insertSheet(name) {
+    return this.addSheet(name);
+  }
 }
 
 // 2. モック環境の構築
 const mockSpreadsheets = {};
 const mockScriptProperties = {};
+
+class MockCache {
+  constructor() {
+    this.store = new Map();
+  }
+  get(key) {
+    return this.store.has(key) ? this.store.get(key) : null;
+  }
+  put(key, value, ttl) {
+    this.store.set(key, String(value));
+  }
+  remove(key) {
+    this.store.delete(key);
+  }
+}
+const mockCache = new MockCache();
+
+global.CacheService = {
+  getScriptCache() {
+    return mockCache;
+  }
+};
 
 global.PropertiesService = {
   getScriptProperties() {
@@ -122,11 +158,28 @@ global.Utilities = {
     return Array.from(crypto.createHash('sha256').update(str).digest());
   },
   DigestAlgorithm: { SHA_256: 'SHA_256' },
-  Charset: { UTF_8: 'UTF_8' }
+  Charset: { UTF_8: 'UTF_8' },
+  formatDate(d, tz, fmt) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    if (fmt === 'yyyy-MM') return `${year}-${month}`;
+    if (fmt === 'yyyy-MM-dd') return `${year}-${month}-${day}`;
+    if (fmt && fmt.includes('HH:mm:ss')) {
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      const s = String(d.getSeconds()).padStart(2, '0');
+      return `${year}/${month}/${day} ${h}:${m}:${s}`;
+    }
+    return `${year}-${month}-${day}`;
+  }
 };
+
+let openByIdCallCount = 0;
 
 global.SpreadsheetApp = {
   openById(id) {
+    openByIdCallCount++;
     if (mockSpreadsheets[id]) {
       return mockSpreadsheets[id];
     }
@@ -134,7 +187,8 @@ global.SpreadsheetApp = {
   },
   getActiveSpreadsheet() {
     return null;
-  }
+  },
+  flush() {}
 };
 
 global.ContentService = {
@@ -160,7 +214,8 @@ kuwanaSysInfo.rows = [
   ["項目", "設定値"],
   ["地区コード", "KUWANA"],
   ["地区名", "桑名地区"],
-  ["管理パスワード", "pwd_kuwana"]
+  ["管理パスワード", "pwd_kuwana"],
+  ["契約終了日", "2026-10-31"]
 ];
 const kuwanaStaff = kuwanaSS.addSheet(staffSheetName);
 kuwanaStaff.rows = [
@@ -182,7 +237,8 @@ okayamaSysInfo.rows = [
   ["項目", "設定値"],
   ["地区コード", "OKAYAMA"],
   ["地区名", "岡山地区"],
-  ["管理パスワード", "pwd_okayama"]
+  ["管理パスワード", "pwd_okayama"],
+  ["契約終了日", "2026-10-31"]
 ];
 const okayamaStaff = okayamaSS.addSheet(staffSheetName);
 okayamaStaff.rows = [
@@ -222,6 +278,7 @@ import vm from 'node:vm';
 const staffModelCode = fs.readFileSync(path.join(rootDir, 'active/business/staff/staff_model.js'), 'utf-8');
 const staffRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/staff/staff_repository.js'), 'utf-8');
 const staffServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/staff/staff_service.js'), 'utf-8');
+const systemInfoCode = fs.readFileSync(path.join(rootDir, 'active/business/system/system_info_service.js'), 'utf-8');
 const systemSummaryCode = fs.readFileSync(path.join(rootDir, 'active/business/system/system_summary_service.js'), 'utf-8');
 const distRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/distribution/distribution_repository.js'), 'utf-8');
 const distServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/distribution/distribution_service.js'), 'utf-8');
@@ -230,6 +287,7 @@ const v2ApiCode = fs.readFileSync(path.join(rootDir, 'active/api/v2_api.js'), 'u
 // 依存モジュールロード
 vm.runInThisContext(adapterCode);
 vm.runInThisContext(monthlyResolverCode);
+vm.runInThisContext(systemInfoCode);
 vm.runInThisContext(staffModelCode);
 vm.runInThisContext(staffRepoCode);
 vm.runInThisContext(staffServiceCode);
@@ -541,6 +599,137 @@ runTest("Scenario 12: bootstrapEnvironment による既存地区の保護と新�
 
   // TARGET_SPREADSHEET_ID が上書きされていないこと（既存値保護）
   assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id");
+
+  // 後続シナリオ（Scenario 13〜15）のために DISTRICT_REGISTRY に KUWANA, OKAYAMA, NEW_DISTRICT_B を復元設定
+  const fullReg = {
+    "KUWANA": "ss-kuwana-id",
+    "OKAYAMA": "ss-okayama-id",
+    "NEW_DISTRICT_B": { spreadsheetId: "ss-b-id", enabled: true }
+  };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(fullReg);
+  SpreadsheetResolver.getInstance().clearCache();
+});
+
+// -----------------------------------------------------------------------------
+// TEST 13: SpreadsheetResolver: 重複 openById 排除検証 (同一実行内キャッシュ & clearCache)
+// -----------------------------------------------------------------------------
+runTest("Scenario 13: SpreadsheetResolver による重複 openById 呼出の排除とキャッシュ完全性", () => {
+  const resolver = SpreadsheetResolver.getInstance();
+  resolver.clearCache();
+
+  openByIdCallCount = 0;
+  const ss1 = resolver.getSpreadsheet("KUWANA");
+  const ss2 = resolver.getSpreadsheet("KUWANA");
+  const ss3 = resolver.getSpreadsheet("KUWANA");
+
+  assert.equal(openByIdCallCount, 1, `openById should be called exactly once for KUWANA, but got ${openByIdCallCount}`);
+  assert.equal(ss1, ss2, "ss1 and ss2 must be the exact same reference");
+  assert.equal(ss2, ss3, "ss2 and ss3 must be the exact same reference");
+  assert.ok(resolver.spreadsheetCacheByDistrict["KUWANA"], "KUWANA cache key must exist in resolver");
+
+  // 直接取得したモックインスタンスとの等価性
+  assert.equal(ss1.getId(), kuwanaSS.getId(), "Resolved spreadsheet ID must match kuwanaSS ID");
+  assert.equal(ss1.getName(), kuwanaSS.getName(), "Resolved spreadsheet Name must match kuwanaSS Name");
+
+  // clearCache でキャッシュが破棄され、次回再取得時に openById が再度1回だけ呼ばれること
+  resolver.clearCache();
+  assert.equal(Object.keys(resolver.spreadsheetCacheByDistrict).length, 0, "Resolver cache must be empty after clearCache");
+  const ss4 = resolver.getSpreadsheet("KUWANA");
+  assert.equal(openByIdCallCount, 2, "openById must be invoked once more after clearCache");
+  assert.equal(ss4.getId(), kuwanaSS.getId());
+});
+
+// -----------------------------------------------------------------------------
+// TEST 14: Contract Cache: ScriptCache MISS ➔ HIT ➔ Invalidation & Direct-Read 等価性 & Fail-Closed
+// -----------------------------------------------------------------------------
+runTest("Scenario 14: Contract Cache (MISS ➔ HIT ➔ Invalidation サイクル、Direct-Read等価性、Fail-Closed)", () => {
+  const sysInfoService = SystemInfoService.getInstance();
+  const testNow = new Date("2026-10-01T00:00:00Z");
+
+  // NEW_DISTRICT_B (Scenario 12 で作成済) に SYSTEM_INFO をセットアップ
+  const ssNewB = mockSpreadsheets["ss-b-id"];
+  let newBSysInfo = ssNewB.getSheetByName("SYSTEM_INFO");
+  if (!newBSysInfo) newBSysInfo = ssNewB.addSheet("SYSTEM_INFO");
+  newBSysInfo.rows = [
+    ["項目", "設定値"],
+    ["地区コード", "NEW_DISTRICT_B"],
+    ["地区名", "新地区B"],
+    ["契約終了日", "2026-10-31"]
+  ];
+
+  // 1. 初期状態: キャッシュ空 (MISS)
+  mockCache.store.clear();
+  const status1 = sysInfoService.getContractStatus(null, testNow, "NEW_DISTRICT_B");
+  assert.equal(status1.status, 'ACTIVE');
+  assert.equal(status1.fromCache, undefined, "First call must be Cache MISS");
+  assert.equal(status1.endDate, '2026-10-31');
+  assert.ok(mockCache.get("CONTRACT_STATUS_NEW_DISTRICT_B"), "Cache must be populated after MISS");
+
+  // 2. 2回目: Cache HIT
+  const status2 = sysInfoService.getContractStatus(null, testNow, "NEW_DISTRICT_B");
+  assert.equal(status2.status, 'ACTIVE');
+  assert.equal(status2.fromCache, true, "Second call must be Cache HIT");
+  assert.equal(status2.endDate, '2026-10-31');
+
+  // 3. Direct-Read パスとの結果完全等価性検証 (fromCache 以外のプロパティが完全一致)
+  const directStatus = sysInfoService.getContractStatus(newBSysInfo, testNow, "NEW_DISTRICT_B");
+  assert.equal(status2.status, directStatus.status, "Cache path and direct-read status must match");
+  assert.equal(status2.isExpired, directStatus.isExpired, "Cache path and direct-read isExpired must match");
+  assert.equal(status2.endDate, directStatus.endDate, "Cache path and direct-read endDate must match");
+  assert.equal(status2.code, directStatus.code, "Cache path and direct-read code must match");
+  assert.equal(status2.today, directStatus.today, "Cache path and direct-read today must match");
+
+  // 4. 契約終了日変更 ➔ Invalidation (ssNewB.getName() === "NEW_DISTRICT_B" のため完全無効化)
+  sysInfoService.setContractEndDate("2026-11-15", "NEW_DISTRICT_B");
+  assert.equal(mockCache.get("CONTRACT_STATUS_NEW_DISTRICT_B"), null, "Cache must be invalidated after setContractEndDate");
+
+  // 5. 変更後の次回呼出: 最新値取得 & Cache 再構築
+  const status3 = sysInfoService.getContractStatus(null, testNow, "NEW_DISTRICT_B");
+  assert.equal(status3.status, 'ACTIVE');
+  assert.equal(status3.fromCache, undefined, "First call after invalidation must be MISS");
+  assert.equal(status3.endDate, '2026-11-15', "Must reflect updated end date");
+
+  // 6. Fail-Closed: 取得不能・破損時の安全側遮断
+  mockCache.store.clear();
+  const corruptedSS = new MockSpreadsheet("ss-broken-contract-id", "BROKEN_CONTRACT");
+  mockSpreadsheets["ss-broken-contract-id"] = corruptedSS;
+  const currentReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  currentReg["BROKEN_CONTRACT"] = "ss-broken-contract-id";
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(currentReg);
+  SpreadsheetResolver.getInstance().clearCache();
+
+  const failClosedStatus = sysInfoService.getContractStatus(null, testNow, "BROKEN_CONTRACT");
+  assert.equal(failClosedStatus.status, 'EXPIRED', "Must fail-closed to EXPIRED on error");
+  assert.equal(failClosedStatus.isExpired, true, "isExpired must be true on fail-closed");
+  assert.equal(failClosedStatus.code, 'CONTRACT_CHECK_FAILED', "Error code must indicate failure");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 15: getRoster / fetchRankingData 等価性検証 (cachedRoster 有無の完全等価)
+// -----------------------------------------------------------------------------
+runTest("Scenario 15: getRoster / fetchRankingData による cachedRoster 最適化と計算完全等価性", () => {
+  const distRepo = DistributionRepository.getInstance();
+  const staffService = StaffService.getInstance();
+
+  // KUWANA 地区の名簿を取得
+  const roster = staffService.getRoster("KUWANA");
+  assert.ok(Array.isArray(roster), "getRoster must return an array");
+  assert.equal(roster.length, 2, "KUWANA roster must have 2 staff members");
+  assert.equal(roster[0].id, "K001");
+  assert.equal(roster[1].id, "K002");
+
+  // cachedRoster なし (直接参照パス)
+  const rankingWithoutCache = distRepo.fetchRankingData("U_KUWANA_001", "KUWANA", null);
+
+  // cachedRoster あり (STEP 2 最適化パス)
+  const rankingWithCache = distRepo.fetchRankingData("U_KUWANA_001", "KUWANA", roster);
+
+  // 厳格な結果等価性の検証
+  assert.deepEqual(rankingWithCache, rankingWithoutCache, "Ranking results with/without cachedRoster must be strictly identical");
+  assert.equal(rankingWithCache.length, 1);
+  assert.equal(rankingWithCache[0].staffId, "K001");
+  assert.equal(rankingWithCache[0].count, 100);
+  assert.equal(rankingWithCache[0].isMe, true);
 });
 
 console.log('\n================================================================');

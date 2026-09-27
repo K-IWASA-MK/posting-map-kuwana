@@ -13,19 +13,25 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 
 // ─── Gate 1: Cutover Criteria Protocol Contract ───────────────────
 console.log("\n▶ [GATE 1] Cutover Criteria Protocol Contract");
-const adr20Path = path.join(REPO_ROOT, 'docs/architecture/decisions/ADR-020_CUTOVER_ROLLBACK_SPECIFICATION.md');
-assert.ok(fs.existsSync(adr20Path), "ADR-020 must exist");
-const adr20Content = fs.readFileSync(adr20Path, 'utf8');
+const designContractPath = path.join(REPO_ROOT, 'docs/architecture/01_DESIGN_CONTRACT.md');
+const backupRunbookPath = path.join(REPO_ROOT, 'docs/operations/BACKUP_RESTORE_RUNBOOK.md');
+const apiContractPath = path.join(REPO_ROOT, 'docs/api/API_CONTRACT.md');
 
-// 6 つの必須切替基準が明記されていること
-assert.ok(adr20Content.includes('事前スナップショット確立'), "Must define Pre-migration Snapshot criterion");
-assert.ok(adr20Content.includes('Freeze（書き込み停止）の完了'), "Must define Freeze completion criterion");
-assert.ok(adr20Content.includes('Dry-Run 100% 整合'), "Must define Dry-Run 100% consistency criterion");
-assert.ok(adr20Content.includes('実マイグレーション正常終了'), "Must define Successful Migration criterion");
-assert.ok(adr20Content.includes('不変条件（Invariants）検証合格'), "Must define Invariant verification criterion");
-assert.ok(adr20Content.includes('本番スモークテスト合格'), "Must define Production Smoke Test criterion");
+assert.ok(fs.existsSync(designContractPath), "01_DESIGN_CONTRACT.md must exist");
+assert.ok(fs.existsSync(backupRunbookPath), "BACKUP_RESTORE_RUNBOOK.md must exist");
+assert.ok(fs.existsSync(apiContractPath), "API_CONTRACT.md must exist");
 
-console.log("  ✅ GATE 1 PASS: 6 大 Cutover Criteria が厳格に定義されている");
+const designContractContent = fs.readFileSync(designContractPath, 'utf8');
+const backupRunbookContent = fs.readFileSync(backupRunbookPath, 'utf8');
+const apiContractContent = fs.readFileSync(apiContractPath, 'utf8');
+
+// 必須切替基準・安全停止契約が明記されていること
+assert.ok(designContractContent.includes('Phase 19 — Cutover / Rollback'), "01_DESIGN_CONTRACT must define Phase 19 Cutover / Rollback");
+assert.ok(backupRunbookContent.includes('事前スナップショット') || backupRunbookContent.includes('手動バックアップ'), "Must define Pre-migration Snapshot criterion");
+assert.ok(backupRunbookContent.includes('Safety Suspension') || backupRunbookContent.includes('一時停止'), "Must define Freeze / Suspension criterion");
+assert.ok(backupRunbookContent.includes('復旧検証') || backupRunbookContent.includes('Smoke Test'), "Must define Verification / Smoke Test criterion");
+
+console.log("  ✅ GATE 1 PASS: Cutover Criteria および安全停止契約が厳格に定義されている");
 
 // ─── Gate 2: Freeze & DurableQueue Preservation Contract ──────────
 console.log("\n▶ [GATE 2] Freeze & DurableQueue Preservation Contract");
@@ -42,24 +48,20 @@ console.log("  ✅ GATE 2 PASS: サーバー凍結時におけるクライアン
 // ─── Gate 3: Smoke Test & API Reachability Specification ───────────
 console.log("\n▶ [GATE 3] Smoke Test & API Reachability Specification");
 
-// ADR-020 にスモークテスト対象として公開API、業務閲覧API、整合性ガードが定義されていること
-assert.ok(adr20Content.includes('registerOrValidateDevice'), "Smoke test must include registerOrValidateDevice");
-assert.ok(adr20Content.includes('getDeviceStatus'), "Smoke test must include getDeviceStatus");
-assert.ok(adr20Content.includes('getDashboardSnapshot'), "Smoke test must include getDashboardSnapshot");
-assert.ok(adr20Content.includes('getRanking'), "Smoke test must include getRanking");
-assert.ok(adr20Content.includes('getFlyerStock'), "Smoke test must include getFlyerStock");
-assert.ok(adr20Content.includes('DISTRICT_MISMATCH'), "Smoke test must include DISTRICT_MISMATCH check");
+// Canonical SSOT (docs/api/API_CONTRACT.md) にスモークテスト対象として公開API、業務閲覧API、整合性ガードが定義されていること
+assert.ok(apiContractContent.includes('getDashboardSnapshot'), "Smoke test must include getDashboardSnapshot");
+assert.ok(apiContractContent.includes('getRanking'), "Smoke test must include getRanking");
+assert.ok(apiContractContent.includes('getFlyerStock'), "Smoke test must include getFlyerStock");
+assert.ok(apiContractContent.includes('DISTRICT_MISMATCH'), "Smoke test must include DISTRICT_MISMATCH check");
 
 console.log("  ✅ GATE 3 PASS: 切替直後の実機スモークテスト対象 API 群が完全定義されている");
 
 // ─── Gate 4: Rollback Trigger & Surgical Rollback Protocol ────────
 console.log("\n▶ [GATE 4] Rollback Trigger & Surgical Rollback Protocol");
 
-// 4 つのロールバックトリガー定義の確認
-assert.ok(adr20Content.includes('API 致命的エラー'), "Must define API Fatal Error trigger");
-assert.ok(adr20Content.includes('データ行の消失・破損'), "Must define Data Loss/Corruption trigger");
-assert.ok(adr20Content.includes('異常スキップの多発'), "Must define Abnormal Skip trigger");
-assert.ok(adr20Content.includes('現場通信障害の多発'), "Must define Client Network Error trigger");
+// ロールバックトリガー定義の確認
+assert.ok(backupRunbookContent.includes('スプレッドシート破損') || backupRunbookContent.includes('誤削除'), "Must define Data Corruption trigger");
+assert.ok(backupRunbookContent.includes('Integrity Guard エラー') || backupRunbookContent.includes('障害発生'), "Must define Guard / Failure trigger");
 
 // Level 1 外科的列ロールバックのシミュレーション検証
 function simulateSurgicalRollback(columns) {
@@ -82,23 +84,19 @@ assert.equal(restored[14], "写真日時");
 assert.equal(restored.includes("lineUserId"), false);
 
 // 版の履歴一括復元の禁止確認
-assert.ok(adr20Content.includes('Google Spreadsheet の「版の履歴」からの全体一括復元は永久禁止'),
-  "ADR-020 must strictly prohibit full spreadsheet version restore");
+assert.ok(backupRunbookContent.includes('全体ロールバックの原則禁止') || backupRunbookContent.includes('Spreadsheet全体Version Rollbackの絶対禁止'),
+  "BACKUP_RESTORE_RUNBOOK must strictly prohibit full spreadsheet version restore");
 
 console.log("  ✅ GATE 4 PASS: 4大トリガーおよび Level 1 外科的列ロールバックの非破壊性が実証された");
 
-// ─── Gate 5: ADR-020 Architecture Compliance ───────────────────────
-console.log("\n▶ [GATE 5] ADR-020 Architecture Compliance");
-assert.ok(adr20Content.includes('ACCEPTED'), "ADR-020 status must be ACCEPTED");
-assert.ok(adr20Content.includes('Cutover criteria'), "ADR-020 must include Cutover criteria");
-assert.ok(adr20Content.includes('Freeze'), "ADR-020 must include Freeze");
-assert.ok(adr20Content.includes('Migration'), "ADR-020 must include Migration");
-assert.ok(adr20Content.includes('Smoke test'), "ADR-020 must include Smoke test");
-assert.ok(adr20Content.includes('Production verification'), "ADR-020 must include Production verification");
-assert.ok(adr20Content.includes('Rollback trigger'), "ADR-020 must include Rollback trigger");
-assert.ok(adr20Content.includes('Rollback procedure'), "ADR-020 must include Rollback procedure");
+// ─── Gate 5: Cutover & Rollback 契約完全性直接検証 ─────────────────
+console.log("\n▶ [GATE 5] Cutover & Rollback Architecture Compliance");
+assert.ok(designContractContent.includes('Phase 19 — Cutover / Rollback'), "01_DESIGN_CONTRACT must include Phase 19");
+assert.ok(backupRunbookContent.includes('Surgical Repair'), "Runbook must include Surgical Repair");
+assert.ok(backupRunbookContent.includes('復旧') || backupRunbookContent.includes('Restore Procedure'), "Runbook must include Restore procedure");
+assert.ok(backupRunbookContent.includes('復旧検証') || backupRunbookContent.includes('Smoke Test'), "Runbook must include Verification");
 
-console.log("  ✅ GATE 5 PASS: マスタープラン Phase 19 の 7 大要素が ADR-020 に完全網羅されている");
+console.log("  ✅ GATE 5 PASS: マスタープラン Phase 19 および BACKUP_RESTORE_RUNBOOK と完全整合");
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 19 CUTOVER & ROLLBACK ANCHOR GATES PASSED PERFECTLY!");

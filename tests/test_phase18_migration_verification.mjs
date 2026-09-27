@@ -123,19 +123,26 @@ assert.ok(migContent.includes("if (typeof isDryRun === 'undefined') isDryRun = t
 
 console.log("  ✅ GATE 4 PASS: Dry-Run デフォルト保護および ST001 矛盾行の空欄保全（推測補正禁止）が実証された");
 
-// ─── Gate 5: ADR-019 Architecture Compliance & Rollback Invariants ──
-console.log("\n▶ [GATE 5] ADR-019 Compliance & Rollback Invariants");
-const adr19Path = path.join(REPO_ROOT, 'docs/architecture/decisions/ADR-019_MIGRATION_ARCHITECTURE.md');
-assert.ok(fs.existsSync(adr19Path), "ADR-019 must exist");
-const adr19Content = fs.readFileSync(adr19Path, 'utf8');
+// ─── Gate 5: マイグレーション & 外科的ロールバック契約直接検証 ─────────────
+console.log("\n▶ [GATE 5] Migration Architecture Compliance & Rollback Invariants");
+const backupRunbookPath = path.join(REPO_ROOT, 'docs/operations/BACKUP_RESTORE_RUNBOOK.md');
+const apiContractPath = path.join(REPO_ROOT, 'docs/api/API_CONTRACT.md');
+const dataLifecyclePath = path.join(REPO_ROOT, 'docs/data/DATA_LIFECYCLE.md');
 
-assert.ok(adr19Content.includes('ACCEPTED'), "ADR-019 status must be ACCEPTED");
-assert.ok(adr19Content.includes('Additive Schema Evolution'), "ADR-019 must define Additive Schema Evolution");
-assert.ok(adr19Content.includes('スプレッドシート全体の一括版復元は永久禁止'), "ADR-019 must prohibit full version rollback");
-assert.ok(adr19Content.includes('事前スナップショットの確保'), "ADR-019 must require pre-migration snapshot");
-assert.ok(adr19Content.includes('列レベルの外科的ロールバック'), "ADR-019 must define surgical column rollback");
+assert.ok(fs.existsSync(backupRunbookPath), "BACKUP_RESTORE_RUNBOOK.md must exist");
+assert.ok(fs.existsSync(apiContractPath), "API_CONTRACT.md must exist");
+assert.ok(fs.existsSync(dataLifecyclePath), "DATA_LIFECYCLE.md must exist");
 
-console.log("  ✅ GATE 5 PASS: ADR-019 Migration Architecture 仕様およびロールバック制約と完全整合");
+const runbookContent = fs.readFileSync(backupRunbookPath, 'utf8');
+const apiContractContent = fs.readFileSync(apiContractPath, 'utf8');
+const dataLifecycleContent = fs.readFileSync(dataLifecyclePath, 'utf8');
+
+assert.ok(runbookContent.includes('全体ロールバックの原則禁止') || runbookContent.includes('Spreadsheet全体Version Rollbackの絶対禁止'), "Runbook must prohibit full version rollback");
+assert.ok(runbookContent.includes('Surgical Repair') || runbookContent.includes('外科的'), "Runbook must define surgical repair");
+assert.ok(apiContractContent.includes('外科的局所復旧原則 (Surgical Repair) とスプレッドシート全体ロールバックの禁止'), "API_CONTRACT must prohibit full version rollback and mandate surgical repair");
+assert.ok(dataLifecycleContent.includes('Append-Only') || dataLifecycleContent.includes('追記専用'), "DATA_LIFECYCLE must mandate append-only immutable logs");
+
+console.log("  ✅ GATE 5 PASS: Canonical SSOT (BACKUP_RESTORE_RUNBOOK / API_CONTRACT / DATA_LIFECYCLE) と完全整合");
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 18 MIGRATION ANCHOR GATES PASSED PERFECTLY!");

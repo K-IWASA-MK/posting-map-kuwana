@@ -26,7 +26,8 @@ const rootDir = process.cwd();
 const dbJsPath = path.join(rootDir, 'active/dashboard/db.js');
 const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
 const renderJsPath = path.join(rootDir, 'active/dashboard/render.js');
-const adr12Path = path.join(rootDir, 'docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md');
+const designContractPath = path.join(rootDir, 'docs/architecture/01_DESIGN_CONTRACT.md');
+const apiContractPath = path.join(rootDir, 'docs/api/API_CONTRACT.md');
 const v2ApiPath = path.join(rootDir, 'active/api/v2_api.js');
 const gpsServicePath = path.join(rootDir, 'active/business/gps/gps_service.js');
 const gpsRepositoryPath = path.join(rootDir, 'active/business/gps/gps_repository.js');
@@ -34,7 +35,8 @@ const gpsRepositoryPath = path.join(rootDir, 'active/business/gps/gps_repository
 const dbJs = fs.readFileSync(dbJsPath, 'utf8');
 const appJs = fs.readFileSync(appJsPath, 'utf8');
 const renderJs = fs.readFileSync(renderJsPath, 'utf8');
-const adr12 = fs.readFileSync(adr12Path, 'utf8');
+const designContract = fs.readFileSync(designContractPath, 'utf8');
+const apiContract = fs.readFileSync(apiContractPath, 'utf8');
 const v2ApiJs = fs.readFileSync(v2ApiPath, 'utf8');
 const gpsServiceJs = fs.readFileSync(gpsServicePath, 'utf8');
 const gpsRepositoryJs = fs.readFileSync(gpsRepositoryPath, 'utf8');
@@ -456,18 +458,19 @@ test('10. 【ランタイム実機動作検証】Offline UI即時解放・キュ
 test('9. Universal 原則遵守 & 厳格な Scope Lock', () => {
   // 地区名のハードコード禁止チェック
   const forbiddenDistricts = ['kuwana', 'okayama', 'tsushima'];
-  for (const fileContent of [dbJs, appJs, renderJs, adr12]) {
+  for (const fileContent of [dbJs, appJs, renderJs]) {
     const lower = fileContent.toLowerCase();
     for (const district of forbiddenDistricts) {
       assert.equal(lower.includes(district), false, `ファイル内に地区名 "${district}" のハードコードが存在してはならない`);
     }
   }
 
-  // ADR-012 が正しく存在し、必要な決定事項が記述されていること
-  assert.ok(adr12.includes('ADR-012: Durable Queue Specification'), 'ADR-012 が正しく作成されていること');
-  assert.ok(adr12.includes('DB_VERSION = 2'), 'ADR-012 に DB_VERSION = 2 の維持が記録されていること');
-  assert.ok(adr12.includes('requestId'), 'ADR-012 に requestId の方針が記録されていること');
-  assert.ok(adr12.includes('getSyncQueueRowIds'), 'ADR-012 に getSyncQueueRowIds が記録されていること');
+  // Canonical SSOT (01_DESIGN_CONTRACT.md Phase 10 / API_CONTRACT.md §12, §13) において Durable Queue 契約が確立されていること
+  assert.ok(designContract.includes('Phase 10 — Offline / Durable Queue'), '01_DESIGN_CONTRACT に Phase 10 Durable Queue が定義されていること');
+  assert.ok(designContract.includes('Local persistent queue'), '01_DESIGN_CONTRACT に Local persistent queue が明記されていること');
+  assert.ok(apiContract.includes('requestId'), 'API_CONTRACT に requestId 冪等性契約が明記されていること');
+  assert.ok(dbJs.includes('const DB_VERSION = 2;'), 'db.js に DB_VERSION = 2 の維持が実動実装されていること');
+  assert.ok(dbJs.includes('getSyncQueueRowIds'), 'db.js に getSyncQueueRowIds が実動実装されていること');
 });
 
 console.log('✅ ALL 10 PHASE 10 DURABLE QUEUE STRICT VERIFICATION CHECKS DEFINED & TESTED SUCCESSFULLY.\n');

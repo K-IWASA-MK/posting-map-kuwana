@@ -156,7 +156,14 @@ test('10. Audit Logging: 操作者staffId、JSTタイムスタンプ、不可逆
   assert.ok(distRepo.includes('rawCompletedAt'), 'Distribution repository must track completedAt');
   assert.ok(distRepo.includes('staffId'), 'Distribution repository must track staffId');
 
-  // ADR-016 の存在
-  const adr16Path = path.join(rootDir, 'docs/architecture/decisions/ADR-016_SECURITY_ARCHITECTURE.md');
-  assert.ok(fs.existsSync(adr16Path), 'ADR-016 must exist');
+  // Canonical SSOT (SECURITY_BASELINE.md / API_CONTRACT.md) のセキュリティ・監査証跡契約直接検証
+  const secBaselinePath = path.join(rootDir, 'docs/security/SECURITY_BASELINE.md');
+  const apiContractPath = path.join(rootDir, 'docs/api/API_CONTRACT.md');
+  assert.ok(fs.existsSync(secBaselinePath), 'SECURITY_BASELINE.md must exist');
+  assert.ok(fs.existsSync(apiContractPath), 'API_CONTRACT.md must exist');
+  const secBaseline = fs.readFileSync(secBaselinePath, 'utf8');
+  const apiContract = fs.readFileSync(apiContractPath, 'utf8');
+
+  assert.ok(secBaseline.includes('監査') || secBaseline.includes('Audit'), 'SECURITY_BASELINE must mandate audit trail');
+  assert.ok(apiContract.includes('requestId'), 'API_CONTRACT must mandate requestId audit tracking');
 });
