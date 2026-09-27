@@ -58,14 +58,20 @@
 ### 2.1 SEC-001: Dashboard Session & Shared PIN 認証基盤
 
 1. **サーバーサイドセッション管理**:
-   - Dashboard の管理者認証は、クライアントに PIN を保持させず、サーバー側（GAS CacheService / PropertiesService）で発行・検証されるセッショントークンによって管理する。
-   - セッショントークンは暗号論的擬似乱数（128bit以上）を用いて生成する。
+   - Dashboard の管理者認証は、クライアントに PIN を保持させず、サーバー側（GAS CacheService）で発行・検証されるセッショントークンによって管理する。
+   - トークン仕様:
+     - プレフィックス: `pms_dash_`
+     - エントロピー: `Utilities.getUuid()` + タイムスタンプ + 乱数 + 地区IDの SHA-256 ハッシュ値。
+     - キャッシュキー: `DASH_SESSION_` + SHA-256(トークン)。トークン平文はキーとして保存しない。
 2. **Session District Binding (地区バインド)**:
    - セッションは必ず特定の `districtId` に厳格に紐付け（Bind）される。
-   - トークン検証時、リクエストの `districtId` とトークンにバインドされた `districtId` が一致しない場合は即座に遮断（`HTTP 403 / BOLA_ATTEMPT_DETECTED`）する。
+   - トークン検証時、リクエストの `districtId` とトークンにバインドされた `districtId` が一致しない場合は即座に遮断（`HTTP 403 / DISTRICT_MISMATCH`）する。
 3. **有効期限と無効化**:
-   - セッションの有効期限は最大 **6 時間（21,600秒）** とし（GAS CacheService 最大保持期間仕様に準拠）、明示的ログアウトまたは有効期限到達で即時破棄する。
-4. **BOLA / IDOR 防御**:
+   - セッションの有効期限は最大 **6 時間（21,600秒）** とし（GAS CacheService 最大保持期間仕様に準拠）、明示的ログアウト（`logoutManager`）または有効期限到達で即時破棄する。
+4. **localStorage 改ざん耐性と UI 復帰**:
+   - `localStorage` の値（例: `pm_auth_xxx=true`）は単なる表示補助に過ぎず、認証の正本（SSOT）としては一切信用しない。
+   - セッショントークンが存在しない場合、あるいはサーバーから `401 UNAUTHORIZED` / `DISTRICT_MISMATCH` が返却された場合は、直ちにローカル情報をクリアし、画面にPIN入力モーダル（`#manager-pin-gate`）を強制表示する。
+5. **BOLA / IDOR 防御**:
    - 一度認証されたセッションであっても、セッション発行対象外の地区リソース（他地区のスプレッドシート・設定）へのアクセスは完全遮断する。
 
 ---
@@ -101,6 +107,14 @@
 3. **SYSTEM_INFO Integrity Guard**:
    - 接続先スプレッドシートを開いた直後、`SYSTEM_INFO` シートの `district_id` を読み出し、リクエストの `districtId` と一致することを検証する。
    - 万が一不一致の場合は `DISTRICT_MISMATCH` 例外をスローし、即時トランザクションを中断する。
+4. **クライアント側 HMAC 共有鍵の完全却下 (REJECT - ADR-006)**:
+   - Hアプリはブラウザおよび PWA 環境（HTML/JavaScript）で動作するクライアントアプリケーションである。クライアントに共有鍵（HMAC Secret）を保持させた場合、開発者ツールや逆コンパイルにより即座に鍵が抽出・漏洩し、認証境界が根本から崩壊する。
+   - したがって HMAC 主認証案は完全に却下し、「フロントエンドに秘密情報を絶対に配置しない（No Secrets in Frontend）」原則を厳守する。
+5. **業務データ直接 Fetch の絶対禁止 (Data Provisioning Security Rule)**:
+   - 業務データ（CSV等）は、GitHub Pages 等の静的ホスティングからクライアント側で直接 Fetch してはならない。必ず GAS（`v2_api`）認証境界を経由し、認証・認可を通過した状態で取得すること。
+6. **Public Bootstrap API 境界**:
+   - Hアプリ起動用の Public Bootstrap API（`getSystemSummary`, `getMapsApiKey`, `getTier1`, `verifyManagerPassword`）は、初期描画最適化（Optimistic Load）のため無認証アクセスを許可する。
+   - 上記を除くすべての API アクセス（doPost / doGet）は、トークンまたはセッション認証を通過しなければならない。
 
 ---
 
@@ -172,6 +186,14 @@
 | **利用 (Usage)** | メモリ内でのみ一時参照。監査ログやエラーログに平文を出力しない。 |
 | **ローテーション (Rotation)** | 年1回または鍵漏洩疑惑時に実施。旧キーと新キーの並行運用期間（Grace Period）を設けず即時入替。 |
 | **破棄 (Revocation)** | 地区廃止時（Deprovisioning）または漏洩時に、GCP Console から即時キーを失効（Delete）。 |
+
+### 3.1 LINE Developers プラットフォーム統合構成
+現場活動員の本人認証（LIFF）およびプッシュ通信を安全に維持するため、LINE Developers コンソール上の構造を以下のように統一管理する：
+1. **Provider**: `Civic Tech Inc.` (最上位組織コンテナ)
+2. **LINE Login Channel**: `POSTING MAP Login` (共通認証チャネル、App type: Web app、Callback URL: `https://app.posting-map.jp/`)
+3. **Messaging API Channel**: `POSTING MAP Official` (Auto-reply: OFF, Greeting: ON, Webhook: ON)
+4. **LIFF Application**: `POSTING MAP Field` (Size: `Full`, Endpoint: `https://app.posting-map.jp/active/dashboard/index.html`, Scopes: `profile`, `openid`, Bot Prompt: `Aggressive`)
+5. **シークレット隔離**: 長期チャネルアクセストークン等の機密情報は、リポジトリやフロントエンドへ配置せず、親GASの `ScriptProperties` に隔離保管する。
 
 ---
 

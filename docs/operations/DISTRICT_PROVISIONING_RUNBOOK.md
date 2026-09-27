@@ -87,17 +87,29 @@
   1. `scripts/fetch-district-raw-data.py` を実行し、国土交通省および e-Stat 一次データを完全自律取得（ゼロ人間介入原則：`docs/architecture/DISTRICT_DATA_ACQUISITION_RULE.md` 厳格遵守）。
   2. `census-small-area-master` プロトコルおよび `scripts/generate-boundaries-geojson.py` を実行し、国勢調査小地域（幾何・人口・世帯数）と国交省位置参照情報（小字・完成住所）を空間結合（Point in Polygon）。
   3. 飛び地（MultiPolygon）の統合、水面等非居住区域の除外、丁目・小地域コードの正規化を実施し、マスター3点セット（`boundaries.geojson`, `address_master.csv`, `municipality_master.csv`）を生成。
-- **Validation**:
-  - GeoJSONの構文チェック（RFC 7946準拠、WGS84座標系）。
-  - 住所マスターの `townId`、`町丁目名`、`世帯数`、`人口` の欠損・不整合ゼロ確認。
+  4. **マスター3点セット同時一括交換 (Master Triad Simultaneous Replacement)**:
+     - `address_master.csv` (点), `boundaries.geojson` (面), `municipality_master.csv` (枠) は不可分の3点セットである。必ず3点同時に新地区の確定データへ一括交換し、旧地区データの混在を絶対禁止とする。
+  5. **`data/area_mapping.json` の初期化 (Area Mapping Initialization)**:
+     - 新規立ち上げ地区（旧実績が存在しない地区）では、誤ったステータス継承・データ汚染を防止するため、**必ず空配列 `[]` に初期化**する。旧地区のマッピングを残存させることは重大事故（別地区エリアの誤爆完了扱い）となるため絶対禁止とする。
+  6. **保管場所候補マスターの機械的導出 (Storage Locations Protocol)**:
+     - `data/storage_locations.json`（チラシ保管場所選択肢）は、前地区からの流用や静的コピーを永久禁止する。
+     - 対象自治体を入力条件とし、公式な衆議院小選挙区画定公定資料から機械的に導出（構成自治体一覧を取得してJSON配備）する。`active/` 内への自治体名ハードコードは禁止。
+  7. **一次原本持ち込み禁止 (Raw Data Exclusion)**:
+     - `data/raw/` および `data/raw_estat_r2/` などのコピー元地区の原本バイナリを新地区Gitリポジトリへ持ち込んではならない。原本は新地区専用 Google Drive（`SOURCE_ARCHIVE/`）へ保管する。
+- **Validation (Master Triad Integrity Gate)**:
+  - **Rule-01 (総件数 N の完全一致)**: $\text{address\_master 行数} = \text{boundaries Features} = \text{municipality total\_towns 合計} = N$
+  - **Rule-02 (rowId 1..N 1:1 対応)**: `address_master.csv` の `rowId` と `boundaries.geojson` の `properties.rowId` が欠損・重複なく 1:1 一致。
+  - **Rule-03 (自治体名完全一致)**: 出現するすべての `city_name` が `municipality_master.csv` と完全一致。
+  - **Rule-04 (旧地区残骸ゼロ確認)**: 3点セット内に前地区の自治体名・町名・旧コードが 0件。
   - データ監査スキル `official-data-confirmation-audit` のパス。
 - **Evidence**:
   - 生成されたマスターデータファイル群
-  - データ監査ログ（レコード件数、世帯数合計一致証跡）
+  - データ監査ログ（レコード件数、世帯数合計一致証跡、Integrity Gate PASS ログ）
 - **Rollback**:
   - 生成データの破棄・スクリプト修正・再生成
 - **HARD STOP Condition**:
   - 公式統計データと世帯数・人口の不整合が解明できない場合。
+  - Master Triad Integrity Gate（Rule-01 〜 Rule-04）で 1 件でも不整合が検出された場合。
 
 ---
 
@@ -201,24 +213,41 @@
 ### Stage 6: 外部サービス連携設定 (LINE / LIFF / Contract)
 
 - **Preconditions**:
-  - 当該地区用の LINE Developers チャネル（Messaging API / LINE Login）が存在すること。
+  - 当該地区用の LINE Developers 設定（Provider: `Civic Tech Inc.` 配下）が存在すること。
 - **Input**:
-  - LINE Login チャネル ID
-  - LIFF ID
+  - LINE Login チャネル ID（`POSTING MAP Login`）
+  - LIFF ID（`POSTING MAP Field`）
   - 契約終了日
 - **Action**:
-  1. LINE Developers にて LIFF アプリを作成し、Endpoint URL に Universal H App の公開URLを設定。
-  2. 地区の `SYSTEM_INFO` シートに `contract_expiry`（契約終了日）を設定。
-  3. クライアント配信設定ファイル（`data/config.js` または地区用ビルド設定）に `districtId` と `liffId` をバインド。
+  1. **LINE Developers プラットフォーム設計仕様の適用**:
+     - **Provider**: `Civic Tech Inc.` (共通最上位コンテナ)
+     - **LINE Login Channel**: `POSTING MAP Login` (共通認証チャネル、App type: Web app、Callback URL: `https://app.posting-map.jp/`、Linked Messaging API: `POSTING MAP Official`)
+     - **Messaging API Channel**: `POSTING MAP Official` (Auto-reply: OFF, Greeting messages: ON [アプリ起動案内], Webhook: ON)
+     - **LIFF Application**: `POSTING MAP Field`
+       - Size: `Full` (全画面表示)
+       - Endpoint URL: `https://app.posting-map.jp/active/dashboard/index.html` (独自ドメイン絶対パス)
+       - Scopes: `profile`, `openid`
+       - Bot Prompt: `Aggressive` (友だち追加自動推奨)
+       - Module Mode: 無効 (OFF)
+  2. **トークン・リッチメニューの配備**:
+     - 親GASの `ScriptProperties` に Messaging API 長期チャネルアクセストークンを設定。
+     - LIFF URL を組み込んだリッチメニューを適用（`createRichMenuForHApp()`）。
+  3. **地区契約情報設定**:
+     - 地区の `SYSTEM_INFO` シートに `contract_expiry`（契約終了日）を設定。
+  4. **クライアント設定バインド**:
+     - クライアント配信設定ファイル（`data/config.js`）に `districtId` と `liffId` を設定。
 - **Validation**:
-  - LINE ログインから LIFF アプリが正常に起動すること。
+  - LINE ログインから LIFF アプリが正常に全画面起動すること。
   - LIFF 初期化時に `liffToken` が正しく取得できること。
+  - チャネルシークレットがクライアント側に一切露出していないこと。
 - **Evidence**:
   - LIFF 設定画面情報（機密情報はマスク）
+  - リッチメニュー適用確認ログ
 - **Rollback**:
   - LIFF アプリの削除または非公開化。
+  - Script Properties の該当トークン削除。
 - **HARD STOP Condition**:
-  - LINE チャネルシークレットをクライアント側 JS にハードコードした場合。
+  - LINE チャネルシークレットをクライアント側 JS や Git にハードコードした場合。
 
 ---
 

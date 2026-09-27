@@ -33,6 +33,10 @@ System: Universal POSTING MAP Engine / 289 District Expansion OS
 - `docs/architecture/ADDRESS_EXTRACTION_RULE.md`（岩佐CEO策定）に基づき、取得した町名文字列が粗い（大字のみで複数小地域に分割されている等）場合、第2階層（小字・地区名）を結合して **`江場（中野）`** のような一意かつ直感的な「完成住所」として確定する。
 - `大字江場` のような同名レコードが重複してマスターCSVに並ぶ状態を**手抜き未完成データ**として厳格に排除する。
 
+### 【原則 4】原本はDrive・確定データはGit（Drive Storage & Provenance Doctrine）— ABSOLUTE
+- **「Driveに原本 ➔ Gitに確定データ」**: 外部から取得した地区固有の原本・公定一次資料は、最初から地区専用 Google Drive（`SOURCE_ARCHIVE` 領域）へ恒久保存する。
+- Git リポジトリには、汎用OS本体、検証・監査済みの確定実行データ（`data/`）、正式スクリプト、監査記録のみを保持し、原本バイナリをGitに持ち込まない。
+
 ---
 
 ## 2. 自律調達アーキテクチャ（Autonomous Fetch Architecture）
@@ -151,3 +155,39 @@ System: Universal POSTING MAP Engine / 289 District Expansion OS
 2. **単一ソース横流し**: e-Stat等のShapefile属性（`S_NAME`）をそのままCSVに書き出して終了すること。
 3. **無断改番**: 住所表記の改善に伴い、既存 `rowId` を勝手に振り直すこと。
 4. **外部有料API依存**: Google Maps Geocoding API等の外部課金APIをデータ生成パイプラインの前提にすること（完全オフライン・オープンデータで完結させること）。
+5. **scratch への原本保存の絶対禁止**: `scratch/` は外部原本の恒久的保存場所ではない。一時作業で利用した場合でも、変換・監査完了後は速やかに削除し、Git追跡下やローカル作業領域に残存させてはならない。
+6. **前地区一次原本の持ち込み絶対禁止**: 前地区の一次原本（PDF, Excel, Shapefile, ZIP, 中間GeoJSON等）を新地区Gitリポジトリへ持ち込んではならない。新地区の外部原本は新地区専用Driveで新規取得・管理する。
+
+---
+
+## 7. 原本恒久保管・追跡可能性統制 (Drive Storage & Provenance)
+
+### 7.1 Google Drive 保管構造 (Drive Storage Architecture)
+各地区専用の Google Drive（親フォルダー `03_BRANCH/{DISTRICT_NAME}`）内に、原本専用の保管領域を設ける。
+```text
+03_BRANCH/{DISTRICT_NAME}/
+├── {DISTRICT_NAME} (スプレッドシート Pure DB)
+├── {DISTRICT_NAME} 支部_STORAGE (アプリ稼働用ストレージ)
+└── SOURCE_ARCHIVE/ (原本恒久保管領域)
+    ├── election/ (選挙関連公式一次資料: 第49回/, 第50回/, 第51回/)
+    ├── census/ (国勢調査・e-Stat統計原本)
+    └── postal/ (住所・郵便関連公的資料)
+```
+
+### 7.2 原本の追跡可能性 (Provenance & Traceability)
+外部原本を Google Drive へ保存し、確定データを生成・監査した場合、以下のメタデータを監査記録（`.agents/records/`）に明記する。
+1. **情報源（発行元機関）**: （例: 岡山県選挙管理委員会、総務省、e-Stat、デジタル庁）
+2. **資料名 & 公表日**: （例: 衆議院小選挙区開票結果、2026-02-09発表）
+3. **公式 URL または取得経路**: （例: `pref.okayama.jp/page/766995.html`）
+4. **Drive 上の保存先 & ファイル名**: （例: `SOURCE_ARCHIVE/election/第51回/405267.xlsx`）
+5. **整合性検証証跡**: ファイルサイズ、SHA-256 / MD5 ハッシュ、確定データ（`data/`）との突合検算結果
+
+### 7.3 決定論的データ生成パイプライン (Deterministic Data Pipeline)
+アプリケーション（Hアプリ、Manager、GAS）は、Google Drive 上の原本を直接 fetch したり動的に解釈する構造を持ってはならない。
+```text
+Drive 原本 ➔ [正式スクリプト] ➔ 中間データ ➔ [機械監査ゲート] ➔ 確定 ➔ data/ 配置
+```
+1. **原本参照**: `scripts/` に配置された正式ツールが Drive 原本を参照。
+2. **変換加工**: 決定論的アルゴリズムにより小地域マスターや GeoJSON を生成。
+3. **監査・検証**: 人口・世帯数・境界幾何のトポロジーを全数監査。
+4. **Git 配置**: 検証 PASS を確認した成果物のみを `data/` へ配置し、Git コミットする。

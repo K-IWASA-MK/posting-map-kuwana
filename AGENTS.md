@@ -3,9 +3,14 @@
 ## 1. Architecture — ABSOLUTE
 - POSTING MAP is a single application, a single repository, and a single domain (Universal Engine).
 - Regional differences are absorbed by data, not code duplication. Creating district-specific repositories, applications, or domains is strictly prohibited.
+- 4-Tier Physical Separation:
+  1. Client Tier (H-App / Dashboard: Static hosting on CDN / GitHub Pages)
+  2. Backend Tier (Standalone GAS API `v2_api.js`: Auth, Identity, Validation, Concurrency)
+  3. Database Tier (Google Spreadsheet Pure DB: no scripts, no custom functions, no triggers + Google Drive: binary evidence)
+  4. Master Data Tier (Git `data/`: address_master.csv, boundaries.geojson, municipality_master.csv, config.js, area_mapping.json)
 - active/ = universal engine. Never modify active/ for regional specialization.
-- data/ = master data and client configuration (address_master.csv, boundaries.geojson, municipality_master.csv, config.js, area_mapping.json).
-- Spreadsheet = Pure DB (no scripts, no triggers). GAS = Standalone only. Container-bound Apps Script is permanently deprecated.
+- data/ = master data and client configuration.
+- Spreadsheet = Pure DB (no scripts, no custom functions, no triggers). GAS = Standalone only. Container-bound Apps Script is permanently deprecated.
 
 ## 2. Identity & Authorization — ABSOLUTE
 - Identity & Target Area derivation chain: LINE User ID (verified) → Person / Staff Identity → Branch → Branch Activity Target Regions.
@@ -24,6 +29,7 @@
 3. **Scope Lock & 最小侵襲**: 指定範囲外のコード不可侵。最小限の行数のみ変更。「ついで」の改善・リファクタリング・別箇所への波及は絶対禁止。
 4. **Unexpected Condition → Report → STOP**: 予期せぬ状態・不整合・テスト失敗・宣言外変更を発見した場合は即座に作業を停止し、MASTERへ報告すること。自己判断での修正拡大は禁止。
 5. **実装後差分照合必須**: 実装完了後、必ず `git diff` で事前宣言と実際の変更内容を照合すること。宣言外変更が1行でも存在した場合は即時失敗・HARD STOPとする。
+6. **既存安全経路最優先・非侵襲原則**: 単純な管理・調査・試験のために、本番GAS、本番WebApp、デプロイ、OAuth、権限体系を変更することを禁止する。「APIでできない → GASを一時改造する」を標準手段として使用してはならない。UIで完結する作業はUIで完結させ、最小変更・最小リスク・既存システム非侵襲を最優先とする。
 
 ## 5. Data Protection — ABSOLUTE
 - Never modify production data outside approved scope.
@@ -43,6 +49,12 @@ AI社員は作業フェーズに応じて、必ず以下の詳細規程・ワー
 - 検証・検品規程 & HARD STOP条件 (V1〜V4): [.agents/rules/verification-gates.md](.agents/rules/verification-gates.md)
 - 権限境界・Scope最小化・詳細禁止事項: [.agents/rules/agent-authority.md](.agents/rules/agent-authority.md)
 - AI社員基盤・アーキテクチャ体系: [docs/ai-foundation.md](docs/ai-foundation.md)
+- リポジトリ内知識体系:
+  - Supreme Contract: `docs/architecture/01_DESIGN_CONTRACT.md`
+  - Rules: `.agents/rules/` および `AGENTS.md`
+  - Skills: `.agents/skills/`
+  - Workflows: `.agents/workflows/`
+  - Docs: `docs/`
 
 ## 8. 秘密情報ファイルの不可侵・非表示原則 (Confidentiality & Secret Protection) — ABSOLUTE
 - `.env`, `.secrets/*`, `*.json`（サービスアカウント等の鍵ファイル）, `*.pem` 等の機密ファイルを、`view_file`、`cat`、`read_file`、スクリプト実行等によりコンテキストやチャット画面・ログに展開・出力することを一切禁止する。
