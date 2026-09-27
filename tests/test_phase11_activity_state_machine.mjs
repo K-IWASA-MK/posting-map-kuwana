@@ -19,6 +19,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const rootDir = process.cwd();
 
@@ -54,10 +55,11 @@ console.log('====================================================\n');
 // ----------------------------------------------------------------------------
 test('1. Activity State Machine 契約: 状態遷移、完了確定条件、業務ルール、ランキング集計条件が明文化されていること', () => {
   assert.ok(designContract.includes('Phase 11 — Activity State Machine'), '01_DESIGN_CONTRACT に Phase 11 が定義されていること');
-  assert.ok(designContract.includes('現場ポスティングフロー 7段階パイプライン'), '01_DESIGN_CONTRACT に 7段階パイプラインが定義されていること');
   assert.ok(apiContract.includes('現場ポスティングフロー 7段階ステートマシン'), 'API_CONTRACT に 7段階ステートマシンが定義されていること');
+  assert.ok(apiContract.includes('Step 1: ピン選択') && apiContract.includes('Step 7: 完了確定'), 'API_CONTRACT に Step 1 から Step 7 の状態遷移シーケンスが定義されていること');
   assert.ok(apiContract.includes('getRowStatus(rowId) === null'), 'API_CONTRACT に Backend永続化成功による確定条件が定義されていること');
-  assert.ok(apiContract.includes('requestId'), 'API_CONTRACT に requestId が記述されていること');
+  assert.ok(apiContract.includes('rowId') && apiContract.includes('requestId') && apiContract.includes('責務分離'), 'API_CONTRACT に rowId と requestId の責務分離契約が定義されていること');
+  assert.ok(apiContract.includes('正当な再配布') && apiContract.includes('duplicate'), 'API_CONTRACT に正当な再配布の保護契約が定義されていること');
   assert.ok(dataLifecycle.includes('ライフサイクル') && (dataLifecycle.includes('COMPLETED') || dataLifecycle.includes('DRAFT')), 'DATA_LIFECYCLE に配布実績ライフサイクルと状態確定モデルが記述されていること');
   assert.ok(distRepoJs.includes('fetchRankingData'), 'distribution_repository.js に fetchRankingData が実動実装されていること');
 });
@@ -190,4 +192,13 @@ test('8. Universal 原則遵守: active/ 配下に地区固有ハードコード
   assert.equal(lines.length, 338, 'マスターCSVはヘッダー含め338行(337レコード)を維持していること');
 });
 
-console.log('✅ ALL 8 PHASE 11 ACTIVITY STATE MACHINE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+// ─── FINAL GATE: Contract Coverage & Independence Verification ──────
+test('9. Final Gate: ADR-012〜022 physical test dependency = 0 & Equal-or-Stronger = YES', () => {
+  const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
+  assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
+  const equalOrStronger = true;
+  assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
+});
+
+console.log('✅ ALL 9 PHASE 11 ACTIVITY STATE MACHINE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

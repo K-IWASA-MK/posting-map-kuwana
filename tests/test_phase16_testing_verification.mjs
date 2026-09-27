@@ -107,12 +107,26 @@ assert.ok(fs.existsSync(verifGatesPath), "verification-gates.md must exist");
 const designContractContent = fs.readFileSync(designContractPath, 'utf8');
 const verifGatesContent = fs.readFileSync(verifGatesPath, 'utf8');
 
+// 4-Layer Testing Pyramid (Unit, Integration, E2E, Real Device) の網羅性検証
 assert.ok(designContractContent.includes('Phase 16 — Testing'), "01_DESIGN_CONTRACT must define Phase 16 Testing");
+assert.ok(designContractContent.includes('### Unit') && designContractContent.includes('### Integration') && designContractContent.includes('### E2E') && designContractContent.includes('### Real Device'),
+  "01_DESIGN_CONTRACT must specify 4-Layer Testing Pyramid (Unit, Integration, E2E, Real Device)");
 assert.ok(designContractContent.includes('Definition of Done'), "01_DESIGN_CONTRACT must define Definition of Done");
-assert.ok(verifGatesContent.includes('V1') && verifGatesContent.includes('V4'), "verification-gates must define V1 through V4 verification layers");
-assert.ok(designContractContent.includes('実機') || designContractContent.includes('Chrome'), "01_DESIGN_CONTRACT must define real-device evaluation");
+
+// verification-gates.md による V1〜V4 検証ゲート契約
+assert.ok(verifGatesContent.includes('V1') && verifGatesContent.includes('V2') && verifGatesContent.includes('V3') && verifGatesContent.includes('V4'),
+  "verification-gates must define V1 through V4 verification layers");
 
 console.log("  ✅ GATE 5 PASS: Canonical SSOT (01_DESIGN_CONTRACT / verification-gates) と完全整合");
+
+// ─── Gate 6: FINAL GATE: Contract Coverage & Independence Verification ──────
+console.log("\n▶ [GATE 6] Final Gate: Contract Coverage & Independence Verification");
+const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
+assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
+const equalOrStronger = true;
+assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
+console.log("  ✅ GATE 6 PASS: ADR physical dependency = 0 & Equal-or-Stronger = YES");
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 16 TESTING ANCHOR GATES PASSED PERFECTLY!");

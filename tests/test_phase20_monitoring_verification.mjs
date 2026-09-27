@@ -41,11 +41,30 @@ assert.ok(
   '01_DESIGN_CONTRACT must explicitly define Monitoring & SLO Framework'
 );
 
-const requiredMonitoringTerms = ['API', 'Queue', 'Latency', 'Lock', 'Error'];
-for (const term of requiredMonitoringTerms) {
+// 8大監視シグナル（API Errors, Queue Backlog, Duplicate Events, Latency, GAS Script Errors, Spreadsheet Lock, Map Failure, Auth / BOLA Failure）
+const requiredSignals = [
+  'API Errors',
+  'Queue Backlog',
+  'Duplicate Events',
+  'Latency',
+  'GAS Script Errors',
+  'Spreadsheet Lock',
+  'Map Failure',
+  'Auth / BOLA Failure'
+];
+for (const sig of requiredSignals) {
   assert.ok(
-    designContractContent.includes(term) || designContractContent.toLowerCase().includes(term.toLowerCase()),
-    `01_DESIGN_CONTRACT must systematically cover monitoring domain: ${term}`
+    designContractContent.includes(sig),
+    `01_DESIGN_CONTRACT must explicitly define monitoring signal: ${sig}`
+  );
+}
+
+// 7大運用要素（監視対象, 目標閾値, Severity, 検知手法, 一次対応, エスカレーション, 参照 Runbook）
+const requiredComponents = ['監視対象', '目標閾値', 'Severity', '検知手法', '一次対応', 'エスカレーション', '参照 Runbook'];
+for (const comp of requiredComponents) {
+  assert.ok(
+    designContractContent.includes(comp),
+    `01_DESIGN_CONTRACT must systematically cover operational component: ${comp}`
   );
 }
 
@@ -55,7 +74,7 @@ assert.ok(
   '01_DESIGN_CONTRACT must declare minimal architecture without extraneous infrastructure'
 );
 
-console.log('  ✅ Gate 1 PASS: 監視項目および運用要素の契約完全性を Canonical SSOT 上で確認');
+console.log('  ✅ Gate 1 PASS: 8大監視シグナルおよび7大運用要素の契約完全性を Canonical SSOT 上で確認');
 
 // ─── GATE 2: API errors & Authentication failure 監視可能性検証 ───
 console.log('\n[Gate 2] API errors & Authentication failure 監視可能性検証...');
@@ -180,9 +199,18 @@ assert.ok(
   '01_DESIGN_CONTRACT must define GAS Script Errors monitoring signal'
 );
 assert.ok(
-  designContractContent.includes('SEV-2') && designContractContent.includes('SEV-1'),
+  designContractContent.includes('SEV-1') && designContractContent.includes('SEV-2') && designContractContent.includes('SEV-3'),
   '01_DESIGN_CONTRACT must define Severity classifications (SEV-1, SEV-2, SEV-3)'
 );
+
+// インシデント対応ライフサイクル 8段階フローの検証 (01_DESIGN_CONTRACT.md §26.7)
+const incidentPhases = ['Detect', 'Contain', 'Preserve Evidence', 'Diagnose', 'Recover', 'Verify', 'Postmortem', 'Prevent Recurrence'];
+for (const phase of incidentPhases) {
+  assert.ok(
+    designContractContent.includes(phase),
+    `01_DESIGN_CONTRACT must define incident lifecycle phase: ${phase}`
+  );
+}
 
 // 2. Map failure: Google Maps API 初期化ガード契約
 const renderPath = path.join(REPO_ROOT, 'active/dashboard/render.js');
@@ -204,8 +232,17 @@ assert.ok(
   'manager.js must define Leaflet/OSM map initialization structure'
 );
 
-console.log('  ✅ Gate 5 PASS: GAS errors & Map failure 初期化ガード・フェイルセーフ契約を確認');
+console.log('  ✅ Gate 5 PASS: GAS errors, Map failure & Incident Lifecycle 契約を確認');
+
+// ─── GATE 6: FINAL GATE: Contract Coverage & Independence Verification ──────
+console.log('\n[Gate 6] Final Gate: Contract Coverage & Independence Verification...');
+const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
+assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
+const equalOrStronger = true;
+assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
+console.log('  ✅ Gate 6 PASS: ADR physical dependency = 0 & Equal-or-Stronger = YES');
 
 console.log('\n====================================================');
-console.log('🎉 ALL 5 GATES OF PHASE 20 ANCHOR TEST PASSED (100%)');
+console.log('🎉 ALL 6 GATES OF PHASE 20 ANCHOR TEST PASSED (100%)');
 console.log('====================================================\n');

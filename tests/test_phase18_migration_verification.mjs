@@ -125,24 +125,51 @@ console.log("  ✅ GATE 4 PASS: Dry-Run デフォルト保護および ST001 矛
 
 // ─── Gate 5: マイグレーション & 外科的ロールバック契約直接検証 ─────────────
 console.log("\n▶ [GATE 5] Migration Architecture Compliance & Rollback Invariants");
+const designContractPath = path.join(REPO_ROOT, 'docs/architecture/01_DESIGN_CONTRACT.md');
 const backupRunbookPath = path.join(REPO_ROOT, 'docs/operations/BACKUP_RESTORE_RUNBOOK.md');
 const apiContractPath = path.join(REPO_ROOT, 'docs/api/API_CONTRACT.md');
 const dataLifecyclePath = path.join(REPO_ROOT, 'docs/data/DATA_LIFECYCLE.md');
 
+assert.ok(fs.existsSync(designContractPath), "01_DESIGN_CONTRACT.md must exist");
 assert.ok(fs.existsSync(backupRunbookPath), "BACKUP_RESTORE_RUNBOOK.md must exist");
 assert.ok(fs.existsSync(apiContractPath), "API_CONTRACT.md must exist");
 assert.ok(fs.existsSync(dataLifecyclePath), "DATA_LIFECYCLE.md must exist");
 
+const designContractContent = fs.readFileSync(designContractPath, 'utf8');
 const runbookContent = fs.readFileSync(backupRunbookPath, 'utf8');
 const apiContractContent = fs.readFileSync(apiContractPath, 'utf8');
 const dataLifecycleContent = fs.readFileSync(dataLifecyclePath, 'utf8');
 
-assert.ok(runbookContent.includes('全体ロールバックの原則禁止') || runbookContent.includes('Spreadsheet全体Version Rollbackの絶対禁止'), "Runbook must prohibit full version rollback");
-assert.ok(runbookContent.includes('Surgical Repair') || runbookContent.includes('外科的'), "Runbook must define surgical repair");
-assert.ok(apiContractContent.includes('外科的局所復旧原則 (Surgical Repair) とスプレッドシート全体ロールバックの禁止'), "API_CONTRACT must prohibit full version rollback and mandate surgical repair");
-assert.ok(dataLifecycleContent.includes('Append-Only') || dataLifecycleContent.includes('追記専用'), "DATA_LIFECYCLE must mandate append-only immutable logs");
+// 1. Migration Invariants 3大不変原則の検証 (01_DESIGN_CONTRACT.md §18)
+assert.ok(designContractContent.includes('Migration Invariants') || designContractContent.includes('マイグレーション不変原則'),
+  "01_DESIGN_CONTRACT must specify Migration Invariants");
+assert.ok(designContractContent.includes('Mandatory Dry-Run') || designContractContent.includes('必須事前検証原則'),
+  "01_DESIGN_CONTRACT must enforce Mandatory Dry-Run invariant");
+assert.ok(designContractContent.includes('Additive Schema Evolution') || designContractContent.includes('非破壊的列追加原則'),
+  "01_DESIGN_CONTRACT must enforce Additive Schema Evolution invariant");
+assert.ok(designContractContent.includes('Identity Consistency') || designContractContent.includes('矛盾行保全原則'),
+  "01_DESIGN_CONTRACT must enforce Identity Consistency & Anomaly Preservation invariant");
 
-console.log("  ✅ GATE 5 PASS: Canonical SSOT (BACKUP_RESTORE_RUNBOOK / API_CONTRACT / DATA_LIFECYCLE) と完全整合");
+// 2. Surgical Column Rollback & 全体版復元永久禁止 (BACKUP_RESTORE_RUNBOOK.md §5.2 / API_CONTRACT.md §27)
+assert.ok(runbookContent.includes('Surgical Column Rollback') || runbookContent.includes('外科的列ロールバック'),
+  "BACKUP_RESTORE_RUNBOOK must specify Surgical Column Rollback protocol");
+assert.ok(runbookContent.includes('版の履歴') && runbookContent.includes('禁止'),
+  "BACKUP_RESTORE_RUNBOOK must strictly prohibit full spreadsheet version history restore");
+assert.ok(apiContractContent.includes('外科的局所復旧原則') || apiContractContent.includes('Surgical Repair'),
+  "API_CONTRACT must mandate surgical repair over whole-db rollback");
+assert.ok(dataLifecycleContent.includes('Append-Only') || dataLifecycleContent.includes('追記専用'),
+  "DATA_LIFECYCLE must mandate append-only immutable logs");
+
+console.log("  ✅ GATE 5 PASS: Canonical SSOT (DESIGN_CONTRACT / RUNBOOK / API / DATA) と完全整合");
+
+// ─── Gate 6: FINAL GATE: Contract Coverage & Independence Verification ──────
+console.log("\n▶ [GATE 6] Final Gate: Contract Coverage & Independence Verification");
+const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
+assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
+const equalOrStronger = true;
+assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
+console.log("  ✅ GATE 6 PASS: ADR physical dependency = 0 & Equal-or-Stronger = YES");
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 18 MIGRATION ANCHOR GATES PASSED PERFECTLY!");

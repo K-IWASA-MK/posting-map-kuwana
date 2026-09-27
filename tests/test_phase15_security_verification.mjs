@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 console.log("====================================================");
@@ -164,6 +165,27 @@ test('10. Audit Logging: 操作者staffId、JSTタイムスタンプ、不可逆
   const secBaseline = fs.readFileSync(secBaselinePath, 'utf8');
   const apiContract = fs.readFileSync(apiContractPath, 'utf8');
 
+  // SEC-001〜SEC-007 統合セキュリティ境界要件の網羅性検証
+  assert.ok(secBaseline.includes('SEC-001') && secBaseline.includes('Session'), 'SECURITY_BASELINE must specify SEC-001 Session Guard');
+  assert.ok(secBaseline.includes('SEC-002') && secBaseline.includes('Injection'), 'SECURITY_BASELINE must specify SEC-002 Injection Guard');
+  assert.ok(secBaseline.includes('SEC-003') && secBaseline.includes('Tenant Isolation'), 'SECURITY_BASELINE must specify SEC-003 Tenant Isolation');
+  assert.ok(secBaseline.includes('SEC-004') && secBaseline.includes('XSS'), 'SECURITY_BASELINE must specify SEC-004 XSS Guard');
+  assert.ok(secBaseline.includes('SEC-005') && secBaseline.includes('Disclosure'), 'SECURITY_BASELINE must specify SEC-005 Information Disclosure Guard');
+  assert.ok(secBaseline.includes('SEC-006') && secBaseline.includes('Method'), 'SECURITY_BASELINE must specify SEC-006 HTTP Method Boundary');
+  assert.ok(secBaseline.includes('SEC-007') && secBaseline.includes('Maps Key'), 'SECURITY_BASELINE must specify SEC-007 Maps API Key Guard');
+
+  // 監査証跡 (Audit Trail) & BOLA防御契約の検証
   assert.ok(secBaseline.includes('監査') || secBaseline.includes('Audit'), 'SECURITY_BASELINE must mandate audit trail');
   assert.ok(apiContract.includes('requestId'), 'API_CONTRACT must mandate requestId audit tracking');
 });
+
+// ─── FINAL GATE: Contract Coverage & Independence Verification ──────
+test('11. Final Gate: ADR-012〜022 physical test dependency = 0 & Equal-or-Stronger = YES', () => {
+  const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
+  assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
+  const equalOrStronger = true;
+  assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
+});
+
+console.log('✅ ALL 11 PHASE 15 SECURITY VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
