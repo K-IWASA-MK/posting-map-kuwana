@@ -1047,18 +1047,20 @@ graph TD
 3. **インフライトリクエストのドレイン**:
    - 停止宣言後、30 秒間待機して通信中のリクエストが完全に完了（ドレイン）したことを確認する。
 
-### 4. Migration (実マイグレーション実行手順)
-実マイグレーションは以下の厳格なステップで実行する：
-1. **Dry-Run の実行**:
-   - `POST /exec { "action": "runIdentityMigration", "provisioningToken": "<SECRET_TOKEN>", "isDryRun": true }`
-   - レポート内容（追加ヘッダー、更新予定行、スキップ行）を点検し、予期せぬ不一致がないか確認する。
-2. **実マイグレーションの実行**:
-   - `POST /exec { "action": "runIdentityMigration", "provisioningToken": "<SECRET_TOKEN>", "isDryRun": false }`
-   - 既存列を変更せず、末尾に P列（`lineUserId`）、Q列（`requestId`）、G列（在庫 `lineUserId`）、M-N列（受渡 `lineUserIds`）を追加（Additive Schema Evolution）。
-   - 名簿と完全一致する安全な行のみ `lineUserId` を補完。
+### 4. Migration Invariants (マイグレーション不変原則)
+実マイグレーション実行にあたり、以下のアーキテクチャ不変原則を厳格に順守する：
+1. **必須事前検証原則 (Mandatory Dry-Run Invariant)**:
+   - 本番実マイグレーション実行前に、必ず Dry-Run モード（`isDryRun: true`）による事前検証と整合性レポート（追加ヘッダー・更新予定行・スキップ理由）の点検を完了すること。未検証の直接実実行を禁止する。
+2. **非破壊的列追加原則 (Additive Schema Evolution Invariant)**:
+   - 既存列（A〜O列等）の改変・削除・順序変更を厳格に禁止し、新設列は末尾追加のみとする（P列 `lineUserId`、Q列 `requestId`、G列 `lineUserId`、M-N列 `requesterLineUserId`, `holderLineUserId`）。
+3. **名簿完全一致と矛盾行保全原則 (Identity Consistency & Anomaly Preservation Invariant)**:
+   - `staffId` および氏名の双方が名簿と完全一致する安全な行のみ `lineUserId` を補完する。名簿不一致（ST001等）の行は空欄のまま安全に保全する。
+- **正本参照 (Canonical References)**:
+  - API エンドポイント・リクエスト/レスポンス仕様: [API_CONTRACT.md](../api/API_CONTRACT.md) §27.2
+  - マイグレーション運用実行手順 (SOP): [BACKUP_RESTORE_RUNBOOK.md](../operations/BACKUP_RESTORE_RUNBOOK.md) §5.2
 
-### 5. Smoke test (本番スモークテスト)
-マイグレーション直後、以下の主要エンドポイントを順次検証する：
+### 5. Smoke test criteria (本番スモークテスト受入基準)
+マイグレーション直後、以下の主要エンドポイント群の疎通性・整合性を機械検証する（詳細仕様: [API_CONTRACT.md](../api/API_CONTRACT.md) §27.1）：
 1. **公開 API 疎通**:
    - `GET /exec?action=registerOrValidateDevice` ➔ HTTP 200 `{ success: true, authorized: true }`
    - `GET /exec?action=getDeviceStatus` ➔ HTTP 200 `{ success: true, exists: false, rows: [] }`
@@ -1066,8 +1068,12 @@ graph TD
    - `POST /exec { "action": "getDashboardSnapshot" }` ➔ HTTP 200 正常データ返却
    - `POST /exec { "action": "getRanking" }` ➔ HTTP 200 正常ランキング返却
    - `POST /exec { "action": "getFlyerStock" }` ➔ HTTP 200 正常在庫返却
-3. **セキュリティ & 整合性ガード**:
-   - 未知地区パラメータ ➔ HTTP 200 `{ success: false, code: "DISTRICT_MISMATCH" }` による安全遮断。
+3. **セキュリティ & 整合性ガード (Generation 2 Routing Error Contract)**:
+   - `districtId missing` ➔ HTTP 200 `{ success: false, code: "MISSING_DISTRICT_ID" }` による安全遮断。
+   - `DISTRICT_REGISTRY unregistered` ➔ HTTP 200 `{ success: false, code: "DISTRICT_NOT_FOUND" }` による未登録地区遮断。
+   - `registered district + SYSTEM_INFO district-code mismatch` (Integrity Guard) ➔ HTTP 200 `{ success: false, code: "DISTRICT_MISMATCH" }` による越境・取り違え遮断。
+   - `expired district` ➔ HTTP 200 `{ success: false, code: "CONTRACT_EXPIRED" }` による安全側遮断 (Fail-Closed)。
+   - `SYSTEM_INFO / contract verification failure` ➔ HTTP 200 `{ success: false, code: "CONTRACT_CHECK_FAILED" }` による安全遮断。
 
 ### 6. Production verification (本番反映検証)
 本番スプレッドシートの実態に対し、以下の監査を実施する：
@@ -1090,22 +1096,16 @@ graph TD
 4. **現場通信障害の多発**:
    - 凍結解除後、現場端末からのキューフラッシュ（`DurableQueue` 送信）で永続的失敗が多発した場合。
 
-### 8. Rollback procedure (ロールバック手順)
-障害発生時は、以下の優先順位で安全に原状復帰を実施する：
+### 8. Rollback architecture (ロールバック設計原則・原状復帰方針)
+障害発生時は、データ保全性を最優先とし、以下のアーキテクチャ原則に従い原状復帰を実施する（運用SOP・具体的復元手順: [BACKUP_RESTORE_RUNBOOK.md](../operations/BACKUP_RESTORE_RUNBOOK.md) §5.2）：
 
-#### Level 1: 外科的列ロールバック (Surgical Column Rollback — 第一推奨)
-- **概要**: 追加された新設列（P列、Q列、G列、M-N列）のみをクリアまたは列削除する。
-- **安全性**: **極めて高い**。他の町丁目の正当な配布実績を一切巻き戻すことなく、数秒で旧スキーマ状態へ原状復帰できる。
-- **手順**:
-  1. スプレッドシート `配布実績` の 16 列目以降をクリア。
-  2. `保有チラシ枚数` の 7 列目をクリア。
-  3. `受渡要請履歴` の 13〜14 列目をクリア。
-  4. 現場書き込みを再開。
+#### Level 1: 外科的列ロールバック原則 (Surgical Column Rollback — 第一推奨)
+- **原則**: 追加された新設列（P列、Q列、G列、M-N列）のみを外科的にクリアまたは列削除し、旧スキーマ状態へ復旧する。
+- **安全性・不変性**: 原本15列（A〜O列）および障害発生後に登録された他の町丁目の正当な配布実績を一切巻き戻すことなく、即時に安全な原状復帰を達成する。
 
-#### Level 2: 事前スナップショット復元 (Snapshot Restore — 緊急時)
-- **概要**: マイグレーション直前に複製退避したバックアップスプレッドシート（`BACKUP_${ssName}_${timestamp}`）をアクティブ DB として再バインドする。
-- **適用条件**: スプレッドシートの構造や既存データが不可逆的に破損した場合。
-- **厳格な禁止事項**:
+#### Level 2: 事前スナップショット復元原則 (Snapshot Restore — 緊急時)
+- **原則**: スプレッドシートの構造や既存原本データが不可逆的に破損した場合に限り、マイグレーション直前に退避した事前スナップショット（`BACKUP_${ssName}_${timestamp}`）をアクティブ DB として再バインドする。
+- **絶対禁止事項**:
   - **Google Spreadsheet の「版の履歴」からの全体一括復元は永久禁止**とする（障害発生後に現場で登録された正当な配布実績まで不可逆的に消失するため）。
 
 

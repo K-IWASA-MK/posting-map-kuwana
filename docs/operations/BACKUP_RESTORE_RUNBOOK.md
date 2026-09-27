@@ -123,6 +123,7 @@
 ### 5.2 Cutover & Rollback 標準運用手順 (Cutover & Rollback Standard Operating Procedure)
 
 計画メンテナンスやスキーマ拡張（マイグレーション）を伴う本番切替および障害時の原状復帰手順（SOP）を規定する。
+（アーキテクチャ受入基準・不変条件: [01_DESIGN_CONTRACT.md](../architecture/01_DESIGN_CONTRACT.md) §19 / API仕様契約: [API_CONTRACT.md](../api/API_CONTRACT.md) §27 参照）
 
 #### 1. 事前スナップショット確立 (Pre-migration Snapshot)
 - 計画変更・マイグレーション着手直前に、対象スプレッドシートを Google Drive 上で複製（`makeCopy`）し、タイムスタンプ付き退避バックアップ（`BACKUP_${ssName}_${timestamp}`）を確実に確立・アクセス検証する。

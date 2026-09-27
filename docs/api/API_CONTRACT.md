@@ -873,9 +873,22 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
    - `POST /exec { "action": "getFlyerStock" }`
      - 応答: HTTP 200 正常チラシ在庫サマリー返却
 3. **セキュリティ & 整合性ガード (Integrity & Safety Guard)**:
-   - 未知地区パラメータ: `POST /exec { "action": "...", "districtId": "UNKNOWN" }`
-     - 応答: HTTP 200 `{ success: false, code: "DISTRICT_MISMATCH" }` による安全遮断
-   - 契約満了地区パラメータ: HTTP 200 `{ success: false, code: "CONTRACT_EXPIRED" }` による安全側遮断 (Fail-Closed)
+   - **未指定地区 (`districtId missing`)**:
+     - 条件: マルチ地区環境において `districtId` が未指定
+     - 応答: HTTP 200 `{ success: false, code: "MISSING_DISTRICT_ID", message: "districtId is required for multi-district routing." }`
+   - **未登録地区 (`DISTRICT_REGISTRY unregistered`)**:
+     - 条件: 指定された `districtId` が `DISTRICT_REGISTRY` に未登録
+     - リクエスト例: `POST /exec { "action": "getDashboardSnapshot", "districtId": "UNKNOWN" }`
+     - 応答: HTTP 200 `{ success: false, code: "DISTRICT_NOT_FOUND", message: "District 'UNKNOWN' is not registered in DISTRICT_REGISTRY." }`
+   - **整合性ガード・地区コード不一致 (`registered district + SYSTEM_INFO district-code mismatch`)**:
+     - 条件: `DISTRICT_REGISTRY` 登録地区だが、対象スプレッドシート `SYSTEM_INFO` の地区コード（B2）が不一致、または既知地区間の越境・セッション所属不一致
+     - 応答: HTTP 200 `{ success: false, code: "DISTRICT_MISMATCH", message: "..." }`
+   - **契約満了地区 (`expired district`)**:
+     - 条件: 対象地区の契約期間終了 (`contract.isExpired`)
+     - 応答: HTTP 200 `{ success: false, code: "CONTRACT_EXPIRED", message: "契約期間が終了しているため利用できません。" }` による安全側遮断 (Fail-Closed)
+   - **契約情報検証失敗 (`SYSTEM_INFO / contract verification failure`)**:
+     - 条件: `SYSTEM_INFO` 読み込み例外等による検証失敗
+     - 応答: HTTP 200 `{ success: false, code: "CONTRACT_CHECK_FAILED", message: "契約情報の検証に失敗したため安全のためアクセスを遮断しました。" }`
 
 ### 27.2 マイグレーション API 契約 (Migration Execution API Contract)
 - **エンドポイント**: `POST /exec`
@@ -906,6 +919,9 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
     "report": []
   }
   ```
+- **関連規程・相互参照 (Canonical References)**:
+  - アーキテクチャ受入基準・不変条件: [01_DESIGN_CONTRACT.md](../architecture/01_DESIGN_CONTRACT.md) §19
+  - 本番切替・ロールバック運用SOP: [BACKUP_RESTORE_RUNBOOK.md](../operations/BACKUP_RESTORE_RUNBOOK.md) §5.2
 
 ---
 **Gate 3 API設計書 策定完了**
