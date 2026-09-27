@@ -47,6 +47,7 @@
 24. [AI Agent & MCP Governance (AIエージェント・MCP実行ガバナンス契約)](#24-ai-agent--mcp-governance-aiエージェントmcp実行ガバナンス契約)
 25. [未確定事項 (Unconfirmed Items)](#25-未確定事項-unconfirmed-items)
 26. [現行実装との対比・GAP分析 (EXISTING / REQUIRED / GAP)](#26-現行実装との対比gap分析-existing--required--gap)
+27. [Production Smoke Test & Migration API Contracts (本番スモークテストおよびマイグレーションAPI契約)](#27-production-smoke-test--migration-api-contracts-本番スモークテストおよびマイグレーションapi契約)
 
 ---
 
@@ -850,6 +851,61 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
 | **REQUIRED** | 構造化ログ出力 | 現在は `console.log` によるテキストログ出力が中心。 | JSON 形式による構造化ログ（`traceId`, `latencyMs` 等）。 | **【GAPあり】**: 将来のロギング強化フェーズにて JSON 出力ラッパーの導入が必要。 |
 | **REQUIRED** | 厳格な境界値チェック | 現在は `rowIdNum < 1` 判定のみ。極端な枚数（> 10,000）のバリデーションは未実装。 | `INVALID_COUNT` 等の厳格な業務バリデーション。 | **【GAPあり】**: 将来のバリデーション層強化フェーズにて実装を検討。 |
 | **REQUIRED** | AI Agent / MCP ガバナンス | 現時点ではリポジトリ共通ルール（`AGENTS.md`）のみ存在。 | MCP レベルでの最小権限・READ/WRITE分離・PreToolUse遮断の設計契約。 | **【GAPあり】**: 将来の MCP エージェント基盤導入フェーズにおいて、本契約に沿ったサーバー・プロキシ構成を適用。 |
+
+---
+
+## 27. Production Smoke Test & Migration API Contracts (本番スモークテストおよびマイグレーションAPI契約)
+
+### 27.1 本番スモークテスト対象 API 契約 (Production Smoke Test Endpoints Contract)
+
+本番デプロイ直後および切替（Cutover）直後において、システムの健全性・疎通性を機械検証するための必須エンドポイント群を規定する：
+
+1. **公開 API (Public Gateway & Device Validation)**:
+   - `GET /exec?action=registerOrValidateDevice`
+     - 応答: HTTP 200 `{ success: true, authorized: true }` または `{ success: true, authorized: false }`
+   - `GET /exec?action=getDeviceStatus`
+     - 応答: HTTP 200 `{ success: true, exists: false, rows: [] }`
+2. **業務閲覧 API (Reading APIs)**:
+   - `POST /exec { "action": "getDashboardSnapshot" }`
+     - 応答: HTTP 200 正常ダッシュボードスナップショット返却
+   - `POST /exec { "action": "getRanking" }`
+     - 応答: HTTP 200 正常個人ランキング返却
+   - `POST /exec { "action": "getFlyerStock" }`
+     - 応答: HTTP 200 正常チラシ在庫サマリー返却
+3. **セキュリティ & 整合性ガード (Integrity & Safety Guard)**:
+   - 未知地区パラメータ: `POST /exec { "action": "...", "districtId": "UNKNOWN" }`
+     - 応答: HTTP 200 `{ success: false, code: "DISTRICT_MISMATCH" }` による安全遮断
+   - 契約満了地区パラメータ: HTTP 200 `{ success: false, code: "CONTRACT_EXPIRED" }` による安全側遮断 (Fail-Closed)
+
+### 27.2 マイグレーション API 契約 (Migration Execution API Contract)
+- **エンドポイント**: `POST /exec`
+- **アクション**: `action: "runIdentityMigration"`
+- **認可**: `verifyProvisioningToken` によるトークン認証必須
+- **リクエストパラメータ**:
+  ```json
+  {
+    "action": "runIdentityMigration",
+    "provisioningToken": "<SECRET_TOKEN>",
+    "isDryRun": true
+  }
+  ```
+- **安全制約**:
+  - **Dry-Run 必須化**: `isDryRun` はデフォルト `true` とし、事前検証レポート（追加ヘッダー、更新予定行、スキップ行）の確認なしに実マイグレーションを実行してはならない。
+  - **Additive Schema Evolution（非破壊的列追加）**: 既存列を変更せず、末尾に P列（`lineUserId`）、Q列（`requestId`）、G列（在庫 `lineUserId`）、M-N列（受渡 `lineUserIds`）を追加。
+  - **名簿完全一致と矛盾行保全**: `staffId` および氏名の双方が名簿と完全一致する場合のみ解決し、`ST001` 等の矛盾行は空欄のまま保全する。
+- **レスポンス形式**:
+  ```json
+  {
+    "success": true,
+    "isDryRun": true,
+    "summary": {
+      "updatedRows": 0,
+      "skippedRows": 0,
+      "headersAdded": 0
+    },
+    "report": []
+  }
+  ```
 
 ---
 **Gate 3 API設計書 策定完了**
