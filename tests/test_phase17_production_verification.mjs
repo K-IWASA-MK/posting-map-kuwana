@@ -79,19 +79,19 @@ const jsonMethod = await resMethod.json();
 assert.equal(jsonMethod.success, false, "bootstrapEnvironment via GET must fail");
 assert.equal(jsonMethod.code, "METHOD_NOT_ALLOWED", "Must return METHOD_NOT_ALLOWED");
 
-// 2. 地区不一致の遮断 (SpreadsheetResolver Integrity Guard)
-const resMismatch = await fetch(`${TARGET_WEBAPP_URL}?districtId=TEST_DISTRICT`);
-const jsonMismatch = await resMismatch.json();
-assert.equal(jsonMismatch.success, false, "Unknown district must fail");
-assert.equal(jsonMismatch.code, "DISTRICT_MISMATCH", "Must return DISTRICT_MISMATCH");
+// 2. 未登録地区の遮断 (Generation 2: DISTRICT_REGISTRY Routing Rejection)
+const resUnknown = await fetch(`${TARGET_WEBAPP_URL}?districtId=TEST_DISTRICT`);
+const jsonUnknown = await resUnknown.json();
+assert.equal(jsonUnknown.success, false, "Unknown district must fail");
+assert.equal(jsonUnknown.code, "DISTRICT_NOT_FOUND", "Must return DISTRICT_NOT_FOUND");
 
-// 3. 契約満了時の安全側遮断 (Contract Gate Fail-Closed)
-const resExpired = await fetch(`${TARGET_WEBAPP_URL}?districtId=TEST_E2E`);
-const jsonExpired = await resExpired.json();
-assert.equal(jsonExpired.success, false, "Expired contract must fail");
-assert.equal(jsonExpired.code, "CONTRACT_EXPIRED", "Must return CONTRACT_EXPIRED");
+// 3. 登録済み地区への未認証アクセス遮断 (Authentication Boundary Smoke)
+const resUnauth = await fetch(`${TARGET_WEBAPP_URL}?districtId=KUWANA`);
+const jsonUnauth = await resUnauth.json();
+assert.equal(jsonUnauth.success, false, "Unauthenticated access to registered district must fail");
+assert.equal(jsonUnauth.code, "UNAUTHORIZED", "Must return UNAUTHORIZED");
 
-console.log("  ✅ GATE 4 PASS: 本番環境のプロトコル制限・地区整合性ガード・Fail-Closed契約判定が完全機能");
+console.log("  ✅ GATE 4 PASS: 本番環境のプロトコル制限・未登録地区Registry遮断・業務認可境界が完全機能");
 
 // ─── Gate 5: ADR-018 Architecture Compliance ────────────────────────
 console.log("\n▶ [GATE 5] ADR-018 Architecture Compliance");
