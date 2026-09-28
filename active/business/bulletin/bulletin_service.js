@@ -41,7 +41,9 @@
       let sheet = ss.getSheetByName("掲示板");
       if (!sheet) {
         sheet = ss.insertSheet("掲示板");
-        sheet.getRange(1, 1, 1, 4).setValues([["日時", "投稿者ID", "投稿者名", "メッセージ"]]);
+        sheet.getRange(1, 1, 1, 5).setValues([["日時", "投稿者ID", "投稿者名", "メッセージ", "lineUserId"]]);
+        sheet.getRange("A1:E1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
+        sheet.setFrozenRows(1);
       }
       return sheet;
     }

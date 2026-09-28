@@ -112,6 +112,9 @@
         this.createMasterSheets(ss, addresses);
 
         const monthResult = this.rolloverMonthlySheets(null, options);
+        if (!monthResult.success) {
+          return monthResult;
+        }
 
         if (typeof cleanupPinStatusDaily === 'function') {
           cleanupPinStatusDaily();
@@ -458,7 +461,7 @@
 
     /**
      * 配布実績の原本
-     * A〜O列: [ID, 市町村, 町域, 配布完了日時, 配布枚数, 担当者ID, 担当者名, GPS, 写真, 緯度, 経度, GPS日時, 写真ファイルID, 写真URL, 写真日時]
+     * A〜P列: [ID, 市町村, 町域, 配布完了日時, 配布枚数, 担当者ID, 担当者名, GPS, 写真, 緯度, 経度, GPS日時, 写真ファイルID, 写真URL, 写真日時, lineUserId]
      */
     createDistributionMaster(ss, addresses) {
       const masterName = this.masterNames.distribution;
@@ -468,10 +471,10 @@
       }
 
       const headers = [
-        ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時"]
+        ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"]
       ];
       sheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
-      sheet.getRange("A1:O1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
+      sheet.getRange("A1:P1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
       sheet.setFrozenRows(1);
 
       if (Array.isArray(addresses) && addresses.length > 0) {
@@ -479,17 +482,17 @@
           const rowId = addr.rowId !== undefined ? addr.rowId : (idx + 1);
           const city = addr.cityName || addr.city_name || "";
           const town = addr.townName || addr.town_name || "";
-          return [rowId, city, town, "", "", "", "", "", "", "", "", "", "", "", ""];
+          return [rowId, city, town, "", "", "", "", "", "", "", "", "", "", "", "", ""];
         });
 
         // 既存の古い行があればクリア
         const currentLr = sheet.getLastRow();
         if (currentLr >= 2) {
-          sheet.getRange(2, 1, currentLr - 1, 15).clearContent();
+          sheet.getRange(2, 1, currentLr - 1, 16).clearContent();
         }
 
         // CSVから動的展開
-        sheet.getRange(2, 1, rows.length, 15).setValues(rows);
+        sheet.getRange(2, 1, rows.length, 16).setValues(rows);
       }
     }
 
@@ -511,7 +514,7 @@
 
     /**
      * 保有チラシ枚数の原本
-     * A〜F列: [ID, 担当者ID, 担当者名, 保管場所, 保有枚数, 最終更新日時]
+     * A〜G列: [ID, 担当者ID, 担当者名, 保管場所, 保有枚数, 最終更新日時, lineUserId]
      */
     createFlyerMaster(ss) {
       const masterName = this.masterNames.flyer;
@@ -519,15 +522,15 @@
       if (!sheet) {
         sheet = ss.insertSheet(masterName);
       }
-      const headers = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時"]];
-      sheet.getRange(1, 1, 1, 6).setValues(headers);
-      sheet.getRange("A1:F1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
+      const headers = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]];
+      sheet.getRange(1, 1, 1, 7).setValues(headers);
+      sheet.getRange("A1:G1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
       sheet.setFrozenRows(1);
     }
 
     /**
      * 受渡要請履歴の原本
-     * A〜G列: [日時, 要請者, 要請者ID, 保管者, 保管者ID, 連絡方法, 連絡先]
+     * A〜N列: [日時, 要請者, 要請者ID, 保管者, 保管者ID, 連絡方法, 連絡先, 状態, requestId, LINE送信状態, LINE HTTP status, LINE送信日時, requesterLineUserId, holderLineUserId]
      */
     createTransferMaster(ss) {
       const masterName = this.masterNames.transfer;
@@ -535,9 +538,9 @@
       if (!sheet) {
         sheet = ss.insertSheet(masterName);
       }
-      const headers = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先"]];
-      sheet.getRange(1, 1, 1, 7).setValues(headers);
-      sheet.getRange("A1:G1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
+      const headers = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
+      sheet.getRange(1, 1, 1, 14).setValues(headers);
+      sheet.getRange("A1:N1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
       sheet.setFrozenRows(1);
     }
 
@@ -560,10 +563,15 @@
     /**
      * 原本5種から当月5種を生成・複製する
      * 過去月シートは履歴として保持し、絶対に削除しない。
-     * 新月は原本から新規生成し、0から開始する。
+     * 
+     * 状態機械（State Machine）:
+     * - 0/5 存在: 原本から新規月として生成（原本16列 + 当月Q列 requestId付与）
+     * - 5/5 存在: 完全 No-op（書込・クリア・既存ヘッダー補完の全API呼出が0回）
+     * - 1〜4/5 存在: Fail-Closed 即時停止（PARTIAL_MONTHLY_SHEETS_CORRUPTION、mutation 0）
      * 
      * @param {string} [targetMonth] - 生成対象年月 (YYYY-MM)。未指定時は現在月。
-     * @return {Object} 結果 { success: true, month: string, created: string[] }
+     * @param {Object} [options] - オプション
+     * @return {Object} 結果 { success: boolean, month: string, created: string[], noop?: boolean, code?: string }
      */
     rolloverMonthlySheets(targetMonth, options = {}) {
       const ss = this.getSS();
@@ -573,73 +581,83 @@
           : Utilities.formatDate(new Date(), "JST", "yyyy-MM")
       );
 
-      const createdSheets = [];
       const types = ['distribution', 'staff', 'flyer', 'transfer', 'pin'];
+      const existingMonthlySheets = [];
+      const missingMonthlySheets = [];
 
+      // 1. 事前存在判定（mutation 0 の状態で全5シートを走査）
+      types.forEach(type => {
+        const monthlyName = `${this.prefixes[type]}${month}`;
+        const sheet = ss.getSheetByName(monthlyName);
+        if (sheet) {
+          existingMonthlySheets.push(monthlyName);
+        } else {
+          missingMonthlySheets.push(monthlyName);
+        }
+      });
+
+      const existingCount = existingMonthlySheets.length;
+
+      // 2. 5/5 の場合: 完全 No-op（書込API呼出そのものが0回）
+      if (existingCount === 5) {
+        return {
+          success: true,
+          month: month,
+          created: [],
+          noop: true
+        };
+      }
+
+      // 3. 1〜4/5 の場合: Fail-Closed で即時停止（mutation 0）
+      if (existingCount > 0 && existingCount < 5) {
+        return {
+          success: false,
+          code: "PARTIAL_MONTHLY_SHEETS_CORRUPTION",
+          message: `Partial monthly sheets detected (${existingCount}/5) for ${month}. Missing: ${missingMonthlySheets.join(', ')}. Existing: ${existingMonthlySheets.join(', ')}. Provisioning halted to prevent silent corruption.`,
+          month: month,
+          existingSheets: existingMonthlySheets,
+          missingSheets: missingMonthlySheets,
+          created: []
+        };
+      }
+
+      // 4. 0/5 の場合: 新規月として生成
+      // 原本5種の存在確認
+      for (const type of types) {
+        const masterName = this.masterNames[type];
+        const masterSheet = ss.getSheetByName(masterName);
+        if (!masterSheet) {
+          throw new Error(`Master template sheet "${masterName}" does not exist. Run provisionNewDistrict first.`);
+        }
+      }
+
+      const createdSheets = [];
       types.forEach(type => {
         const prefix = this.prefixes[type];
         const masterName = this.masterNames[type];
         const monthlyName = `${prefix}${month}`;
+        const masterSheet = ss.getSheetByName(masterName);
 
-        let currentMonthly = ss.getSheetByName(monthlyName);
-        if (!currentMonthly) {
-          const masterSheet = ss.getSheetByName(masterName);
-          if (!masterSheet) {
-            throw new Error(`Master template sheet "${masterName}" does not exist. Run provisionNewDistrict first.`);
+        const currentMonthly = masterSheet.copyTo(ss);
+        currentMonthly.setName(monthlyName);
+
+        if (type === 'distribution') {
+          // 原本は16列（A〜P）。当月は17列（Q列=requestId）を保証
+          const maxCols = currentMonthly.getMaxColumns();
+          if (maxCols < 17) {
+            currentMonthly.insertColumnsAfter(maxCols, 17 - maxCols);
           }
+          currentMonthly.getRange(1, 17).setValue("requestId");
+          currentMonthly.getRange(1, 17).setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
 
-          // 原本から複製
-          currentMonthly = masterSheet.copyTo(ss);
-          currentMonthly.setName(monthlyName);
-
-          // 配布実績の場合、原本に記録がある場合でも当月は未完了（初期状態0%）から開始する
-          if (type === 'distribution') {
-            const lr = currentMonthly.getLastRow();
-            if (lr >= 2) {
-              // D〜O列 (完了日時、枚数、担当者、GPS、写真等) をクリア
-              currentMonthly.getRange(2, 4, lr - 1, 12).clearContent();
-            }
-          }
-
-          createdSheets.push(monthlyName);
-        } else {
-          // 既存の当月シートが存在する場合の同期（新地区プロビジョニング初期化対応）
-          const masterSheet = ss.getSheetByName(masterName);
-          if (masterSheet) {
-            if (type === 'distribution') {
-              const masterLr = masterSheet.getLastRow();
-              const currentLr = currentMonthly.getLastRow();
-              const currentLc = Math.max(currentMonthly.getLastColumn(), 15);
-
-              let existingCompletedCount = 0;
-              if (currentLr >= 2) {
-                const existingData = currentMonthly.getRange(2, 1, currentLr - 1, currentLc).getValues();
-                existingCompletedCount = existingData.filter(r => r[3] && String(r[3]).trim() !== "").length;
-              }
-
-              const shouldReset = options && options.resetExistingRecords === true;
-              if (existingCompletedCount > 0 && !shouldReset) {
-                console.log(`[rolloverMonthlySheets] distribution sheet has ${existingCompletedCount} completed records. Preserving existing distribution records.`);
-              } else {
-                if (currentLr >= 2) {
-                  currentMonthly.getRange(2, 1, currentLr - 1, currentLc).clearContent();
-                }
-                if (masterLr >= 2) {
-                  const masterData = masterSheet.getRange(2, 1, masterLr - 1, 15).getValues();
-                  const initialMonthlyData = masterData.map(r => [r[0], r[1], r[2], "", "", "", "", "", "", "", "", "", "", "", ""]);
-                  currentMonthly.getRange(2, 1, initialMonthlyData.length, 15).setValues(initialMonthlyData);
-                }
-              }
-            } else if (type === 'pin') {
-            } else {
-              const currentLr = currentMonthly.getLastRow();
-              const currentLc = currentMonthly.getLastColumn();
-              if (currentLr >= 2 && currentLc >= 1) {
-                currentMonthly.getRange(2, 1, currentLr - 1, currentLc).clearContent();
-              }
-            }
+          const lr = currentMonthly.getLastRow();
+          if (lr >= 2) {
+            // D〜P列 (4〜16列の13列: 完了日時、枚数、担当者、GPS、写真、lineUserId等) をクリア
+            currentMonthly.getRange(2, 4, lr - 1, 13).clearContent();
           }
         }
+
+        createdSheets.push(monthlyName);
       });
 
       return {

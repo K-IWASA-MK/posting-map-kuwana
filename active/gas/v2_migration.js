@@ -226,3 +226,416 @@ function migrateIdentityColumns(isDryRun) {
   report.success = true;
   return report;
 }
+
+/**
+ * healSchemaHeaders
+ * 既存スプレッドシートの全スキーマヘッダーを安全に検査・補完する。
+ * 
+ * 責務:
+ * - Provisioning (新規生成) とは完全に分離された「既存シート修復 (Healing)」専用
+ * - 2-Phase Scan-before-Mutate
+ * - OUT_OF_GRID 列は Phase 1 で getRange を呼ばず計画登録のみ
+ * - 非空異種値（0, false等含む）の衝突時は mutation 0 で即時停止 (HEADER_COLLISION)
+ * - isDryRun: true 時は mutation 0（API呼出 0 回）
+ * - データ行（2行目以降）は一切不可侵
+ * 
+ * @param {Object} [options]
+ * @param {boolean} [options.isDryRun=true]
+ * @param {string} [options.targetMonth] - 当月解決用 (YYYY-MM)
+ * @return {Object} レポートオブジェクト
+ */
+function healSchemaHeaders(options) {
+  const opts = options || {};
+  const isDryRun = opts.isDryRun !== false; // デフォルト true (安全第一)
+
+  const ss = (typeof getSS === 'function') ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  if (!ss) {
+    return { success: false, code: "SPREADSHEET_NOT_FOUND", message: "Spreadsheet not found", mutationsCount: 0 };
+  }
+
+  const month = opts.targetMonth || (
+    typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance
+      ? MonthlySheetResolver.getInstance().getCurrentMonth()
+      : Utilities.formatDate(new Date(), "JST", "yyyy-MM")
+  );
+
+  // 契約ヘッダーSSOT定義
+  const schemas = [
+    // 原本5種
+    {
+      category: "master",
+      sheetName: "配布実績の原本",
+      required: true,
+      missingCode: "MISSING_MASTER_SHEET",
+      headers: ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"],
+      aliases: {}
+    },
+    {
+      category: "master",
+      sheetName: "名簿の原本",
+      required: true,
+      missingCode: "MISSING_MASTER_SHEET",
+      headers: ["ID", "名前", "LINE_USER_ID", "登録日時"],
+      aliases: { 3: ["LINE_USER_ID", "LINE USER ID", "lineUserId"] }
+    },
+    {
+      category: "master",
+      sheetName: "保有チラシ枚数の原本",
+      required: true,
+      missingCode: "MISSING_MASTER_SHEET",
+      headers: ["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"],
+      aliases: {}
+    },
+    {
+      category: "master",
+      sheetName: "受渡要請履歴の原本",
+      required: true,
+      missingCode: "MISSING_MASTER_SHEET",
+      headers: ["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"],
+      aliases: {
+        1: ["日時", "要請日時"],
+        2: ["要請者", "要請者名"],
+        4: ["保管者", "保管者名"],
+        10: ["LINE送信状態", "LINE状態"],
+        11: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
+        12: ["LINE送信日時", "LINE日時"]
+      }
+    },
+    {
+      category: "master",
+      sheetName: "PinStatusの原本",
+      required: true,
+      missingCode: "MISSING_MASTER_SHEET",
+      headers: ["rowId", "status"],
+      aliases: {}
+    },
+    // 当月5種
+    {
+      category: "monthly",
+      sheetName: `配布実績${month}`,
+      required: true,
+      missingCode: "MISSING_CURRENT_MONTH_SHEET",
+      headers: ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId", "requestId"],
+      aliases: {}
+    },
+    {
+      category: "monthly",
+      sheetName: `名簿${month}`,
+      required: true,
+      missingCode: "MISSING_CURRENT_MONTH_SHEET",
+      headers: ["ID", "名前", "LINE_USER_ID", "登録日時"],
+      aliases: { 3: ["LINE_USER_ID", "LINE USER ID", "lineUserId"] }
+    },
+    {
+      category: "monthly",
+      sheetName: `保有チラシ枚数${month}`,
+      required: true,
+      missingCode: "MISSING_CURRENT_MONTH_SHEET",
+      headers: ["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"],
+      aliases: {}
+    },
+    {
+      category: "monthly",
+      sheetName: `受渡要請履歴${month}`,
+      required: true,
+      missingCode: "MISSING_CURRENT_MONTH_SHEET",
+      headers: ["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"],
+      aliases: {
+        1: ["日時", "要請日時"],
+        2: ["要請者", "要請者名"],
+        4: ["保管者", "保管者名"],
+        10: ["LINE送信状態", "LINE状態"],
+        11: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
+        12: ["LINE送信日時", "LINE日時"]
+      }
+    },
+    {
+      category: "monthly",
+      sheetName: `PinStatus${month}`,
+      required: true,
+      missingCode: "MISSING_CURRENT_MONTH_SHEET",
+      headers: ["rowId", "status"],
+      aliases: {}
+    },
+    // 掲示板系2種 (任意: 不在時はSKIP)
+    {
+      category: "bulletin",
+      sheetName: "掲示板",
+      required: false,
+      headers: ["日時", "投稿者ID", "投稿者名", "メッセージ", "lineUserId"],
+      aliases: {}
+    },
+    {
+      category: "bulletin",
+      sheetName: "掲示板連絡履歴",
+      required: false,
+      headers: ["日時", "送信者ID", "送信者名", "相手ID", "連絡方法", "連絡先", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時"],
+      aliases: {
+        8: ["LINE送信状態", "LINE状態"],
+        9: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
+        10: ["LINE送信日時", "LINE日時"]
+      }
+    },
+    // システム管理
+    {
+      category: "system",
+      sheetName: "SYSTEM_INFO",
+      required: true,
+      missingCode: "MISSING_SYSTEM_INFO_SHEET",
+      headers: ["項目", "内容"],
+      aliases: {}
+    }
+  ];
+
+  // 欠落シート検証 (Missing Sheet Policy)
+  for (const item of schemas) {
+    const s = ss.getSheetByName(item.sheetName);
+    if (!s) {
+      if (item.required) {
+        return {
+          success: false,
+          code: item.missingCode,
+          message: `Required sheet "${item.sheetName}" does not exist. Healing aborted.`,
+          sheetName: item.sheetName,
+          mutationsCount: 0
+        };
+      }
+    }
+  }
+
+  // Phase 1: 全シート走査 (Scan-before-Mutate)
+  const allPlans = [];
+  const allCollisions = [];
+  const skippedSheets = [];
+
+  for (const item of schemas) {
+    const sheet = ss.getSheetByName(item.sheetName);
+    if (!sheet) {
+      skippedSheets.push(item.sheetName);
+      continue;
+    }
+
+    const maxCols = typeof sheet.getMaxColumns === 'function' ? sheet.getMaxColumns() : item.headers.length;
+    const lastCol = typeof sheet.getLastColumn === 'function' ? sheet.getLastColumn() : 0;
+    const lastRow = typeof sheet.getLastRow === 'function' ? sheet.getLastRow() : 0;
+
+    const sheetPlan = {
+      sheetName: item.sheetName,
+      sheet: sheet,
+      maxCols: maxCols,
+      columnsToAdd: 0,
+      setHeaders: []
+    };
+
+    if (maxCols < item.headers.length) {
+      sheetPlan.columnsToAdd = item.headers.length - maxCols;
+    }
+
+    // 既存ヘッダー行の取得（maxCols内のみ安全に取得、OUT_OF_GRIDはgetRange対象外）
+    const scanCols = Math.min(lastCol, maxCols);
+    let existingHeaderRow = [];
+    if (lastRow >= 1 && scanCols >= 1) {
+      const headerRange = sheet.getRange(1, 1, 1, scanCols);
+      existingHeaderRow = (headerRange && typeof headerRange.getValues === 'function')
+        ? headerRange.getValues()[0]
+        : [];
+    }
+
+    for (let col = 1; col <= item.headers.length; col++) {
+      const expected = item.headers[col - 1];
+      if (lastRow === 0) {
+        sheetPlan.setHeaders.push({ col, expected });
+      } else if (col > maxCols) {
+        // OUT_OF_GRID: getRange は呼ばず計画登録のみ
+        sheetPlan.setHeaders.push({ col, expected, outOfGrid: true });
+      } else if (col <= lastCol) {
+        const val = existingHeaderRow[col - 1];
+        const isBlank = (val === undefined || val === null || String(val).trim() === "");
+        if (isBlank) {
+          sheetPlan.setHeaders.push({ col, expected });
+        } else {
+          const strVal = String(val).trim();
+          const allowed = (item.aliases && item.aliases[col]) || [expected];
+          if (!allowed.includes(strVal)) {
+            allCollisions.push({
+              sheetName: item.sheetName,
+              col: col,
+              expected: expected,
+              actual: val
+            });
+          }
+        }
+      } else {
+        // col > lastCol && col <= maxCols
+        sheetPlan.setHeaders.push({ col, expected });
+      }
+    }
+
+    if (sheetPlan.columnsToAdd > 0 || sheetPlan.setHeaders.length > 0) {
+      allPlans.push(sheetPlan);
+    }
+  }
+
+  // 衝突検出時は即時停止 (Fail-Closed, mutation 0)
+  if (allCollisions.length > 0) {
+    const details = allCollisions.map(c => `[${c.sheetName}] Col ${c.col}: expected "${c.expected}", found "${c.actual}"`).join('; ');
+    return {
+      success: false,
+      code: "HEADER_COLLISION",
+      message: `Header collisions detected across ${allCollisions.length} column(s). Mutations aborted: ${details}`,
+      collisions: allCollisions,
+      mutationsCount: 0
+    };
+  }
+
+  // Dry-run 判定
+  if (isDryRun) {
+    return {
+      success: true,
+      isDryRun: true,
+      message: `Dry-run completed. ${allPlans.length} sheet(s) require header healing. Mutations executed: 0.`,
+      plans: allPlans.map(p => ({
+        sheetName: p.sheetName,
+        columnsToAdd: p.columnsToAdd,
+        headersToSet: p.setHeaders.map(h => ({ col: h.col, expected: h.expected, outOfGrid: !!h.outOfGrid }))
+      })),
+      skippedSheets: skippedSheets,
+      mutationsCount: 0
+    };
+  }
+
+  // Phase 2: 適用 (Mutate)
+  let mutationsCount = 0;
+  for (const plan of allPlans) {
+    const sheet = plan.sheet;
+    if (plan.columnsToAdd > 0 && typeof sheet.insertColumnsAfter === 'function') {
+      sheet.insertColumnsAfter(plan.maxCols, plan.columnsToAdd);
+      mutationsCount++;
+    }
+
+    for (const h of plan.setHeaders) {
+      const r = sheet.getRange(1, h.col);
+      if (r) {
+        if (typeof r.setValue === 'function') {
+          r.setValue(h.expected);
+        } else if (typeof r.setValues === 'function') {
+          r.setValues([[h.expected]]);
+        }
+        if (typeof r.setBackground === 'function') r.setBackground("#1e293b");
+        if (typeof r.setFontColor === 'function') r.setFontColor("#ffffff");
+        if (typeof r.setFontWeight === 'function') r.setFontWeight("bold");
+      }
+      mutationsCount++;
+    }
+  }
+
+  return {
+    success: true,
+    isDryRun: false,
+    message: `Header healing applied successfully across ${allPlans.length} sheet(s).`,
+    plans: allPlans.map(p => ({
+      sheetName: p.sheetName,
+      columnsToAdd: p.columnsToAdd,
+      headersSet: p.setHeaders.map(h => ({ col: h.col, expected: h.expected }))
+    })),
+    skippedSheets: skippedSheets,
+    mutationsCount: mutationsCount
+  };
+}
+
+/**
+ * inspectSystemInfoKeys
+ * SYSTEM_INFO シートのヘッダーおよび11標準設定キーの存在を検査する。
+ * 既存値・未知キーは絶対に変更・クリア・削除しない。
+ * 
+ * @param {Object} [options]
+ * @return {Object} 検査結果
+ */
+function inspectSystemInfoKeys(options) {
+  const ss = (typeof getSS === 'function') ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  if (!ss) {
+    return { success: false, code: "SPREADSHEET_NOT_FOUND", message: "Spreadsheet not found" };
+  }
+
+  const sheet = ss.getSheetByName("SYSTEM_INFO");
+  if (!sheet) {
+    return {
+      success: false,
+      code: "MISSING_SYSTEM_INFO_SHEET",
+      message: 'Sheet "SYSTEM_INFO" does not exist.'
+    };
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastCol < 2 || lastRow < 1) {
+    return {
+      success: false,
+      code: "INVALID_SYSTEM_INFO_STRUCTURE",
+      message: 'SYSTEM_INFO must have at least 2 columns and 1 header row.'
+    };
+  }
+
+  const hRange = sheet.getRange(1, 1, 1, 2);
+  const hVals = (hRange && typeof hRange.getValues === 'function') ? hRange.getValues()[0] : ["", ""];
+  const hCol1 = String(hVals[0] || '').trim();
+  const hCol2 = String(hVals[1] || '').trim();
+  if (hCol1 !== "項目" || hCol2 !== "内容") {
+    return {
+      success: false,
+      code: "INVALID_SYSTEM_INFO_HEADER",
+      message: `SYSTEM_INFO header mismatch: expected ["項目", "内容"], got ["${hCol1}", "${hCol2}"]`
+    };
+  }
+
+  const standardKeys = [
+    "地区コード", "地区名", "HアプリURL", "Dashboard URL",
+    "LIFFアプリ名", "LIFF ID", "LIFF URL", "Endpoint URL",
+    "Manager認証パスワード", "状態", "契約終了日"
+  ];
+
+  const existingKeys = {};
+  const extraKeys = [];
+
+  if (lastRow >= 2) {
+    const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+    values.forEach((row, idx) => {
+      const k = String(row[0] || '').trim();
+      const v = row[1];
+      if (k) {
+        existingKeys[k] = { row: idx + 2, value: v };
+        if (!standardKeys.includes(k)) {
+          extraKeys.push({ key: k, row: idx + 2, value: v });
+        }
+      }
+    });
+  }
+
+  const missingKeys = standardKeys.filter(k => !(k in existingKeys));
+
+  return {
+    success: true,
+    sheetName: "SYSTEM_INFO",
+    lastRow: lastRow,
+    lastCol: lastCol,
+    standardKeysTotal: standardKeys.length,
+    foundStandardKeysCount: standardKeys.length - missingKeys.length,
+    missingStandardKeys: missingKeys,
+    extraKeys: extraKeys,
+    allExistingKeysCount: Object.keys(existingKeys).length
+  };
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    migrateIdentityColumns,
+    healSchemaHeaders,
+    inspectSystemInfoKeys
+  };
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.migrateIdentityColumns = migrateIdentityColumns;
+  globalThis.healSchemaHeaders = healSchemaHeaders;
+  globalThis.inspectSystemInfoKeys = inspectSystemInfoKeys;
+}

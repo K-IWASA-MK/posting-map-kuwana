@@ -36,6 +36,110 @@
       return null;
     }
 
+    /**
+     * 受渡要請履歴シートのヘッダー検証・補完 (14列)
+     * Sheet-Local Scan-before-Mutate / Collision Fail-Closed
+     *
+     * @param {Object} sheet - 受渡要請履歴シート
+     * @return {Object} 結果 { success: boolean, updatedCount: number }
+     */
+    ensureHeaders(sheet) {
+      if (!sheet) {
+        throw new Error("Sheet is required for ensureHeaders");
+      }
+
+      const expectedHeaders = [
+        "日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先",
+        "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時",
+        "requesterLineUserId", "holderLineUserId"
+      ];
+
+      const aliases = {
+        1: ["日時", "要請日時"],
+        2: ["要請者", "要請者名"],
+        4: ["保管者", "保管者名"],
+        10: ["LINE送信状態", "LINE状態"],
+        11: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
+        12: ["LINE送信日時", "LINE日時"]
+      };
+
+      const maxCols = typeof sheet.getMaxColumns === 'function' ? sheet.getMaxColumns() : 14;
+      const lastCol = typeof sheet.getLastColumn === 'function' ? sheet.getLastColumn() : 0;
+      const lastRow = typeof sheet.getLastRow === 'function' ? sheet.getLastRow() : 0;
+
+      // Phase 1: Scan
+      const plan = [];
+      const collisions = [];
+
+      // 既存ヘッダー行の取得（maxCols内のみ安全に取得、OUT_OF_GRIDはgetRange対象外）
+      const scanCols = Math.min(lastCol, maxCols);
+      let existingHeaderRow = [];
+      if (lastRow >= 1 && scanCols >= 1) {
+        const headerRange = sheet.getRange(1, 1, 1, scanCols);
+        existingHeaderRow = (headerRange && typeof headerRange.getValues === 'function')
+          ? headerRange.getValues()[0]
+          : [];
+      }
+
+      for (let col = 1; col <= expectedHeaders.length; col++) {
+        const expected = expectedHeaders[col - 1];
+        if (lastRow === 0) {
+          plan.push({ col, expected });
+        } else if (col > maxCols) {
+          // OUT_OF_GRID: getRangeは呼ばず計画のみ
+          plan.push({ col, expected, outOfGrid: true });
+        } else if (col <= lastCol) {
+          const val = existingHeaderRow[col - 1];
+          const isBlank = (val === undefined || val === null || String(val).trim() === "");
+          if (isBlank) {
+            plan.push({ col, expected });
+          } else {
+            const strVal = String(val).trim();
+            const allowed = aliases[col] || [expected];
+            if (!allowed.includes(strVal)) {
+              collisions.push({ col, expected, actual: val });
+            }
+          }
+        } else {
+          // col > lastCol && col <= maxCols
+          plan.push({ col, expected });
+        }
+      }
+
+      if (collisions.length > 0) {
+        const details = collisions.map(c => `Col ${c.col}: expected "${c.expected}", found "${c.actual}"`).join('; ');
+        const err = new Error(`[TransferService.ensureHeaders] HEADER_COLLISION: Sheet "${sheet.getName()}" has conflicting headers: ${details}`);
+        err.code = "HEADER_COLLISION";
+        err.collisions = collisions;
+        throw err;
+      }
+
+      // Phase 2: Mutate
+      if (plan.length === 0) {
+        return { success: true, updatedCount: 0 };
+      }
+
+      if (maxCols < expectedHeaders.length && typeof sheet.insertColumnsAfter === 'function') {
+        sheet.insertColumnsAfter(maxCols, expectedHeaders.length - maxCols);
+      }
+
+      plan.forEach(item => {
+        const r = sheet.getRange(1, item.col);
+        if (r) {
+          if (typeof r.setValue === 'function') {
+            r.setValue(item.expected);
+          } else if (typeof r.setValues === 'function') {
+            r.setValues([[item.expected]]);
+          }
+          if (typeof r.setBackground === 'function') r.setBackground("#1e293b");
+          if (typeof r.setFontColor === 'function') r.setFontColor("#ffffff");
+          if (typeof r.setFontWeight === 'function') r.setFontWeight("bold");
+        }
+      });
+
+      return { success: true, updatedCount: plan.length };
+    }
+
     requestFlyerTransfer(data) {
       const requestId = data && data.requestId ? String(data.requestId).trim() : '';
       const requestUserId = data && data.requestUserId ? String(data.requestUserId).trim() : '';
@@ -105,15 +209,8 @@
           };
         }
 
-        const expectedHeaders = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時"]];
-        if (s.getLastRow() === 0) {
-          s.getRange(1, 1, 1, 12).setValues(expectedHeaders);
-        } else {
-          const headerValues = s.getRange(1, 1, 1, Math.max(s.getLastColumn(), 12)).getValues()[0];
-          if (!headerValues[7] || headerValues[7] !== "状態" || !headerValues[8] || headerValues[8] !== "requestId") {
-            s.getRange(1, 1, 1, 12).setValues(expectedHeaders);
-          }
-        }
+        // Sheet-Local Scan-before-Mutate でヘッダーを安全に検証・補完
+        this.ensureHeaders(s);
 
         let existingRow = 0;
         let existingStatus = "";
