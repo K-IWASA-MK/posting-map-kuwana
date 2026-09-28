@@ -6,14 +6,14 @@
 - **Master Plan**: [01_DESIGN_CONTRACT.md](01_DESIGN_CONTRACT.md)
 - **Token Source of Truth**: [active/dashboard/style.css](../../active/dashboard/style.css) (`:root`)
 
-本書は、POSTING MAP Universal Engine（H-App / Dashboard）における UI/UX 設計標準およびガバナンスの唯一の正本（Single Source of Truth）である。旧 `DESIGN_GOVERNANCE.md` を統合し、デザイン変数の定義からコンポーネント責務境界までを一元規定する。
+本書は、POSTING MAP Universal Engine（H-App / Dashboard）における UI/UX 設計標準およびガバナンスの唯一の正本（Single Source of Truth）であり、デザイン変数の定義からコンポーネント責務境界までを一元規定する。
 
 ---
 
 ## 1. Design System Architecture & 責務境界
 
 ```text
-Design Tokens (active/dashboard/style.css :root)
+Design Tokens (active/dashboard/style.css :root ※H-App)
        │
        ▼
 Components (active/dashboard/components/ : JS Functions)
@@ -23,11 +23,12 @@ Pages (Composition / render.js)
 ```
 
 1. **Design Tokens (`active/dashboard/style.css` `:root`)**:
-   - 見た目の設計変数（色、余白、角丸、シャドウ）の唯一の正本（SSOT）。
-   - コードベース内の CSS カスタムプロパティとして管理され、外部ファイルや架空の JSON に依存しない。
+   - 見た目の設計変数（色、余白、角丸、シャドウ）の正本。
+   - **H-App（現場配布員UI: `active/dashboard/`）のトークン SSOT** であり、CSS カスタムプロパティとして一元管理される。
+   - ※なお、**Manager Dashboard（統括管理者UI: `active/manager/index.html`）** は、現行 Runtime において Tailwind CSS CDN およびインラインの `tailwind.config` カラーパレット（`brand: '#EA5F08'`, `appBg: '#0B1019'` 等）を独自に使用しており、別個のスタイル体系を持つ（現行アーキテクチャ境界の客観的事実）。
 2. **Components (`active/dashboard/components/`)**:
-   - 再利用可能な UI レンダリングコンポーネントの SSOT。
-   - 状態を持たず（**Stateless**）、外部 API を直接叩かず（**No Direct API Access**）、入力データから純粋に HTML 文字列または DOM 要素を構築して返却する。
+   - 再利用可能な UI レンダリングコンポーネント。
+   - 入力データから純粋に HTML 文字列を構築して返却する。
 3. **Pages (`render.js`)**:
    - 画面の合成（Composition）および状態管理（State Management）の所有者。
    - API 通信、イベントリスナー登録、タブ切り替え、各コンポーネントへのデータ配分を担当する。
@@ -95,36 +96,42 @@ Pages (Composition / render.js)
 
 ## 4. コンポーネント設計原則 (Component Principles)
 
+現行 Canonical Requirement（規範契約）と現行 Runtime の未達事項（Current Fact）の境界は以下の通りである：
+
 1. **Stateless (ステートレス)**:
-   - コンポーネントは内部状態を保持しない。同じデータ入力に対して常に全く同じ HTML 出力を返す（冪等性）。
+   - **Canonical Requirement**: コンポーネントは内部状態やグローバル変数に依存せず、同じデータ入力に対して常に全く同じ HTML 出力を返す（冪等性）。
+   - **現行 Runtime の未達事項 (Current Fact)**: `active/dashboard/components/ranking.js` において、`window._myRankingSummary` のグローバル参照が行われている（Deferred UI Runtime Candidate）。
 2. **No Direct API Access (API 直接呼び出し禁止)**:
-   - コンポーネント内部で GAS API や外部通信を行ってはならない。通信はページ層（`render.js` / `app.js`）が担う。
+   - **Canonical Requirement / Current Fact**: コンポーネント内部で GAS API や外部通信を行ってはならない。通信はページ層（`render.js` / `app.js`）が担う（現行 Runtime 遵守済み）。
 3. **Pure Rendering (純粋レンダリング)**:
-   - コンポーネントの責務は渡された JSON データから HTML 文字列または DOM 要素を組み立てることのみである。
+   - **Canonical Requirement / Current Fact**: コンポーネントの責務は渡された JSON データから純粋に HTML 文字列を組み立てて返却することである（現行 Runtime 遵守済み）。
+4. **No Raw Color Hardcoding (生カラー直書き禁止)**:
+   - **Canonical Requirement**: CSS 変数（`--color-*`）を参照し、HTML/JS への直接の色コード埋め込みを禁止する。
+   - **現行 Runtime の未達事項 (Current Fact)**: `ranking.js` および `staff.js` において、`#EA5F08` や `#1C1C1E`、`#22c55e` 等の生カラーコードおよびインラインスタイルが残存している（Deferred UI Runtime Candidate）。
 
 ---
 
 ## 5. 実在共通コンポーネント (Universal Components)
 
-現在 `active/dashboard/components/` に配備されている実在コンポーネントは以下の通りである：
+現在 `active/dashboard/components/` に配備されている実在コンポーネントおよび公開インターフェースは以下の通りである：
 
 ### ① Bottom Navigation Component (`active/dashboard/components/navigation.js`)
 - **責務**: 配布員現場画面（H-App）の下部ナビゲーションバーのレンダリング。
-- **インターフェース**: `renderBottomNavigation(activePage)`
-- **入力**: `activePage` (`'areas' | 'ranking' | 'settings' | 'storage-register' | 'storage-list'`)
+- **インターフェース**: `window.renderBottomNavigation(activePage)`
+- **入力**: `activePage` (`'areas' | 'ranking' | 'settings' | 'storage-register' | 'storage-list' | 'bulletin' | 'detail'`)
 - **出力**: 下部固定ナビゲーションバーの HTML 文字列。
 
 ### ② Ranking Component (`active/dashboard/components/ranking.js`)
-- **責務**: 配布実績に基づくランキング一覧・統計情報のレンダリング。
-- **インターフェース**: `renderRanking(rankingData, container)`
-- **入力**: ランキング集計データ配列、描画先 DOM コンテナ。
-- **出力**: ランキングカード群の DOM 描画。
+- **責務**: 配布実績に基づくランキング一覧・自身のランクサマリのレンダリング。
+- **インターフェース**: `window.renderRankingCard(rankingData, myStaffId)`
+- **入力**: `rankingData` (Array), `myStaffId` (string)
+- **出力**: ランキングカード群および自身ランクサマリの HTML 文字列。
 
 ### ③ Staff Component (`active/dashboard/components/staff.js`)
-- **責務**: スタッフ情報・名簿・保有チラシ情報カードのレンダリング。
-- **インターフェース**: `renderStaff(staffData, container)`
-- **入力**: スタッフ情報オブジェクト、描画先 DOM コンテナ。
-- **出力**: スタッフカード要素の DOM 描画。
+- **責務**: 配布員 ID カードおよびジャイロ効果付き認証カードのレンダリング。
+- **インターフェース**: `window.renderStaffCard(userInfo, options = {})`
+- **入力**: `userInfo` (Object: `{ id, last, first, picture, registrationDate }`), `options` (Object: `{ districtName, branchName, lastSyncTime }`)
+- **出力**: 配布員認証カードの HTML 文字列。
 
 ---
 

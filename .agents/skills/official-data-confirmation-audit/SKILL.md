@@ -84,6 +84,18 @@ description: POSTING MAP公式データ確定監査プロトコル。公式一�
 
 ---
 
+## 3.5 3大検証の定義と責務境界 (Three Verification Pillars)
+
+監査AIは、検証対象の性質に応じて以下の3大検証を明確に区別し、混同してはならない：
+
+| 検証種別 | 証明すること | 対象と手段 | 必要証跡 |
+|:---|:---|:---|:---|
+| **① Registry テスト** | モック条件下での Runtime 動作・Gateway ルーティング検証 | `node tests/test_registry_provisioning_gate.mjs`（Gate 1〜7） | テスト実行ログ（ALL PASS） |
+| **② RUNBOOK 実環境証跡** | 対象環境（本番GAS・Spreadsheet）の設定・データ・稼働状態 | RUNBOOK §4「District Production Acceptance Gate」（全20項目実機検査） | 実機E2Eログ、スクリーンショット、Cloud Logging、導通確認記録 |
+| **③ データ整合検証** | CSV・GeoJSON・JSON 等の件数、キー、対応関係の完全整合 | 静的データ突合（行数 $N$ ＝ Feature数 $N$、`rowId` 1:1 対応、自治体名完全一致、前地区残骸 0 件） | データ整合検証レポート（件数・キー突合表、残骸ゼロスキャン結果） |
+
+---
+
 ## 4. 多層照合の適用基準（データ種別ごとの最小構成）
 
 全データに一律「3層」を強制するのではなく、公表主体に応じて必要な層を最小限で照合する：
@@ -106,7 +118,7 @@ description: POSTING MAP公式データ確定監査プロトコル。公式一�
   2. 人口・世帯数属性が全Featureに存在し、非負整数であること（Rule-07）。
   3. 原本Feature数とSSOT数の差分について、集約・融合の内訳が100%解明されていること。
   4. 原本自治体人口・世帯数合計と、GeoJSON全Featureの人口・世帯数合計が **誤差 0** であること。
-  5. `scripts/validate-district-data-gate.mjs` が ALL PASS であること。
+  5. データ整合検証（CSV有効行数、GeoJSON Feature数、自治体別町丁目数合計の完全突合、前地区残骸ゼロスキャン）が完了し、不整合ゼロのデータ整合検証レポートが記録されていること。
 
 ### Gate 2: 選挙データ層確定審査 (Election Data Gate)
 - **対象**: `data/election_history.json`
@@ -124,7 +136,7 @@ description: POSTING MAP公式データ確定監査プロトコル。公式一�
   1. スプレッドシート名が地区名と完全一致し、GASがスタンドアロン展開されていること。
   2. `DATA_DICTIONARY.md` 準拠のシート構造（初期プロビジョニング時 11 Core Sheets 複製、現場2シートオンデマンド生成による 13シート標準構造）が確立され、総ピン数・分母が `address_master.csv` と完全一致すること。
   3. 業務シート（実績・名簿等）に前地区の残骸や不要なテストデータが一切ないこと（初期ゼロ状態）。
-  4. `scripts/check-provisioning-gate.mjs` ALL PASS ＆ ブラウザE2Eで全ピン描画・エラー0件、`active/` 配下に改変がないこと。
+  4. 機械的受入ゲート（`node tests/test_registry_provisioning_gate.mjs`）ALL PASS、RUNBOOK §4「District Production Acceptance Gate」全20項目 PASS、実機ブラウザE2Eで全ピン描画・エラー0件、`active/` 配下に改変がないこと。
 
 ### Gate 4: ダッシュボードデータ層確定審査 (Dashboard Gate)
 - **対象**: `active/manager/manager.js`、ダッシュボード本番画面
@@ -139,7 +151,7 @@ description: POSTING MAP公式データ確定監査プロトコル。公式一�
 - **PASS条件**:
   1. 全レイヤー（CSV、GeoJSON、GAS、Hアプリ、Dashboard）で地区名・件数・数値に一切の矛盾がないこと。
   2. `active/`（コード本体）に地区固有の文字列・ID・URLが 0 件であること（Grep機械監査）。
-  3. ゼロ手作業原則が守られ、人間に環境変数やGAS画面での手動入力を一切求めていないこと。
+  3. 可避な手作業要求の排除 (Zero Avoidable Manual) 原則が守られ、不可避な外部リソース投入・初回管理者認証を除き、人間に設計不備に起因する手動入力を一切求めていないこと。
 
 ---
 

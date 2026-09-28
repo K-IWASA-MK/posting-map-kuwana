@@ -124,7 +124,7 @@
 | `staff/staff_model.js` | 56 | 🟢 継承 | 配布員データモデル。 |
 | `staff/staff_repository.js` | 198 | 🟢 継承 | 名簿シートへの読み書きリポジトリ。 |
 | `staff/staff_service.js` | 145 | 🟢 継承 | 配布員登録、LINE User IDからのIdentity解決（`resolveStaffIdentity`）。 |
-| `system/district_provisioner.js` | 670 | 🔴 廃止 | **【旧個別作成モデル】** 共通Runtime（`active/`）内の地区別スプレッドシート個別作成スクリプト。Universal Engine では共通Runtimeコード改変を禁止し、プロビジョニング手順（RUNBOOK / 独立ツール）へ分離したため廃止。 |
+| `system/district_provisioner.js` | 670 | 🟢 継承 | 月替わりシート自動生成（`rolloverMonthlySheets`）、原本5種および当月5種シートの初期作成・同期、SYSTEM_INFO初期生成・同期を担う現行のプロビジョニング・月次シート生成実装。現行API（`active/api/v2_api.js`: `provisionNewDistrict`, `createDistrictDatabase` 等）および月次バッチ（`active/gas/v2_batch.js`）から直接参照・実行されている（Schema Authority は引き続き `DATA_DICTIONARY.md` 唯一）。 |
 | `system/monthly_sheet_resolver.js` | 77 | 🟢 継承 | 当月シート名（YYYY-MM）の厳格な参照解決SSOT。 |
 | `system/system_info_service.js` | 329 | 🟢 継承 | `SYSTEM_INFO` シートの管理、契約期間チェック、管理者認証。 |
 | `system/system_summary_service.js` | 115 | 🟢 継承 | システム全体の進捗・統計サマリ提供。 |

@@ -130,9 +130,8 @@
 2. **Universal Engineにおける動的パス解決への統一**:
    - `active/manager/manager.js` における旧レガシーパス直書き（`/docs/`）を廃止。
    - `data/config.js` の `staticMaster.electionHistoryFilename` および `fetchStaticDataFile` を用いた動的解決方式に統一された。
-3. **データ層品質ゲート（Rule-06）での全数監査**:
-   - `validate-district-data-gate.mjs` のホワイトリスト監査対象に `election_history.json` を追加。
-   - 自治体キー（`municipalities`）が `data/municipality_master.csv`（SSOT）と100%一致することが機械判定される。
+3. **データ層品質ゲート（データ整合検証）での全数監査**:
+   - `election_history.json` の自治体キー（`municipalities`）が `data/municipality_master.csv`（SSOT）と100%完全一致することを静的データ照合により機械判定し、不整合ゼロの証跡をデータ整合検証レポートとして記録する。
 
 ### 保管場所候補マスター（`data/storage_locations.json`）の責務と動的連携
 

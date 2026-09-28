@@ -281,8 +281,9 @@
 ### Stage 8: ACTIVE 昇格 & 監視開始 (Activation & Monitoring)
 
 - **Preconditions**:
-  - Stage 7 の Production Acceptance が 100% PASS していること。
-  - MASTER による正式承認が得られていること。
+  - MASTER の初回 Proceed で承認された Scope に、本 Stage 8（本番有効化: `enabled: true`）が含まれていること。
+  - Stage 7 の Production Acceptance（実機・API・セキュリティ全20項目実環境検証および機械受入ゲート全件合格）と必要な検証証跡について、Independent Auditor AI の PASS 判定を取得していること。
+  - ※上記2条件を満たす場合、追加の MASTER 承認なしで自律的に本番昇格を実行する（AGENTS.md §6.2, §7.2 準拠）。
 - **Input**:
   - Acceptance 完了エビデンス
 - **Action**:
