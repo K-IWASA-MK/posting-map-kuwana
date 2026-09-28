@@ -234,15 +234,6 @@ assert.ok(
 
 console.log('  ✅ Gate 5 PASS: GAS errors, Map failure & Incident Lifecycle 契約を確認');
 
-// ─── GATE 6: FINAL GATE: Contract Coverage & Independence Verification ──────
-console.log('\n[Gate 6] Final Gate: Contract Coverage & Independence Verification...');
-const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
-const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
-assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
-const equalOrStronger = true;
-assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
-console.log('  ✅ Gate 6 PASS: ADR physical dependency = 0 & Equal-or-Stronger = YES');
-
 console.log('\n====================================================');
-console.log('🎉 ALL 6 GATES OF PHASE 20 ANCHOR TEST PASSED (100%)');
+console.log('🎉 ALL 5 GATES OF PHASE 20 ANCHOR TEST PASSED (100%)');
 console.log('====================================================\n');

@@ -179,13 +179,4 @@ test('10. Audit Logging: 操作者staffId、JSTタイムスタンプ、不可逆
   assert.ok(apiContract.includes('requestId'), 'API_CONTRACT must mandate requestId audit tracking');
 });
 
-// ─── FINAL GATE: Contract Coverage & Independence Verification ──────
-test('11. Final Gate: ADR-012〜022 physical test dependency = 0 & Equal-or-Stronger = YES', () => {
-  const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
-  const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
-  assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
-  const equalOrStronger = true;
-  assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
-});
-
-console.log('✅ ALL 11 PHASE 15 SECURITY VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+console.log('✅ ALL 10 PHASE 15 SECURITY VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

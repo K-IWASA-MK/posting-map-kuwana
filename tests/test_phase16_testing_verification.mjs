@@ -119,14 +119,22 @@ assert.ok(verifGatesContent.includes('V1') && verifGatesContent.includes('V2') &
 
 console.log("  ✅ GATE 5 PASS: Canonical SSOT (01_DESIGN_CONTRACT / verification-gates) と完全整合");
 
-// ─── Gate 6: FINAL GATE: Contract Coverage & Independence Verification ──────
-console.log("\n▶ [GATE 6] Final Gate: Contract Coverage & Independence Verification");
-const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
-const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
-assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
-const equalOrStronger = true;
-assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
-console.log("  ✅ GATE 6 PASS: ADR physical dependency = 0 & Equal-or-Stronger = YES");
+// ─── Gate 6: FINAL GATE: 全 tests/** 機械走査による ADR-012〜022 物理依存ゼロ証明 ──────
+console.log("\n▶ [GATE 6] Final Gate: Complete tests/** Scan for Zero ADR Physical Dependency");
+const allTestFiles = fs.readdirSync(TESTS_DIR).filter(f => f.endsWith('.mjs'));
+const adrViolations = [];
+
+for (const file of allTestFiles) {
+  const fileContent = fs.readFileSync(path.join(TESTS_DIR, file), 'utf8');
+  // ADR-012 〜 ADR-022 への readFileSync 物理呼出を検出
+  const adrReads = fileContent.match(/readFileSync\([^)]*ADR-(?:01[2-9]|02[0-2])[^)]*\)/g);
+  if (adrReads) {
+    adrViolations.push({ file, matches: adrReads });
+  }
+}
+
+assert.equal(adrViolations.length, 0, `All active test files must have ZERO physical readFileSync dependency on ADR-012〜022, but found: ${JSON.stringify(adrViolations)}`);
+console.log(`  ✅ GATE 6 PASS: tests/** 全 ${allTestFiles.length} ファイルの機械走査完了 (ADR-012〜022 physical test dependency = 0)`);
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 16 TESTING ANCHOR GATES PASSED PERFECTLY!");

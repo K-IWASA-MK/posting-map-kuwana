@@ -192,13 +192,4 @@ test('8. Universal 原則遵守: active/ 配下に地区固有ハードコード
   assert.equal(lines.length, 338, 'マスターCSVはヘッダー含め338行(337レコード)を維持していること');
 });
 
-// ─── FINAL GATE: Contract Coverage & Independence Verification ──────
-test('9. Final Gate: ADR-012〜022 physical test dependency = 0 & Equal-or-Stronger = YES', () => {
-  const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
-  const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
-  assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
-  const equalOrStronger = true;
-  assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
-});
-
-console.log('✅ ALL 9 PHASE 11 ACTIVITY STATE MACHINE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+console.log('✅ ALL 8 PHASE 11 ACTIVITY STATE MACHINE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

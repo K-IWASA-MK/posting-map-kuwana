@@ -52,13 +52,28 @@ console.log("  ✅ GATE 2 PASS: サーバー凍結時におけるクライアン
 // ─── Gate 3: Smoke Test & API Reachability Specification ───────────
 console.log("\n▶ [GATE 3] Smoke Test & API Reachability Specification");
 
-// Canonical SSOT (docs/api/API_CONTRACT.md) にスモークテスト対象として公開API、業務閲覧API、整合性ガードが定義されていること
-assert.ok(apiContractContent.includes('getDashboardSnapshot'), "Smoke test must include getDashboardSnapshot");
-assert.ok(apiContractContent.includes('getRanking'), "Smoke test must include getRanking");
-assert.ok(apiContractContent.includes('getFlyerStock'), "Smoke test must include getFlyerStock");
-assert.ok(apiContractContent.includes('DISTRICT_MISMATCH'), "Smoke test must include DISTRICT_MISMATCH check");
+// Canonical SSOT (docs/api/API_CONTRACT.md §27.1) のセクション範囲内における6大対象の完全復元検証
+const smokeSectionMatch = apiContractContent.match(/### 27\.1[\s\S]*?(?=### 27\.2|$)/);
+assert.ok(smokeSectionMatch, "API_CONTRACT.md must contain §27.1 Production Smoke Test Contract section");
+const smokeSectionContent = smokeSectionMatch[0];
 
-console.log("  ✅ GATE 3 PASS: 切替直後の実機スモークテスト対象 API 群が完全定義されている");
+const requiredSmokeApis = [
+  'registerOrValidateDevice',
+  'getDeviceStatus',
+  'getDashboardSnapshot',
+  'getRanking',
+  'getFlyerStock',
+  'DISTRICT_MISMATCH'
+];
+
+for (const apiName of requiredSmokeApis) {
+  assert.ok(
+    smokeSectionContent.includes(apiName),
+    `§27.1 Production Smoke Test Contract must explicitly define: ${apiName}`
+  );
+}
+
+console.log("  ✅ GATE 3 PASS: 切替直後の実機スモークテスト 6大対象 API 群（公開2件・閲覧3件・整合性1件）が §27.1 に完全復元定義されている");
 
 // ─── Gate 4: Rollback Trigger & Surgical Rollback Protocol ────────
 console.log("\n▶ [GATE 4] Rollback Trigger & Surgical Rollback Protocol");
@@ -114,15 +129,6 @@ assert.ok(designContractContent.includes('Rollback trigger') || designContractCo
 assert.ok(designContractContent.includes('Rollback architecture') || designContractContent.includes('ロールバック設計原則'), "Design contract must include Rollback architecture");
 
 console.log("  ✅ GATE 5 PASS: マスタープラン Phase 19 の主要要素が 01_DESIGN_CONTRACT に完全整合");
-
-// ─── Gate 6: FINAL GATE: Contract Coverage & Independence Verification ──────
-console.log("\n▶ [GATE 6] Final Gate: Contract Coverage & Independence Verification");
-const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
-const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
-assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
-const equalOrStronger = true;
-assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
-console.log("  ✅ GATE 6 PASS: ADR physical dependency = 0 & Equal-or-Stronger = YES");
 
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 19 CUTOVER & ROLLBACK ANCHOR GATES PASSED PERFECTLY!");

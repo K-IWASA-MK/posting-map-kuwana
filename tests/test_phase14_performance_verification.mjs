@@ -25,9 +25,12 @@ test('1. 性能契約直接検証: T0〜T5測定境界、Warm/Cold/Offline SLA�
   assert.ok(content.includes('Cold Start') && content.includes('800ms'), '01_DESIGN_CONTRACT must specify Cold Start SLA <= 800ms');
   assert.ok(content.includes('Offline') && content.includes('200ms'), '01_DESIGN_CONTRACT must specify Offline Start SLA <= 200ms');
   assert.ok(content.includes('実機計測によって検証する') || content.includes('実機'), '01_DESIGN_CONTRACT must mandate real-device measurement');
-  // 実機測定基盤における統一SLA判定と二層測定エビデンス契約の検証
+  // 実機測定基盤における一連の5回中央値測定プロトコル契約の検証 (runs = 5, ループ実行, calcStats, median算出)
+  assert.ok(chromeReal.includes('runs = 5'), 'measure_chrome_real.mjs must define default runs = 5');
+  assert.ok(/for\s*\([^)]*r\s*<=\s*runs[^)]*\)/.test(chromeReal), 'measure_chrome_real.mjs must execute benchmark loop up to runs');
+  assert.ok(chromeReal.includes('calcStats(measurementsT2)'), 'measure_chrome_real.mjs must invoke calcStats for measurements');
+  assert.ok(chromeReal.includes('sorted[mid]'), 'measure_chrome_real.mjs must explicitly derive statistical median from sorted samples');
   assert.ok(chromeReal.includes('warmPass') && chromeReal.includes('coldPass') && chromeReal.includes('offlinePass'), 'measure_chrome_real.mjs must implement real-browser benchmark for Warm/Cold/Offline SLAs');
-  assert.ok(chromeReal.includes('median') || chromeReal.includes('sort'), 'measure_chrome_real.mjs must use statistical median / sorted results');
 });
 
 // ─── 2. T0〜T5 測定境界・因果関係検証 ─────────────────────────────
@@ -161,13 +164,4 @@ test('9. 実機 Chrome 測定基盤: measure_chrome_real.mjs による非侵入�
   assert.ok(content.includes('MutationObserver') && content.includes('loading'), 'Script must observe true T2 DOM state');
 });
 
-// ─── FINAL GATE: Contract Coverage & Independence Verification ──────
-test('10. Final Gate: ADR-012〜022 physical test dependency = 0 & Equal-or-Stronger = YES', () => {
-  const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
-  const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
-  assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
-  const equalOrStronger = true;
-  assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
-});
-
-console.log('✅ ALL 10 PHASE 14 UNIVERSAL PERFORMANCE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+console.log('✅ ALL 9 PHASE 14 UNIVERSAL PERFORMANCE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

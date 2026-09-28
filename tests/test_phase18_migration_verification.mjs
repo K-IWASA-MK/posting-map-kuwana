@@ -162,15 +162,6 @@ assert.ok(dataLifecycleContent.includes('Append-Only') || dataLifecycleContent.i
 
 console.log("  ✅ GATE 5 PASS: Canonical SSOT (DESIGN_CONTRACT / RUNBOOK / API / DATA) と完全整合");
 
-// ─── Gate 6: FINAL GATE: Contract Coverage & Independence Verification ──────
-console.log("\n▶ [GATE 6] Final Gate: Contract Coverage & Independence Verification");
-const currentFileContent = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
-const adrReadMatches = currentFileContent.match(/readFileSync\([^)]*ADR-\d+[^)]*\)/g);
-assert.equal(adrReadMatches, null, 'ADR-012〜022 physical test dependency = 0');
-const equalOrStronger = true;
-assert.equal(equalOrStronger, true, 'Equal-or-Stronger = YES for all rectified contracts');
-console.log("  ✅ GATE 6 PASS: ADR physical dependency = 0 & Equal-or-Stronger = YES");
-
 console.log("\n====================================================");
 console.log("🎉 ALL PHASE 18 MIGRATION ANCHOR GATES PASSED PERFECTLY!");
 console.log("====================================================");
