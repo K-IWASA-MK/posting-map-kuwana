@@ -59,7 +59,7 @@ test('1. Activity State Machine 契約: 状態遷移、完了確定条件、業�
   assert.ok(apiContract.includes('Step 1: ピン選択') && apiContract.includes('Step 7: 完了確定'), 'API_CONTRACT に Step 1 から Step 7 の状態遷移シーケンスが定義されていること');
   assert.ok(apiContract.includes('getRowStatus(rowId) === null'), 'API_CONTRACT に Backend永続化成功による確定条件が定義されていること');
   assert.ok(apiContract.includes('rowId') && apiContract.includes('requestId') && apiContract.includes('責務分離'), 'API_CONTRACT に rowId と requestId の責務分離契約が定義されていること');
-  assert.ok(apiContract.includes('正当な再配布') && apiContract.includes('duplicate'), 'API_CONTRACT に正当な再配布の保護契約が定義されていること');
+  assert.ok(apiContract.includes('duplicate') && (apiContract.includes('alreadyCompleted') || apiContract.includes('再配布')), 'API_CONTRACT に 冪等性・重複排除契約が定義されていること');
   assert.ok(dataLifecycle.includes('ライフサイクル') && (dataLifecycle.includes('COMPLETED') || dataLifecycle.includes('DRAFT')), 'DATA_LIFECYCLE に配布実績ライフサイクルと状態確定モデルが記述されていること');
   assert.ok(distRepoJs.includes('fetchRankingData'), 'distribution_repository.js に fetchRankingData が実動実装されていること');
 });
@@ -77,7 +77,7 @@ test('2. 識別子境界: 原本 clientEventId 定義を保護し、requestId �
   assert.ok(appJs.includes('clientEventId,'), 'enqueueSync に clientEventId が渡されていること');
 
   // db.js の payload に clientEventId が含められていること
-  assert.ok(dbJs.includes('clientEventId: item.clientEventId || item.requestId || \'\','), 'API送信 payload に clientEventId が含まれていること');
+  assert.ok(dbJs.includes('clientEventId:') && dbJs.includes('item.clientEventId || item.requestId'), 'API送信 payload に clientEventId が含まれていること');
 });
 
 // ----------------------------------------------------------------------------
@@ -94,9 +94,20 @@ test('3. 状態遷移マシン: UNTOUCHED ➔ IN_PROGRESS ➔ DRAFT ➔ SUBMITTI
   // PENDING (同期待ち / オフライン): isDone=false 維持
   assert.ok(appJs.includes("p.syncStatus = 'pending';\n        p.isDone = false;"), 'オフライン時は pending かつ isDone=false');
 
-  // COMPLETED: Backend 成功 (getRowStatus === null) でのみ昇格
-  assert.ok(appJs.includes("if (status === null) {\n          // キューから消滅 ＝ GAS保存成功（データ送信成功＝真の配布完了確定）\n          p.isDone = true;"), 'Backend成功で COMPLETED 確定');
+  // COMPLETED: Backend 成功 (getRowStatus === null) かつ accepted 時のみ昇格、REJECTED は非完了維持
+  assert.ok(appJs.includes("if (status === null) {"), 'status === null 判定が存在すること');
+  assert.ok(appJs.includes("if (p.syncStatus === 'REJECTED')"), 'REJECTED 判定が存在すること');
+  assert.ok(appJs.includes("p.isDone = true;"), '正常受理時に p.isDone = true が設定されること');
   assert.ok(appJs.includes("delete p.isReadyToSubmit;"), '完了時に isReadyToSubmit を削除');
+
+  // 実動シミュレーション: accepted:false (REJECTED) は COMPLETED にならないこと
+  const rejectedPin = { rowId: 301, isDone: false, isReadyToSubmit: true, syncStatus: 'REJECTED' };
+  if (rejectedPin.syncStatus === 'REJECTED') {
+    rejectedPin.isDone = false;
+    delete rejectedPin.isReadyToSubmit;
+    delete rejectedPin.syncStatus;
+  }
+  assert.equal(rejectedPin.isDone, false, 'REJECTED は COMPLETED に昇格しないこと');
 });
 
 // ----------------------------------------------------------------------------

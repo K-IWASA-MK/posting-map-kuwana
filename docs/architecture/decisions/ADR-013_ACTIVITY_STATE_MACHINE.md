@@ -83,17 +83,25 @@ UI・キュー・API・DB間で以下の状態遷移モデル（State Transition
        │      ・p.isDone = false (未完了維持)
        │      ・恒久エラーとして再送信ボタンを再活性化
        │
-       └─【Backend SUCCESS (getRowStatus === null / res.success === true)】
+       ├─【Backend SUCCESS & ACCEPTED (getRowStatus === null && res.success === true && res.accepted !== false)】
+       │      │
+       │      ▼
+       │  [7. COMPLETED] (活動確定 / 配布完了!)
+       │      ・p.isDone = true (正式確定)
+       │      ・globalPinStatus.completed.push(rowId)
+       │      ・globalPinStatus.inProgress.remove(rowId)
+       │      ・lockActivePinAndBubble(rowId)
+       │      ・ピン色: 橙 (#EA5F08) 🔒
+       │      ・バブル: 「配布済み 🔒」(操作ボタン非表示・完全ロック)
+       │      ・Spreadsheet [配布実績YYYY-MM] D列〜Q列 永続化完了
+       │
+       └─【Backend REJECTED (res.accepted === false / STALE_MONTH)】
               │
               ▼
-          [7. COMPLETED] (活動確定 / 配布完了!)
-              ・p.isDone = true (正式確定)
-              ・globalPinStatus.completed.push(rowId)
-              ・globalPinStatus.inProgress.remove(rowId)
-              ・lockActivePinAndBubble(rowId)
-              ・ピン色: 橙 (#EA5F08) 🔒
-              ・バブル: 「配布済み 🔒」(操作ボタン非表示・完全ロック)
-              ・Spreadsheet [配布実績YYYY-MM] D列〜P列 永続化完了
+          [7-B. REJECTED_TERMINATED] (旧月等・非受諾終端)
+              ・p.isDone = false (未完了維持)
+              ・dequeueSync(item.id) (Queueから削除して再試行終了)
+              ・Current Sheet再読込 (最新状態へ復帰)
 ```
 
 ---

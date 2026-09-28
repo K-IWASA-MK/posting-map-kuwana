@@ -54,7 +54,7 @@ READ ONLY監査において、現行コードベース（`active/dashboard/`）�
 [6. SUBMITTING] (送信中 / ボタン非活性化 / 多重送信ロック)
        │ enqueueSync ➔ processQueue ➔ updateRecordWithGPSPhoto
        │
-       ├─【Backend SUCCESS (getRowStatus === null)】
+       ├─【Backend SUCCESS & ACCEPTED (getRowStatus === null && p.syncStatus !== 'REJECTED')】
        │      │
        │      ▼
        │  [7. COMPLETED] (配布完了確定!)
@@ -62,6 +62,14 @@ READ ONLY監査において、現行コードベース（`active/dashboard/`）�
        │      ・globalPinStatus.completed.push(rowId)
        │      ・lockActivePinAndBubble(rowId) (ピン橙色化 🔒)
        │      ・モーダルクローズ & 完了アラート
+       │
+       ├─【Backend REJECTED (res.accepted === false / STALE_MONTH)】
+       │      │
+       │      ▼
+       │  [7-B. REJECTED_TERMINATED] (旧月等・非受諾終端)
+       │      ・COMPLETED = false (完了化しない)
+       │      ・Queueから削除 (dequeueSync) して再試行終了
+       │      ・Current Sheet再読込
        │
        ├─【AUTH ERROR】
        │      │

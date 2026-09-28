@@ -74,18 +74,30 @@ if (typeof GPSRepository === 'undefined') {
         const cell = finder.findNext();
         if (cell) {
            const row = cell.getRow();
-           // H(8): GPS, I(9): 写真, J(10): lat, K(11): lng, L(12): gpsTime, M(13): fileId, N(14): photoUrl, O(15): photoTime
-           const rowValues = sheet.getRange(row, 8, 1, 8).getValues()[0];
-           const gpsStatus = rowValues[0] === "OK" ? "OK" : "NO";
-           const photoStatus = rowValues[1] === "OK" ? "OK" : "NO";
+           // D(4)〜Q(17) の 14列を取得
+           // [0] D completedAt, [1] E count, [2] F staffId, [3] G staffName,
+           // [4] H gpsStatus, [5] I photoStatus, [6] J lat, [7] K lng, [8] L gpsTimestamp,
+           // [9] M photoFileId, [10] N photoUrl, [11] O photoTimestamp, [12] P lineUserId, [13] Q requestId
+           const rowValues = sheet.getRange(row, 4, 1, 14).getValues()[0];
+           const gpsStatus = rowValues[4] === "OK" ? "OK" : "NO";
+           const photoStatus = rowValues[5] === "OK" ? "OK" : "NO";
            return {
-             found: true, rowNum: row, gpsStatus, photoStatus,
-             existingLat: rowValues[2] || "",
-             existingLng: rowValues[3] || "",
-             existingGpsTime: rowValues[4] || "",
-             existingFileId: rowValues[5] || "",
-             existingPhotoUrl: rowValues[6] || "",
-             existingPhotoTime: rowValues[7] || ""
+             found: true,
+             rowNum: row,
+             existingCompletedAt: rowValues[0] || "",
+             existingCount: parseFloat(rowValues[1]) || 0,
+             existingStaffId: rowValues[2] || "",
+             existingStaffName: rowValues[3] || "",
+             gpsStatus,
+             photoStatus,
+             existingLat: rowValues[6] || "",
+             existingLng: rowValues[7] || "",
+             existingGpsTime: rowValues[8] || "",
+             existingFileId: rowValues[9] || "",
+             existingPhotoUrl: rowValues[10] || "",
+             existingPhotoTime: rowValues[11] || "",
+             existingLineUserId: rowValues[12] || "",
+             existingRequestId: rowValues[13] ? String(rowValues[13]).trim() : ""
            };
         }
       } catch (e) {
@@ -154,8 +166,9 @@ if (typeof GPSRepository === 'undefined') {
           }
           if (targetRow) {
             const cleanLineUserId = String(data.resolvedLineUserId || data.lineUserId || (data.user && data.user.lineUserId) || "").trim();
+            const cleanRequestId = data.requestId ? String(data.requestId).trim() : "";
             if (isComplete) {
-              sheet.getRange(targetRow, 4, 1, 13).setValues([[
+              sheet.getRange(targetRow, 4, 1, 14).setValues([[
                 completedAt,
                 countVal,
                 data.staffId || "",
@@ -168,7 +181,8 @@ if (typeof GPSRepository === 'undefined') {
                 pFileId,
                 pUrl,
                 pTimestamp,
-                cleanLineUserId
+                cleanLineUserId,
+                cleanRequestId
               ]]);
             } else {
               sheet.getRange(targetRow, 4, 1, 13).setValues([["", "", "", "", "", "", "", "", "", "", "", "", ""]]); // Revert D to P

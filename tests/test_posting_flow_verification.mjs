@@ -106,27 +106,45 @@ test('4. 認証失敗 ≠ COMPLETED: 認証エラー時に isDone=false とな�
 });
 
 // ----------------------------------------------------------------------------
-// 5. Backend成功 = COMPLETED の検証 (status === null のみで確定)
+// 5. Backend受理成功 = COMPLETED の検証 (accepted のみ確定、REJECTED は非完了)
 // ----------------------------------------------------------------------------
-test('5. Backend成功 = COMPLETED: status === null の瞬間のみ isDone=true が確定すること', () => {
-  // app.js で status === null のブロック内でのみ p.isDone = true が設定されていること
-  const successBlockRegex = /if\s*\(\s*status\s*===\s*null\s*\)\s*\{[\s\S]*?p\.isDone\s*=\s*true;[\s\S]*?delete\s+p\.isReadyToSubmit;[\s\S]*?p\.syncStatus\s*=\s*['"]synced['"];/;
-  assert.ok(successBlockRegex.test(appJs), 'status === null ブロック内で isDone=true, delete isReadyToSubmit, syncStatus=synced が行われること');
+test('5. Backend受理成功 = COMPLETED: accepted 成功時のみ isDone=true が確定し、REJECTED/accepted:false は非完了を維持すること', () => {
+  // app.js で status === null かつ REJECTED ガードを経て p.isDone = true が設定されていること
+  assert.ok(appJs.includes("if (p.syncStatus === 'REJECTED')"), 'status === null 内に REJECTED 抑止ガードが存在すること');
+  assert.ok(appJs.includes('p.isDone = false;'), 'REJECTED 時に p.isDone = false が設定されること');
 
-  // シミュレーション
-  const pin = { rowId: 204, isDone: false, isReadyToSubmit: true, syncStatus: 'submitting' };
+  const successBlockRegex = /if\s*\(\s*status\s*===\s*null\s*\)\s*\{[\s\S]*?p\.isDone\s*=\s*true;[\s\S]*?delete\s+p\.isReadyToSubmit;[\s\S]*?p\.syncStatus\s*=\s*['"]synced['"];/;
+  assert.ok(successBlockRegex.test(appJs), 'accepted 正常時に isDone=true, delete isReadyToSubmit, syncStatus=synced が行われること');
+
+  // シミュレーション A: Backend 正常受理 (status === null, syncStatus !== 'REJECTED')
+  const pinAccepted = { rowId: 204, isDone: false, isReadyToSubmit: true, syncStatus: 'submitting' };
   const globalCompleted = [];
 
-  // Backend永続化完了 (status === null)
-  pin.isDone = true;
-  delete pin.isReadyToSubmit;
-  pin.syncStatus = 'synced';
-  globalCompleted.push(pin.rowId);
+  // 受理成功シミュレーション
+  pinAccepted.isDone = true;
+  delete pinAccepted.isReadyToSubmit;
+  pinAccepted.syncStatus = 'synced';
+  globalCompleted.push(pinAccepted.rowId);
 
-  assert.equal(pin.isDone, true, 'Backend成功時に初めて isDone=true');
-  assert.equal(pin.isReadyToSubmit, undefined, 'isReadyToSubmit が消去されること');
-  assert.equal(pin.syncStatus, 'synced');
+  assert.equal(pinAccepted.isDone, true, 'Backend受理成功時に初めて isDone=true');
+  assert.equal(pinAccepted.isReadyToSubmit, undefined, 'isReadyToSubmit が消去されること');
+  assert.equal(pinAccepted.syncStatus, 'synced');
   assert.ok(globalCompleted.includes(204), 'completed 配列に追加されること');
+
+  // シミュレーション B: Backend 非受諾 (status === null, syncStatus === 'REJECTED')
+  const pinRejected = { rowId: 205, isDone: false, isReadyToSubmit: true, syncStatus: 'REJECTED' };
+  let isRejectedReset = false;
+
+  if (pinRejected.syncStatus === 'REJECTED') {
+    pinRejected.isDone = false;
+    delete pinRejected.isReadyToSubmit;
+    delete pinRejected.syncStatus;
+    isRejectedReset = true;
+  }
+
+  assert.equal(pinRejected.isDone, false, 'REJECTED 判定時は絶対に isDone=false を維持すること');
+  assert.equal(isRejectedReset, true, '未完了状態へ復帰すること');
+  assert.ok(!globalCompleted.includes(205), 'REJECTED ピンは completed 配列に追加されないこと');
 });
 
 // ----------------------------------------------------------------------------

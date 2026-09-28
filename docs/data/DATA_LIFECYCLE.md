@@ -189,14 +189,14 @@ RankingSummary (個人ランキング)
 #### オフライン耐性と冪等性保証 (Offline & Idempotency)
 - **RequestId (UUID v4)**: Hアプリが送信ごとに暗号学的UUID（`req_xxxx`）を生成。
 - **IndexedDB キュー (`db.js`)**: 通信切断時はローカルDB（`PostingMapDB` の `syncQueue`）に保存し、FIFO順・`isProcessing` 排他・指数バックオフで再送。
-- **rowId による重複判定の絶対禁止 (ADR-005)**:
-  `rowId` は町丁目の地理的識別子であり、トランザクション一意識別子ではない。「同一 rowId の完了実績が既に存在する」という理由で、異なる `requestId` を持つ新規実績の登録を拒絶またはスキップしてはならない。
+- **月内1行固定および既存実績保護 (ADR-005 / ADR-009)**:
+  配布実績は「1か月・1 rowId = 1行」として管理し、当月初回完了のみを記録する。同一町丁目の完了実績が既に存在する場合、別 `requestId` 操作は新規追記せず `alreadyCompleted: true` として返し既存実績を保護する（同月再配布なし、翌月に新しい月次シートで未配布から新しく開始する）。システム全体の監査・操作証跡（活動履歴シート・エラーログシート等）は追記専用（Append-Only）の不変ログとして保持する。
 - **Timestamp Winner (上書きルール) の採用禁止 (REJECT)**:
-  タイムスタンプ比較によって既存の `DistributionRecord` 行を上書き・更新することは厳禁。配布実績は追記専用（Append-Only）の不変ログ（Audit Trail）として保持する。
+  タイムスタンプ比較によって既存の完了実績行を無秩序に上書き・更新することは厳禁。
 - **2段階冪等性照合 (Durable SSOT Authority / ADR-009)**:
-  同一 `requestId` の再送時は、CacheService（一次キャッシュ）およびスプレッドシート Q列（`requestId`）と照合し、新規書き込みをスキップして既存レコード情報を返却する（HTTP 200, isDuplicate: true）。
-- **配布完了確定の厳格な条件 (ADR-011)**:
-  写真撮影・GPS取得の完了はあくまで下書き確認（READY_TO_SUBMIT / DRAFT）であり、この時点で `p.isDone = true` を確定させてはならない。真の配布完了（COMPLETED）は、**Backend永続化成功（Spreadsheet [配布実績YYYY-MM] への書き込み完了 / getRowStatus === null）** のみを唯一の確定条件とする。
+  同一 `requestId` の再送時は、CacheService（一次キャッシュ）およびスプレッドシート Q列（`requestId`）と照合し、新規書き込みをスキップして既存レコード情報を返却する（HTTP 200, duplicate: true）。
+- **配布完了確定の厳格な条件 (ADR-011 / ADR-012 / ADR-013)**:
+  写真撮影・GPS取得の完了はあくまで下書き確認（READY_TO_SUBMIT / DRAFT）であり、この時点で `p.isDone = true` を確定させてはならない。真の配布完了（COMPLETED）は、**Backend永続化および受諾成功（Spreadsheet [配布実績YYYY-MM] への書き込み完了 / getRowStatus === null かつ accepted !== false）** のみを確定条件とする。非受諾終端（accepted: false / STALE_MONTH）時はキューから削除されるが未完了を維持する。
 
 ---
 

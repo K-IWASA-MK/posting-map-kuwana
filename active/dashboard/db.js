@@ -51,6 +51,16 @@ function getDB() {
  * @param {Object} item - { areaName, rowId, isDone, count, latitude, longitude,
  *                          accuracy, branchCode, areaId, photoBase64, staffName, staffId }
  */
+/**
+ * JST基準の月度文字列（YYYY-MM）を取得
+ */
+function getJstMonth(ts) {
+  const num = Number(ts);
+  const d = (Number.isFinite(num) && num > 0) ? new Date(num) : new Date();
+  const jst = new Date(d.getTime() + (9 * 60 * 60 * 1000));
+  return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 async function enqueueSync(item) {
   const db = await getDB();
   return new Promise((resolve, reject) => {
@@ -62,11 +72,12 @@ async function enqueueSync(item) {
     getAllReq.onsuccess = () => {
       const queue = getAllReq.result || [];
       const targetRowId = Number(item.rowId);
+      const targetMonth = getJstMonth(item.timestamp || Date.now());
 
-      // 同一 rowId のアイテムが既にキューに存在するかチェック
-      const existing = queue.find(q => Number(q.rowId) === targetRowId);
+      // 同一 JST月 かつ 同一 rowId のアイテムが既にキューに存在するかチェック
+      const existing = queue.find(q => Number(q.rowId) === targetRowId && getJstMonth(q.timestamp) === targetMonth);
       if (existing) {
-        console.warn(`[Queue] Duplicate enqueue avoided for rowId=${targetRowId}, existingId=${existing.id}`);
+        console.warn(`[Queue] Duplicate enqueue avoided for rowId=${targetRowId}, month=${targetMonth}, existingId=${existing.id}`);
         resolve(existing.id);
         processQueue();
         return;
@@ -156,25 +167,30 @@ function generateRequestId(prefix = 'req') {
 window.generateRequestId = generateRequestId;
 
 /**
- * 特定 rowId の送信ステータスを取得（数値/文字列の型を正規化）
+ * 特定 rowId の送信ステータスを取得（当月キューのみ対象、数値/文字列の型を正規化）
  * @returns {string|null} 'PENDING' | 'SYNCING' | 'RETRY' | null
  */
 async function getRowStatus(rowId) {
   const targetId = Number(rowId);
+  const currentMonth = getJstMonth(Date.now());
   const queue = await getQueue();
-  const found = queue.find(q => Number(q.rowId) === targetId);
+  const found = queue.find(q => Number(q.rowId) === targetId && getJstMonth(q.timestamp) === currentMonth);
   return found ? (found.syncStatus || found.status || 'PENDING') : null;
 }
 window.getRowStatus = getRowStatus;
 
 /**
- * 現在キュー内に存在する全レコードの rowId 配列（数値）を取得
+ * 現在キュー内に存在する当月レコードの rowId 配列（数値）を取得
  * 起動時やデータロード時の待機ピン復元に使用
  * @returns {Promise<number[]>}
  */
 async function getSyncQueueRowIds() {
   const queue = await getQueue();
-  return (queue || []).map(item => Number(item.rowId)).filter(id => !isNaN(id));
+  const currentMonth = getJstMonth(Date.now());
+  return (queue || [])
+    .filter(item => getJstMonth(item.timestamp) === currentMonth)
+    .map(item => Number(item.rowId))
+    .filter(id => !isNaN(id));
 }
 window.getSyncQueueRowIds = getSyncQueueRowIds;
 
@@ -246,9 +262,10 @@ async function processQueue() {
 
       try {
         const payload = {
-          requestId:  item.requestId  || '',
-          clientEventId: item.clientEventId || item.requestId || '',
-          areaName:   item.areaName,
+          timestamp:      item.timestamp || '',
+          requestId:      item.requestId  || '',
+          clientEventId:  item.clientEventId || item.requestId || '',
+          areaName:       item.areaName,
           rowId:          item.rowId,
           isDone:         item.isDone,
           count:          item.count,
@@ -268,8 +285,35 @@ async function processQueue() {
         }
 
         if (res && res.success) {
+          // ── STALE_MONTH 等の非受諾終端処理 ──────────────────────
+          if (res.accepted === false) {
+            console.warn(`[Queue] Item rejected without retry: id=${item.id}, code=${res.code}`);
+
+            // 対象pointの syncStatus = 'REJECTED'（app.js 側で非完了認識用）
+            if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
+              const p = window.cityAreaCache[item.areaName].find(pt => pt.rowId === item.rowId);
+              if (p) {
+                p.syncStatus = 'REJECTED';
+                delete p.tempPhotoUrl;
+                delete p.isReadyToSubmit;
+              }
+            }
+            if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
+              const p = allPoints.find(pt => pt.rowId === item.rowId);
+              if (p) {
+                p.syncStatus = 'REJECTED';
+                delete p.tempPhotoUrl;
+                delete p.isReadyToSubmit;
+              }
+            }
+
+            await dequeueSync(item.id);
+            anySuccess = true; // loadData(true) でCurrent Sheet再読込
+            continue;
+          }
+
           // ── 因果関係の絶対順序 ──────────────────────────────────
-          // 1. Backend persistence confirmed (res.success === true)
+          // 1. Backend persistence confirmed (res.success === true && res.accepted !== false)
           // 2. dequeueSync()
           await dequeueSync(item.id);
 

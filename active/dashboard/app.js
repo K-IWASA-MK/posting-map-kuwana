@@ -519,18 +519,34 @@ window.triggerUISyncRefresh = async function() {
 
   try {
     const queue = await getQueue();
+    const nowTs = Date.now();
+    const dNow = new Date(nowTs + (9 * 60 * 60 * 1000));
+    const currentJstMonth = `${dNow.getUTCFullYear()}-${String(dNow.getUTCMonth() + 1).padStart(2, '0')}`;
+
     allPoints.forEach(p => {
       // submitting（提出処理中）の場合はキュー状態での上書きを防止
       if (p.syncStatus === 'submitting') return;
 
-      const found = queue.find(q => q.rowId === p.rowId && q.areaName === currentAreaName);
+      const found = queue.find(q => {
+        if (q.rowId !== p.rowId || q.areaName !== currentAreaName) return false;
+        const qTs = Number(q.timestamp) || nowTs;
+        const qD = new Date(qTs + (9 * 60 * 60 * 1000));
+        const qM = `${qD.getUTCFullYear()}-${String(qD.getUTCMonth() + 1).padStart(2, '0')}`;
+        return qM === currentJstMonth;
+      });
       if (found) {
         p.syncStatus = found.syncStatus || found.status; // 'pending' | 'sending' | 'failed'
       } else {
         // キューに存在しない場合
-        // もし以前送信待機中（pending/SYNCING/RETRY等）だったアイテムがキューから消滅した場合、
-        // Backend永続化が成功して dequeueSync されたことを意味するため、COMPLETED (isDone=true) に昇格
-        if (p.syncStatus && p.syncStatus !== 'synced') {
+        if (p.syncStatus === 'REJECTED') {
+          // STALE_MONTH 等の非受諾終端: COMPLETED に昇格させず未完了へ戻す
+          p.isDone = false;
+          delete p.isReadyToSubmit;
+          delete p.tempPhotoUrl;
+          delete p.syncStatus;
+        } else if (p.syncStatus && p.syncStatus !== 'synced') {
+          // もし以前送信待機中（pending/SYNCING/RETRY等）だったアイテムがキューから消滅した場合、
+          // Backend永続化が成功して dequeueSync されたことを意味するため、COMPLETED (isDone=true) に昇格
           p.isDone = true;
           delete p.isReadyToSubmit;
           p.syncStatus = 'synced';
@@ -808,7 +824,21 @@ async function submitMissionComplete(areaName, rowId) {
         const status = await window.getRowStatus(Number(rowId));
 
         if (status === null) {
-          // キューから消滅 ＝ GAS保存成功（データ送信成功＝真の配布完了確定）
+          // キューから消滅
+          if (p.syncStatus === 'REJECTED') {
+            // STALE_MONTH 等の非受諾終端: COMPLETED に昇格させず通常未完了へ復帰
+            p.isDone = false;
+            delete p.isReadyToSubmit;
+            delete p.tempPhotoUrl;
+            delete p.syncStatus;
+            alert("旧月の配布操作のため、当月シートには反映されませんでした。");
+            if (typeof closeDetailModal === 'function') {
+              closeDetailModal();
+            }
+            return; // 重要：後段の「送信処理中です」へ落ちずに即時終了
+          }
+
+          // 通常の Backend永続化成功 ＝ 真の配布完了確定
           p.isDone = true;
           delete p.isReadyToSubmit;
           p.syncStatus = 'synced';

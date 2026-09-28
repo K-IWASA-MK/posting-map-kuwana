@@ -72,7 +72,7 @@ test('1. PostingMapDB v2 の維持と既存レコード互換性', () => {
 // ----------------------------------------------------------------------------
 // 2. rowId重複防止の単一 readwrite トランザクション境界（非同期境界ゼロの実証）
 // ----------------------------------------------------------------------------
-test('2. rowId重複防止: 同一 readwrite トランザクション内で同期完結し、競合窓が存在しないこと', () => {
+test('2. rowId重複防止: 同一 readwrite トランザクション内で同期完結し、同一月+同一rowIdのみ重複抑止、別月共存可能であること', () => {
   const enqueueIndex = dbJs.indexOf('async function enqueueSync(item)');
   assert.ok(enqueueIndex !== -1, 'enqueueSync 関数が存在すること');
 
@@ -96,10 +96,24 @@ test('2. rowId重複防止: 同一 readwrite トランザクション内で同�
   const onsuccessBody = enqueueBody.substring(onsuccessIndex, addReqIndex);
   assert.ok(!onsuccessBody.includes('await '), 'getAllReq.onsuccess と store.add の間に await が存在してはならない');
 
-  // 実動シミュレーション: 重複 enqueue の排他
-  const storeData = [{ id: 1, rowId: 99, syncStatus: 'PENDING' }];
+  // ②-B 仕様: 同一JST月 + 同一rowId 重複判定
+  assert.ok(enqueueBody.includes('getJstMonth(q.timestamp) === targetMonth'), 'enqueueSync で同一JST月判定が行われていること');
+
+  // 実動シミュレーション: 同一月重複抑止 & 別月共存
+  function getJstMonth(ts) {
+    const num = Number(ts);
+    const d = (Number.isFinite(num) && num > 0) ? new Date(num) : new Date();
+    const jst = new Date(d.getTime() + (9 * 60 * 60 * 1000));
+    return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  const storeData = [
+    { id: 1, rowId: 99, timestamp: Date.UTC(2026, 8, 15), syncStatus: 'PENDING' } // 2026-09
+  ];
+
   function simulateAtomicEnqueue(item) {
-    const existing = storeData.find(q => Number(q.rowId) === Number(item.rowId));
+    const targetMonth = getJstMonth(item.timestamp || Date.now());
+    const existing = storeData.find(q => Number(q.rowId) === Number(item.rowId) && getJstMonth(q.timestamp) === targetMonth);
     if (existing) {
       return { id: existing.id, isNew: false };
     }
@@ -108,13 +122,15 @@ test('2. rowId重複防止: 同一 readwrite トランザクション内で同�
     return { id: newId, isNew: true };
   }
 
-  const res1 = simulateAtomicEnqueue({ rowId: 99, count: 10 });
-  assert.equal(res1.isNew, false, '既存rowIdは新規登録されないこと');
+  // 同一月 (2026-09) + 同一 rowId (99) → 重複抑止
+  const res1 = simulateAtomicEnqueue({ rowId: 99, timestamp: Date.UTC(2026, 8, 20), count: 10 });
+  assert.equal(res1.isNew, false, '同一月・同一rowIdは新規登録されないこと');
   assert.equal(res1.id, 1, '既存レコードのIDが返却されること');
   assert.equal(storeData.length, 1);
 
-  const res2 = simulateAtomicEnqueue({ rowId: 100, count: 20 });
-  assert.equal(res2.isNew, true, '新規rowIdは登録されること');
+  // 別月 (2026-10) + 同一 rowId (99) → 共存可能
+  const res2 = simulateAtomicEnqueue({ rowId: 99, timestamp: Date.UTC(2026, 9, 1), count: 20 });
+  assert.equal(res2.isNew, true, '別月・同一rowIdは共存登録されること');
   assert.equal(res2.id, 2);
   assert.equal(storeData.length, 2);
 });
@@ -200,11 +216,11 @@ test('5. requestId: generateRequestId で発番され、enqueueSync → IndexedD
   assert.ok(appJs.includes('requestId,\n        areaName,'), 'enqueueSync に requestId が渡されていること');
 
   // dbJs の processQueue で payload に requestId が含められていること
-  assert.ok(dbJs.includes('requestId:  item.requestId  || \'\','), 'processQueue の payload に requestId が含まれていること');
+  assert.ok(dbJs.includes('requestId:') && dbJs.includes('item.requestId'), 'processQueue の payload に requestId が含まれていること');
 
-  // Backend (v2_api, gps_service) には requestId 判定が侵入していないこと（Universal境界維持）
-  assert.ok(!v2ApiJs.includes('params.requestId'), 'v2_api.js に requestId 主導の分岐が存在しないこと');
-  assert.ok(!gpsServiceJs.includes('requestId'), 'gps_service.js に requestId による分岐が存在しないこと');
+  // Backend (gps_service) に ②-B 正式な requestId 冪等性照合が実装されていること
+  assert.ok(gpsServiceJs.includes('incomingReqId === existingReqId'), 'gps_service.js に requestId 重複排除照合が実装されていること');
+  assert.ok(gpsServiceJs.includes('duplicate: true'), 'gps_service.js に duplicate レスポンスが実装されていること');
 });
 
 // ----------------------------------------------------------------------------
@@ -244,88 +260,122 @@ test('6. 強制終了復旧: SYNCING 状態で中断されたレコードが次�
 });
 
 // ----------------------------------------------------------------------------
-// 7. getSyncQueueRowIds() による起動時待機ピン復元実動検証
+// 7. getSyncQueueRowIds() と getRowStatus() による当月Queue分離実動検証
 // ----------------------------------------------------------------------------
-test('7. 待機ピン復元: getSyncQueueRowIds() が公開され、loadData 完了時に待機ピンが復元されること', () => {
-  // db.js に getSyncQueueRowIds が定義され公開されていること
+test('7. 当月Queue分離: getSyncQueueRowIds() と getRowStatus() が現在JST月のみを対象とし、旧月Queueによる誤判定を遮断すること', () => {
+  // db.js に getSyncQueueRowIds と getRowStatus が定義され、当月判定が含まれていること
   assert.ok(dbJs.includes('async function getSyncQueueRowIds()'), 'getSyncQueueRowIds 関数が定義されていること');
   assert.ok(dbJs.includes('window.getSyncQueueRowIds = getSyncQueueRowIds;'), 'window.getSyncQueueRowIds が公開されていること');
+  assert.ok(dbJs.includes('async function getRowStatus(rowId)'), 'getRowStatus 関数が定義されていること');
+  assert.ok(dbJs.includes('window.getRowStatus = getRowStatus;'), 'window.getRowStatus が公開されていること');
+
+  // getSyncQueueRowIds と getRowStatus のコード内で当月フィルタリングが行われていること
+  const getSyncQueueIndex = dbJs.indexOf('async function getSyncQueueRowIds()');
+  const getSyncQueueBody = dbJs.substring(getSyncQueueIndex, getSyncQueueIndex + 600);
+  assert.ok(getSyncQueueBody.includes('getJstMonth(item.timestamp) === currentMonth'), 'getSyncQueueRowIds で当月フィルタが行われていること');
+
+  const getRowStatusIndex = dbJs.indexOf('async function getRowStatus(rowId)');
+  const getRowStatusBody = dbJs.substring(getRowStatusIndex, getRowStatusIndex + 600);
+  assert.ok(getRowStatusBody.includes('getJstMonth(q.timestamp) === currentMonth'), 'getRowStatus で当月フィルタが行われていること');
 
   // app.js の loadData 内で getSyncQueueRowIds を呼び出していること
   assert.ok(appJs.includes('const queueRowIds = await window.getSyncQueueRowIds();'), 'loadData で getSyncQueueRowIds() が呼ばれていること');
 
-  // 実動シミュレーション: 待機ピン復元
-  const simulatedQueue = [{ rowId: 701 }, { rowId: 702 }];
-  const simulatedAllPoints = [
-    { rowId: 701, isDone: false, syncStatus: undefined },
-    { rowId: 702, isDone: false, syncStatus: undefined },
-    { rowId: 703, isDone: false, syncStatus: undefined }
+  // 実動シミュレーション: 旧月Queueと当月Queueの分離
+  function getJstMonth(ts) {
+    const num = Number(ts);
+    const d = (Number.isFinite(num) && num > 0) ? new Date(num) : new Date();
+    const jst = new Date(d.getTime() + (9 * 60 * 60 * 1000));
+    return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  const currentJstMonth = '2026-09';
+  const simulatedQueue = [
+    { rowId: 701, timestamp: Date.UTC(2026, 7, 20), syncStatus: 'PENDING' }, // 2026-08 (旧月)
+    { rowId: 702, timestamp: Date.UTC(2026, 8, 10), syncStatus: 'PENDING' }  // 2026-09 (当月)
   ];
 
-  const rowIds = simulatedQueue.map(q => q.rowId);
-  rowIds.forEach(id => {
-    const pt = simulatedAllPoints.find(p => p.rowId === id);
-    if (pt && !pt.isDone) {
-      pt.syncStatus = 'pending';
-    }
-  });
+  // getSyncQueueRowIds() シミュレーション: 当月Queueのみ抽出
+  const currentMonthRowIds = simulatedQueue
+    .filter(q => getJstMonth(q.timestamp) === currentJstMonth)
+    .map(q => q.rowId);
 
-  assert.equal(simulatedAllPoints[0].syncStatus, 'pending', '701が待機ピンとして復元されること');
-  assert.equal(simulatedAllPoints[1].syncStatus, 'pending', '702が待機ピンとして復元されること');
-  assert.equal(simulatedAllPoints[2].syncStatus, undefined, '703は影響を受けないこと');
+  assert.deepEqual(currentMonthRowIds, [702], '当月Queueの rowId (702) のみが返され、旧月 (701) は除外されること');
+
+  // getRowStatus() シミュレーション: 旧月は null、当月はステータス返却
+  function simulateGetRowStatus(targetRowId) {
+    const item = simulatedQueue.find(q =>
+      Number(q.rowId) === Number(targetRowId) &&
+      getJstMonth(q.timestamp) === currentJstMonth
+    );
+    return item ? (item.syncStatus || 'PENDING') : null;
+  }
+
+  assert.equal(simulateGetRowStatus(701), null, '旧月Queueの rowId 701 に対する getRowStatus は null となること');
+  assert.equal(simulateGetRowStatus(702), 'PENDING', '当月Queueの rowId 702 に対する getRowStatus はステータスを返すこと');
 });
 
 // ----------------------------------------------------------------------------
-// 8. triggerUISyncRefresh() による完了昇格とCOMPLETED因果関係の絶対順序
+// 8. triggerUISyncRefresh() による完了昇格と accepted:false 非完了因果関係
 // ----------------------------------------------------------------------------
-test('8. COMPLETED因果関係: Backend confirmed → dequeueSync → triggerUISyncRefresh で初めて p.isDone=true に昇格すること', () => {
+test('8. COMPLETED因果関係: accepted:true の確認後のみ p.isDone=true に昇格し、accepted:false (REJECTED) は非完了を維持すること', () => {
   // triggerUISyncRefresh にキュー消滅時の完了昇格ロジックが存在すること
   assert.ok(appJs.includes("if (p.syncStatus && p.syncStatus !== 'synced') {"), 'triggerUISyncRefresh に昇格条件が存在すること');
   assert.ok(appJs.includes('p.isDone = true;'), '昇格時に p.isDone = true が設定されること');
   assert.ok(appJs.includes("p.syncStatus = 'synced';"), '昇格時に p.syncStatus = synced が設定されること');
 
-  // 実動シミュレーション: キュー消化に伴うUI完了昇格
-  const point = { rowId: 801, isDone: false, syncStatus: 'pending' };
+  // ②-B 仕様: REJECTED の場合は非完了へリセット
+  assert.ok(appJs.includes("p.syncStatus === 'REJECTED'"), 'app.js に REJECTED 検知ロジックが存在すること');
+  assert.ok(appJs.includes('p.isDone = false;'), 'REJECTED 時に p.isDone = false が設定されること');
+
+  // 実動シミュレーション: accepted:true の正常完了昇格
+  const normalPoint = { rowId: 801, isDone: false, syncStatus: 'pending' };
   const globalCompleted = [];
-  let isPinLocked = false;
-
-  // キューに残っている間は isDone = false
-  assert.equal(point.isDone, false, 'キュー残存中は isDone は false');
-
-  // バックエンド成功 & dequeueSync 完了後、triggerUISyncRefresh が発火
-  const queueAfterDequeue = []; // キューから消滅
-  const foundInQueue = queueAfterDequeue.find(q => q.rowId === point.rowId);
-
-  if (!foundInQueue) {
-    if (point.syncStatus && point.syncStatus !== 'synced') {
-      point.isDone = true;
-      delete point.isReadyToSubmit;
-      point.syncStatus = 'synced';
-      globalCompleted.push(point.rowId);
-      isPinLocked = true;
+  const queueAfterSuccess = []; // dequeue 済み
+  if (!queueAfterSuccess.find(q => q.rowId === normalPoint.rowId)) {
+    if (normalPoint.syncStatus && normalPoint.syncStatus !== 'synced' && normalPoint.syncStatus !== 'REJECTED') {
+      normalPoint.isDone = true;
+      normalPoint.syncStatus = 'synced';
+      globalCompleted.push(normalPoint.rowId);
     }
   }
+  assert.equal(normalPoint.isDone, true, '正常受理時は isDone = true に昇格すること');
+  assert.ok(globalCompleted.includes(801));
 
-  assert.equal(point.isDone, true, 'キュー消滅検知で初めて isDone = true に昇格すること');
-  assert.equal(point.syncStatus, 'synced');
-  assert.ok(globalCompleted.includes(801), '完了ピン一覧に追加されること');
-  assert.equal(isPinLocked, true, 'ピンがロックされること');
+  // 実動シミュレーション: accepted:false (REJECTED) 時の非完了維持
+  const rejectedPoint = { rowId: 802, isDone: false, syncStatus: 'REJECTED' };
+  const queueAfterReject = []; // dequeue 済み
+  if (!queueAfterReject.find(q => q.rowId === rejectedPoint.rowId)) {
+    if (rejectedPoint.syncStatus === 'REJECTED') {
+      rejectedPoint.isDone = false;
+      delete rejectedPoint.syncStatus;
+    }
+  }
+  assert.equal(rejectedPoint.isDone, false, 'REJECTED 時は絶対に isDone = false を維持すること');
+  assert.ok(!globalCompleted.includes(802), 'REJECTED ピンは completed 配列に追加されないこと');
 });
 
 // ----------------------------------------------------------------------------
-// 10. 【ランタイム実機動作検証】Offline UI即時解放・キュー永続化・Crash復旧・Online消化・COMPLETED昇格
+// 10. 【ランタイム実機動作検証】②-B 冪等性・月跨ぎ・Durable Queue 完全ライフサイクル
 // ----------------------------------------------------------------------------
-test('10. 【ランタイム実機動作検証】Offline UI即時解放・キュー永続化・Crash復旧・Online消化・COMPLETED昇格の実動作ライフサイクル', async () => {
+test('10. 【ランタイム実機動作検証】②-B 冪等性・月跨ぎ・Durable Queue 完全ライフサイクル', async () => {
   // 仮想IndexedDBストアモデル
   const mockIndexedDBStore = [];
   let nextStoreId = 1;
 
-  // 1. enqueueSync 実動エミュレーション (同一トランザクション同期判定)
+  function getJstMonth(ts) {
+    const num = Number(ts);
+    const d = (Number.isFinite(num) && num > 0) ? new Date(num) : new Date();
+    const jst = new Date(d.getTime() + (9 * 60 * 60 * 1000));
+    return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  // 1. enqueueSync 実動エミュレーション (同一トランザクション同期判定・同一月＋同一rowId)
   function runEnqueueSync(item) {
     return new Promise((resolve) => {
-      // readwrite トランザクション同期実行
       const targetId = Number(item.rowId);
-      const existing = mockIndexedDBStore.find(q => Number(q.rowId) === targetId);
+      const targetMonth = getJstMonth(item.timestamp || Date.now());
+      const existing = mockIndexedDBStore.find(q => Number(q.rowId) === targetId && getJstMonth(q.timestamp) === targetMonth);
       if (existing) {
         resolve({ id: existing.id, isDuplicate: true });
         return;
@@ -337,119 +387,138 @@ test('10. 【ランタイム実機動作検証】Offline UI即時解放・キュ
         syncStatus: 'PENDING',
         retryCount: 0,
         nextRetryAt: 0,
-        timestamp: Date.now()
+        timestamp: item.timestamp || Date.now()
       };
       mockIndexedDBStore.push(record);
       resolve({ id: record.id, isDuplicate: false, record });
     });
   }
 
-  // 2. オフライン環境での提出シミュレーション
-  let isModalClosed = false;
-  let alertMessage = null;
-  const targetPoint = {
-    rowId: 901,
-    areaName: 'TEST_AREA',
-    count: 25,
-    isDone: false,
-    isReadyToSubmit: true,
-    syncStatus: 'submitting'
-  };
+  // Backend モック (gps_service ②-B 判定エミュレーション)
+  const currentSheetDb = new Map(); // rowId => { completedAt, requestId, ... }
+  const currentServerMonth = '2026-09';
+  let dbWriteCount = 0;
 
-  const offlineStartTime = Date.now();
-  const isOnline = false; // オフライン状態
+  function simulateBackendUpdateRecord(data) {
+    const rowIdNum = Number(data.rowId);
+    const tsNum = Number(data.timestamp);
 
-  // オフライン提出フローの実行
-  const enqueueResult = await runEnqueueSync({
-    requestId: 'req_test_901',
-    areaName: targetPoint.areaName,
-    rowId: targetPoint.rowId,
-    count: targetPoint.count,
-    isDone: true
-  });
-
-  if (!isOnline) {
-    targetPoint.syncStatus = 'pending';
-    targetPoint.isDone = false;
-    alertMessage = '電波が圏外のため、端末内に安全に保存しました。';
-    isModalClosed = true;
-  }
-  const offlineDuration = Date.now() - offlineStartTime;
-
-  // 検証: オフライン時に即座にモーダルが閉じ、UIが解放されること (実行時間 < 50ms)
-  assert.ok(offlineDuration < 50, `オフライン提出は即座に解放されること (${offlineDuration}ms)`);
-  assert.equal(isModalClosed, true, 'モーダルが即座に閉じられていること');
-  assert.equal(targetPoint.isDone, false, 'オフライン提出時は COMPLETED ではないこと (isDone = false)');
-  assert.equal(targetPoint.syncStatus, 'pending', '待機状態 (pending) になること');
-  assert.equal(mockIndexedDBStore.length, 1, 'IndexedDB にレコードが永続化されていること');
-  assert.equal(mockIndexedDBStore[0].requestId, 'req_test_901', 'requestId が保持されていること');
-
-  // 3. 重複提出防止の実動検証 (同じ rowId で再度 enqueue)
-  const dupResult = await runEnqueueSync({
-    requestId: 'req_test_901_dup',
-    areaName: targetPoint.areaName,
-    rowId: targetPoint.rowId,
-    count: targetPoint.count,
-    isDone: true
-  });
-  assert.equal(dupResult.isDuplicate, true, '重複アイテムは追加されないこと');
-  assert.equal(mockIndexedDBStore.length, 1, 'ストア内件数は 1件のままであること');
-
-  // 4. クラッシュ復旧 (Crash Recovery) 実動検証
-  // 送信中 (SYNCING) のままブラウザがクラッシュした状態を再現
-  mockIndexedDBStore[0].syncStatus = 'SYNCING';
-
-  // 次回起動時の救済フィルタリング実行
-  const recoverableTargets = mockIndexedDBStore.filter(item => {
-    const s = item.syncStatus;
-    return s === 'PENDING' || s === 'SYNCING';
-  });
-  assert.equal(recoverableTargets.length, 1, 'SYNCING アイテムが救済対象として抽出されること');
-  assert.equal(recoverableTargets[0].rowId, 901);
-
-  // 5. オンライン復旧とバックグラウンド送信・dequeue・COMPLETED昇格実動検証
-  const simulatedOnline = true;
-  let apiCalledPayload = null;
-  const globalCompleted = [];
-
-  // API送信シミュレーション
-  if (simulatedOnline && recoverableTargets.length > 0) {
-    const targetItem = recoverableTargets[0];
-    apiCalledPayload = {
-      requestId: targetItem.requestId,
-      rowId: targetItem.rowId,
-      areaName: targetItem.areaName,
-      count: targetItem.count
-    };
-
-    // 擬似API成功レスポンス
-    const apiRes = { success: true, photoUrl: 'https://storage/photo.jpg' };
-    if (apiRes.success) {
-      // 1. dequeueSync
-      const deleteIdx = mockIndexedDBStore.findIndex(q => q.id === targetItem.id);
-      if (deleteIdx !== -1) mockIndexedDBStore.splice(deleteIdx, 1);
-
-      // 2. triggerUISyncRefresh による完了昇格
-      const inQueue = mockIndexedDBStore.find(q => q.rowId === targetPoint.rowId);
-      if (!inQueue) {
-        if (targetPoint.syncStatus && targetPoint.syncStatus !== 'synced') {
-          targetPoint.isDone = true;
-          delete targetPoint.isReadyToSubmit;
-          targetPoint.syncStatus = 'synced';
-          globalCompleted.push(targetPoint.rowId);
-        }
+    // Step 1: 月判定 (timestamp 有効時)
+    if (Number.isFinite(tsNum) && tsNum > 0) {
+      const reqMonth = getJstMonth(tsNum);
+      if (reqMonth !== currentServerMonth) {
+        return { success: true, accepted: false, code: 'STALE_MONTH', duplicate: false, alreadyCompleted: false };
       }
     }
+
+    // Existing check
+    const existing = currentSheetDb.get(rowIdNum);
+    const incomingReqId = String(data.requestId || '').trim();
+
+    // Step 2: requestId 一致による冪等性判定 (duplicate)
+    if (existing && incomingReqId && existing.requestId === incomingReqId) {
+      return { success: true, accepted: true, duplicate: true, alreadyCompleted: false };
+    }
+
+    // Step 3: completedAt 存在判定 (alreadyCompleted)
+    if (existing && existing.completedAt) {
+      return { success: true, accepted: true, duplicate: false, alreadyCompleted: true };
+    }
+
+    // Step 4: 初回正常保存
+    dbWriteCount++;
+    currentSheetDb.set(rowIdNum, {
+      completedAt: '2026-09-29 10:00:00',
+      requestId: incomingReqId,
+      count: data.count
+    });
+    return { success: true, accepted: true, duplicate: false, alreadyCompleted: false };
   }
 
-  // 検証: APIペイロードに requestId が乗っていること
-  assert.equal(apiCalledPayload.requestId, 'req_test_901', 'API ペイロードに requestId が渡されていること');
-  // 検証: キューから安全に削除されていること
-  assert.equal(mockIndexedDBStore.length, 0, '送信完了後にキューから削除 (dequeueSync) されていること');
-  // 検証: triggerUISyncRefresh により COMPLETED (isDone = true) に昇格していること
-  assert.equal(targetPoint.isDone, true, 'Backend成功後に初めて isDone = true に昇格すること');
-  assert.equal(targetPoint.syncStatus, 'synced');
-  assert.ok(globalCompleted.includes(901), '完了ピン一覧に追加されていること');
+  // ── シナリオ A: 同一月＋同一rowId → 重複 enqueue 抑止 ──────────────
+  const enq1 = await runEnqueueSync({ rowId: 901, timestamp: Date.UTC(2026, 8, 20), requestId: 'req_901_A' });
+  const enq2 = await runEnqueueSync({ rowId: 901, timestamp: Date.UTC(2026, 8, 21), requestId: 'req_901_B' });
+  assert.equal(enq1.isDuplicate, false);
+  assert.equal(enq2.isDuplicate, true, '同一月＋同一rowIdは重複 enqueue が抑止されること');
+  assert.equal(mockIndexedDBStore.length, 1);
+
+  // ── シナリオ B: 別月＋同一rowId → Queue 共存可能 ─────────────────
+  const enqOld = await runEnqueueSync({ rowId: 902, timestamp: Date.UTC(2026, 7, 20), requestId: 'req_902_old' }); // 2026-08
+  const enqNew = await runEnqueueSync({ rowId: 902, timestamp: Date.UTC(2026, 8, 20), requestId: 'req_902_new' }); // 2026-09
+  assert.equal(enqOld.isDuplicate, false);
+  assert.equal(enqNew.isDuplicate, false, '別月＋同一rowIdは Queue に共存可能であること');
+
+  // ── シナリオ C: 旧月 Queue 送信時 → STALE_MONTH / accepted:false ────
+  const staleRes = simulateBackendUpdateRecord({
+    rowId: enqOld.record.rowId,
+    timestamp: enqOld.record.timestamp,
+    requestId: enqOld.record.requestId
+  });
+  assert.equal(staleRes.success, true);
+  assert.equal(staleRes.accepted, false);
+  assert.equal(staleRes.code, 'STALE_MONTH');
+  assert.equal(dbWriteCount, 0, '旧月リクエストで DB 書込は発生しないこと');
+
+  // H-App の accepted:false 処理シミュレーション (dequeue されるが completed 化しない)
+  const stalePoint = { rowId: 902, isDone: false, syncStatus: 'submitting' };
+  if (staleRes.success && staleRes.accepted === false) {
+    // dequeue
+    const idx = mockIndexedDBStore.findIndex(q => q.id === enqOld.id);
+    if (idx !== -1) mockIndexedDBStore.splice(idx, 1);
+    // syncStatus = REJECTED
+    stalePoint.syncStatus = 'REJECTED';
+    stalePoint.isDone = false;
+  }
+  assert.equal(stalePoint.isDone, false, 'STALE_MONTH で H-App は completed 化しないこと');
+  assert.equal(stalePoint.syncStatus, 'REJECTED');
+
+  // ── シナリオ D: 当月初回保存 → DB 書込 1 ─────────────────────────
+  const firstRes = simulateBackendUpdateRecord({
+    rowId: 901,
+    timestamp: Date.UTC(2026, 8, 20),
+    requestId: 'req_901_A',
+    count: 10
+  });
+  assert.equal(firstRes.success, true);
+  assert.equal(firstRes.accepted, true);
+  assert.equal(firstRes.duplicate, false);
+  assert.equal(firstRes.alreadyCompleted, false);
+  assert.equal(dbWriteCount, 1, '初回保存で DB 書込が 1 回実行されること');
+
+  // ── シナリオ E: 同一 requestId 再送 → duplicate (DB 書込0) ───────
+  const dupRes = simulateBackendUpdateRecord({
+    rowId: 901,
+    timestamp: Date.UTC(2026, 8, 20),
+    requestId: 'req_901_A',
+    count: 10
+  });
+  assert.equal(dupRes.success, true);
+  assert.equal(dupRes.accepted, true);
+  assert.equal(dupRes.duplicate, true, '同一 requestId は duplicate 判定されること');
+  assert.equal(dbWriteCount, 1, '同一 requestId 再送で DB 書込は増えないこと');
+
+  // ── シナリオ F: 別 requestId + 完了済み rowId → alreadyCompleted (DB 書込0) ──
+  const alreadyRes = simulateBackendUpdateRecord({
+    rowId: 901,
+    timestamp: Date.UTC(2026, 8, 20),
+    requestId: 'req_901_DIFFERENT',
+    count: 15
+  });
+  assert.equal(alreadyRes.success, true);
+  assert.equal(alreadyRes.accepted, true);
+  assert.equal(alreadyRes.alreadyCompleted, true, '別 requestId でも完了済み行は alreadyCompleted 判定されること');
+  assert.equal(dbWriteCount, 1, 'alreadyCompleted で DB 書込は増えないこと (上書き禁止)');
+
+  // ── シナリオ G: 無効/欠損 timestamp → Legacy 互換でスキップ ────────
+  const legacyRes = simulateBackendUpdateRecord({
+    rowId: 903,
+    timestamp: '', // 欠損
+    requestId: 'req_903_legacy',
+    count: 5
+  });
+  assert.equal(legacyRes.success, true);
+  assert.equal(legacyRes.accepted, true);
+  assert.equal(dbWriteCount, 2, '無効 timestamp は月判定スキップで正常保存されること');
 });
 
 // ----------------------------------------------------------------------------

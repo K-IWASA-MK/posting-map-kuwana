@@ -37,23 +37,62 @@ if (typeof GPSService === 'undefined') {
            return { success: false, message: "Invalid rowId" };
         }
 
-        // Idempotency Check
+        const isComplete = data.isDone === 'true' || data.isDone === true;
+
+        // Step 1: timestamp月判定（有限の正数のみ月判定、それ以外はLegacy扱いでスキップ）
+        const tsNum = Number(data.timestamp);
+        if (Number.isFinite(tsNum) && tsNum > 0) {
+          if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
+            const resolver = MonthlySheetResolver.getInstance();
+            const currentMonth = resolver.getCurrentMonth();
+            const reqMonth = resolver.getCurrentMonth(new Date(tsNum));
+            if (reqMonth !== currentMonth) {
+              console.log(`[GPSService] STALE_MONTH detected: reqMonth=${reqMonth}, currentMonth=${currentMonth}`);
+              return {
+                success: true,
+                accepted: false,
+                code: "STALE_MONTH",
+                message: "旧月の配布操作は当月シートに反映できません。"
+              };
+            }
+          }
+        }
+
+        // 既存行ステータス取得
         const existing = this.repository.checkExistingStatus(rowIdNum);
         let photoStatus = existing ? existing.photoStatus : "NO";
         let gpsStatus = existing ? existing.gpsStatus : "NO";
+        const incomingReqId = data.requestId ? String(data.requestId).trim() : "";
+        const existingReqId = existing && existing.existingRequestId ? String(existing.existingRequestId).trim() : "";
 
-        const isComplete = data.isDone === 'true' || data.isDone === true;
+        // Step 2: requestId == Q → duplicate
+        if (incomingReqId && existingReqId && incomingReqId === existingReqId) {
+          console.log(`[GPSService] RowId ${rowIdNum} duplicate requestId: ${incomingReqId}`);
+          return {
+            success: true,
+            accepted: true,
+            duplicate: true,
+            rowId: rowIdNum,
+            count: existing.existingCount || parseFloat(data.count) || 0,
+            gpsStatus: existing.gpsStatus,
+            photoStatus: existing.photoStatus,
+            timestamp: existing.existingCompletedAt || Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd HH:mm:ss")
+          };
+        }
 
-        if (isComplete && existing && existing.gpsStatus === "OK" && existing.photoStatus === "OK") {
-           console.log(`[GPSService] RowId ${rowIdNum} already completed with OK/OK. Returning existing.`);
-           return {
-             success: true,
-             rowId: rowIdNum,
-             count: parseFloat(data.count) || 0,
-             gpsStatus: "OK",
-             photoStatus: "OK",
-             timestamp: Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd HH:mm:ss")
-           };
+        // Step 3: D completedAtあり → alreadyCompleted（同月再配布なし、既存実績保護）
+        if (isComplete && existing && existing.existingCompletedAt) {
+          console.log(`[GPSService] RowId ${rowIdNum} already completed in current month. Rejecting re-completion.`);
+          return {
+            success: true,
+            accepted: true,
+            alreadyCompleted: true,
+            rowId: rowIdNum,
+            count: existing.existingCount || 0,
+            gpsStatus: existing.gpsStatus,
+            photoStatus: existing.photoStatus,
+            timestamp: existing.existingCompletedAt
+          };
         }
 
         let photoFileId = "";

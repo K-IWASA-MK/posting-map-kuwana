@@ -21,8 +21,8 @@ Phase 10 では、この因果関係を支えるクライアント側の送信�
 - **単一 readwrite トランザクション境界**:
   `enqueueSync(item)` 実行時、同一トランザクション内で既存キューの走査（`store.getAll()`）とレコード追加（`store.add()`）を不可分に実行する。
   分離された `getQueue()` → 判定 → `add()` による競合窓（race window）の発生を防止する。
-- **重複キューイング抑止**:
-  同一 `rowId` を持つアイテムが既にキュー内に存在する場合、新たなレコード追加を行わず、既存レコードの ID を返却して即時送信（`processQueue()`）を促す。
+- **重複キューイング抑止 (月単位 rowId-level Deduplication)**:
+  同一JST月かつ同一 `rowId` を持つアイテムが既にキュー内に存在する場合、新たなレコード追加を行わず、既存レコードの ID を返却して即時送信（`processQueue()`）を促す。別月の同一 `rowId` は新月操作として共存を許容する。
 
 ### 3. クライアント側不変操作識別子 (requestId)
 - **役割**: クライアント側の各送信意図を一意に追跡・ログ照合するための不変操作識別子（UUID/プレフィックス付きタイムスタンプ）とする。
@@ -31,7 +31,7 @@ Phase 10 では、この因果関係を支えるクライアント側の送信�
 ### 4. COMPLETED 因果関係の絶対順序
 キュー処理時、以下の因果関係とライフサイクル順序を厳格に維持する：
 ```
-1. [Backend persistence confirmed] (res.success === true 受信)
+1. [Backend persistence & acceptance confirmed] (res.success === true && res.accepted !== false 受信)
        ↓
 2. [dequeueSync()] (IndexedDB syncQueue からレコード削除)
        ↓
@@ -48,13 +48,14 @@ Phase 10 では、この因果関係を支えるクライアント側の送信�
 - `SUBMITTING` ≠ COMPLETED
 - `QUEUE_PENDING` ≠ COMPLETED
 - `RETRY_WAIT` ≠ COMPLETED
+- `REJECTED (res.accepted === false / STALE_MONTH)` ≠ COMPLETED (キュー終端だが未完了維持)
 
 ### 5. 指数バックオフと強制終了復旧 (Crash Recovery)
 - **リトライ間隔**: 10秒 → 30秒 → 60秒 → 60秒 → 60秒 (最大5回)。
 - **強制終了・クラッシュ復旧**:
   ブラウザの強制終了やタブ閉じにより `SYNCING` 状態で中断されたレコードは、次回起動時または `processQueue()` 実行時に自動検出され、即時再送対象として安全に復旧・送信される。
 - **待機ピン復元 (`getSyncQueueRowIds`)**:
-  起動時やデータロード時、`getSyncQueueRowIds()` を用いてキュー内の未送信アイテムを検出し、ピンを待機状態（`pending`）として即座に復元する。
+  起動時やデータロード時、`getSyncQueueRowIds()` を用いて当月キュー内の未送信アイテムを検出し、ピンを待機状態（`pending`）として復元する（旧月キューは新月ピンを pending 化しない）。
 
 ### 6. オフラインUI即時解放と待機制御
 - **オフライン提出**:
