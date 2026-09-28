@@ -267,47 +267,35 @@ function healSchemaHeaders(options) {
       sheetName: "配布実績の原本",
       required: true,
       missingCode: "MISSING_MASTER_SHEET",
-      headers: ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"],
-      aliases: {}
+      headers: ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"]
     },
     {
       category: "master",
       sheetName: "名簿の原本",
       required: true,
       missingCode: "MISSING_MASTER_SHEET",
-      headers: ["ID", "名前", "LINE_USER_ID", "登録日時"],
-      aliases: { 3: ["LINE_USER_ID", "LINE USER ID", "lineUserId"] }
+      headers: ["ID", "名前", "LINE_USER_ID", "登録日時"]
     },
     {
       category: "master",
       sheetName: "保有チラシ枚数の原本",
       required: true,
       missingCode: "MISSING_MASTER_SHEET",
-      headers: ["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"],
-      aliases: {}
+      headers: ["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]
     },
     {
       category: "master",
       sheetName: "受渡要請履歴の原本",
       required: true,
       missingCode: "MISSING_MASTER_SHEET",
-      headers: ["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"],
-      aliases: {
-        1: ["日時", "要請日時"],
-        2: ["要請者", "要請者名"],
-        4: ["保管者", "保管者名"],
-        10: ["LINE送信状態", "LINE状態"],
-        11: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
-        12: ["LINE送信日時", "LINE日時"]
-      }
+      headers: ["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]
     },
     {
       category: "master",
       sheetName: "PinStatusの原本",
       required: true,
       missingCode: "MISSING_MASTER_SHEET",
-      headers: ["rowId", "status"],
-      aliases: {}
+      headers: ["rowId", "status"]
     },
     // 当月5種
     {
@@ -315,66 +303,48 @@ function healSchemaHeaders(options) {
       sheetName: `配布実績${month}`,
       required: true,
       missingCode: "MISSING_CURRENT_MONTH_SHEET",
-      headers: ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId", "requestId"],
-      aliases: {}
+      headers: ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId", "requestId"]
     },
     {
       category: "monthly",
       sheetName: `名簿${month}`,
       required: true,
       missingCode: "MISSING_CURRENT_MONTH_SHEET",
-      headers: ["ID", "名前", "LINE_USER_ID", "登録日時"],
-      aliases: { 3: ["LINE_USER_ID", "LINE USER ID", "lineUserId"] }
+      headers: ["ID", "名前", "LINE_USER_ID", "登録日時"]
     },
     {
       category: "monthly",
       sheetName: `保有チラシ枚数${month}`,
       required: true,
       missingCode: "MISSING_CURRENT_MONTH_SHEET",
-      headers: ["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"],
-      aliases: {}
+      headers: ["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]
     },
     {
       category: "monthly",
       sheetName: `受渡要請履歴${month}`,
       required: true,
       missingCode: "MISSING_CURRENT_MONTH_SHEET",
-      headers: ["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"],
-      aliases: {
-        1: ["日時", "要請日時"],
-        2: ["要請者", "要請者名"],
-        4: ["保管者", "保管者名"],
-        10: ["LINE送信状態", "LINE状態"],
-        11: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
-        12: ["LINE送信日時", "LINE日時"]
-      }
+      headers: ["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]
     },
     {
       category: "monthly",
       sheetName: `PinStatus${month}`,
       required: true,
       missingCode: "MISSING_CURRENT_MONTH_SHEET",
-      headers: ["rowId", "status"],
-      aliases: {}
+      headers: ["rowId", "status"]
     },
     // 掲示板系2種 (任意: 不在時はSKIP)
     {
       category: "bulletin",
       sheetName: "掲示板",
       required: false,
-      headers: ["日時", "投稿者ID", "投稿者名", "メッセージ", "lineUserId"],
-      aliases: {}
+      headers: ["日時", "投稿者ID", "投稿者名", "メッセージ", "lineUserId"]
     },
     {
       category: "bulletin",
       sheetName: "掲示板連絡履歴",
       required: false,
-      headers: ["日時", "送信者ID", "送信者名", "相手ID", "連絡方法", "連絡先", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時"],
-      aliases: {
-        8: ["LINE送信状態", "LINE状態"],
-        9: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
-        10: ["LINE送信日時", "LINE日時"]
-      }
+      headers: ["日時", "送信者ID", "送信者名", "相手ID", "連絡方法", "連絡先", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時"]
     },
     // システム管理
     {
@@ -382,8 +352,7 @@ function healSchemaHeaders(options) {
       sheetName: "SYSTEM_INFO",
       required: true,
       missingCode: "MISSING_SYSTEM_INFO_SHEET",
-      headers: ["項目", "内容"],
-      aliases: {}
+      headers: ["項目", "内容"]
     }
   ];
 
@@ -455,8 +424,7 @@ function healSchemaHeaders(options) {
           sheetPlan.setHeaders.push({ col, expected });
         } else {
           const strVal = String(val).trim();
-          const allowed = (item.aliases && item.aliases[col]) || [expected];
-          if (!allowed.includes(strVal)) {
+          if (strVal !== expected) {
             allCollisions.push({
               sheetName: item.sheetName,
               col: col,

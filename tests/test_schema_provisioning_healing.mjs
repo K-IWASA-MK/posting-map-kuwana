@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 console.log("====================================================");
-console.log("🧪 TEST SUITE: SCHEMA PROVISIONING & HEALING (CASES 1-13)");
+console.log("🧪 TEST SUITE: SCHEMA PROVISIONING & HEALING (14 CASES)");
 console.log("====================================================");
 
 // --- インメモリ Spreadsheet モック定義 ---
@@ -167,7 +167,7 @@ class MockSheet {
 }
 
 class MockSpreadsheet {
-  constructor(name = "KUWANA") {
+  constructor(name = "TEST_DISTRICT") {
     this.name = name;
     this.sheets = {};
     this.mutationCount = 0;
@@ -301,12 +301,12 @@ function runCase(name, fn) {
 
 // --- Case 1-A: Provisioning SSOT (原本5種生成) ---
 runCase("Case 1-A: Master Provisioning SSOT (16/4/7/14/2 cols)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [
-    { rowId: 1, cityName: "桑名市", townName: "相生町" },
-    { rowId: 2, cityName: "桑名市", townName: "青葉町" }
+    { rowId: 1, cityName: "CITY_A", townName: "AREA_A" },
+    { rowId: 2, cityName: "CITY_A", townName: "AREA_B" }
   ];
 
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
@@ -350,11 +350,11 @@ runCase("Case 1-A: Master Provisioning SSOT (16/4/7/14/2 cols)", () => {
 
 // --- Case 1-B: Rollover SSOT (0/5 生成 & 当月配布実績17列化 & D-Pクリア) ---
 runCase("Case 1-B: Rollover Monthly Provisioning (0/5 -> 17 cols, 13 cleared)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [
-    { rowId: 1, cityName: "桑名市", townName: "相生町" }
+    { rowId: 1, cityName: "CITY_A", townName: "AREA_A" }
   ];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
 
@@ -376,8 +376,8 @@ runCase("Case 1-B: Rollover Monthly Provisioning (0/5 -> 17 cols, 13 cleared)", 
 
   // D〜P列 (4〜16列目の13列) がクリアされていること
   assert.equal(monthlyDist.grid[1][0], 1, "rowId must be preserved");
-  assert.equal(monthlyDist.grid[1][1], "桑名市", "cityName must be preserved");
-  assert.equal(monthlyDist.grid[1][2], "相生町", "townName must be preserved");
+  assert.equal(monthlyDist.grid[1][1], "CITY_A", "cityName must be preserved");
+  assert.equal(monthlyDist.grid[1][2], "AREA_A", "townName must be preserved");
   for (let c = 3; c < 16; c++) {
     assert.equal(monthlyDist.grid[1][c], "", `Col ${c+1} must be cleared`);
   }
@@ -385,14 +385,14 @@ runCase("Case 1-B: Rollover Monthly Provisioning (0/5 -> 17 cols, 13 cleared)", 
 
 // --- Case 2: Two-Phase Scan / Collision Fail-Closed (mutation 0) ---
 runCase("Case 2: Collision Fail-Closed with mutation 0 (Scan-before-Mutate)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   // 全13シートを用意し、flyer原本の7列目に異種値 0 を配置
-  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "相生町" }];
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
   const flyerSheet = ss.getSheetByName("保有チラシ枚数の原本");
   flyerSheet.grid[0][6] = 0; // 異種値衝突 (0 is a falsy non-blank value)
@@ -404,17 +404,41 @@ runCase("Case 2: Collision Fail-Closed with mutation 0 (Scan-before-Mutate)", ()
   assert.equal(res.code, "HEADER_COLLISION");
   assert.equal(res.mutationsCount, 0, "No mutations should be executed on collision");
   assert.equal(ss.mutationCount, initialMutations, "Spreadsheet mutation API calls must be exactly 0");
+
+  flyerSheet.grid[0][6] = "lineUserId"; // 復帰
+
+  // 追加反例: 旧 alias 表記（受渡要請履歴の1列目に "要請日時"）に対する厳格な Collision 判定
+  const trMonthly = ss.getSheetByName("受渡要請履歴2026-10");
+  trMonthly.grid[0][0] = "要請日時"; // 旧 alias (expected: "日時")
+  const mutationsBeforeTr = ss.mutationCount;
+  const resAliasTr = ctx.healSchemaHeaders({ isDryRun: false, targetMonth: "2026-10" });
+  assert.equal(resAliasTr.success, false);
+  assert.equal(resAliasTr.code, "HEADER_COLLISION");
+  assert.equal(resAliasTr.mutationsCount, 0);
+  assert.equal(ss.mutationCount, mutationsBeforeTr, "Legacy alias in transfer sheet must trigger collision with 0 mutations");
+  trMonthly.grid[0][0] = "日時"; // 復帰
+
+  // 追加反例: 名簿原本の3列目に旧 alias "LINE USER ID"
+  const staffMaster = ss.getSheetByName("名簿の原本");
+  staffMaster.grid[0][2] = "LINE USER ID"; // 旧 alias (expected: "LINE_USER_ID")
+  const mutationsBeforeStaff = ss.mutationCount;
+  const resAliasStaff = ctx.healSchemaHeaders({ isDryRun: false, targetMonth: "2026-10" });
+  assert.equal(resAliasStaff.success, false);
+  assert.equal(resAliasStaff.code, "HEADER_COLLISION");
+  assert.equal(resAliasStaff.mutationsCount, 0);
+  assert.equal(ss.mutationCount, mutationsBeforeStaff, "Legacy alias in staff master must trigger collision with 0 mutations");
+  staffMaster.grid[0][2] = "LINE_USER_ID"; // 復帰
 });
 
 // --- Case 3: Dry-run Safety (mutation 0 API calls) ---
 runCase("Case 3: Dry-run Safety Guarantee (API mutation call count = 0)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "相生町" }];
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
   // チラシ原本の7列目を意図的に空にする
   const flyerSheet = ss.getSheetByName("保有チラシ枚数の原本");
@@ -430,24 +454,24 @@ runCase("Case 3: Dry-run Safety Guarantee (API mutation call count = 0)", () => 
   assert.equal(flyerSheet.grid[0][6], "", "Header value must remain untouched in dry-run");
 });
 
-// --- Case 4: Identity Migration Safety (S001 / 配布員A 完全一致照合 & 矛盾行保全) ---
+// --- Case 4: Identity Migration Safety (STF001 / TEST_USER_A 完全一致照合 & 矛盾行保全) ---
 runCase("Case 4: migrateIdentityColumns Name-Match Verification & ST001 Untouched", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   // 名簿シート
   ss.addSheet("名簿2026-10", [
     ["ID", "名前", "LINE_USER_ID", "登録日時"],
-    ["S001", "配布員A", "U11111", "2026/10/01"],
-    ["S002", "配布員B", "U22222", "2026/10/01"]
+    ["STF001", "TEST_USER_A", "U11111", "2026/10/01"],
+    ["STF002", "TEST_USER_B", "U22222", "2026/10/01"]
   ]);
 
   // 配布実績シート
   const distGrid = [
     ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"],
-    [1, "桑名市", "相生町", "2026/10/01 10:00", 500, "S001", "配布員A", "", "", "", "", "", "", "", "", ""], // 完全一致
-    [2, "桑名市", "青葉町", "2026/10/01 11:00", 300, "S001", "配布員X", "", "", "", "", "", "", "", "", ""], // 名前不一致
-    [3, "桑名市", "中央通", "2026/10/01 12:00", 200, "ST001", "K. IWASA", "", "", "", "", "", "", "", "", ""] // 名簿不在
+    [1, "CITY_A", "AREA_A", "2026/10/01 10:00", 500, "STF001", "TEST_USER_A", "", "", "", "", "", "", "", "", ""], // 完全一致
+    [2, "CITY_A", "AREA_B", "2026/10/01 11:00", 300, "STF001", "TEST_USER_X", "", "", "", "", "", "", "", "", ""], // 名前不一致
+    [3, "CITY_A", "AREA_C", "2026/10/01 12:00", 200, "STF999", "UNKNOWN_USER", "", "", "", "", "", "", "", "", ""] // 名簿不在
   ];
   const distSheet = ss.addSheet("配布実績2026-10", distGrid);
 
@@ -467,14 +491,14 @@ runCase("Case 4: migrateIdentityColumns Name-Match Verification & ST001 Untouche
   const rep = ctx.migrateIdentityColumns(false);
   assert.equal(rep.success, true);
 
-  assert.equal(distSheet.grid[1][15], "U11111", "Row 2: S001 with 配布員A must be resolved to U11111");
-  assert.equal(distSheet.grid[2][15], "", "Row 3: S001 with mismatched name must remain blank");
-  assert.equal(distSheet.grid[3][15], "", "Row 4: ST001 not in roster must remain blank");
+  assert.equal(distSheet.grid[1][15], "U11111", "Row 2: STF001 with TEST_USER_A must be resolved to U11111");
+  assert.equal(distSheet.grid[2][15], "", "Row 3: STF001 with mismatched name must remain blank");
+  assert.equal(distSheet.grid[3][15], "", "Row 4: STF999 not in roster must remain blank");
 });
 
 // --- Case 5: Missing Sheet Policy (Master/Current fail-closed) ---
 runCase("Case 5: Missing Sheet Policy (Master/Monthly fail-closed)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   // 原本が足りない状態
@@ -486,13 +510,13 @@ runCase("Case 5: Missing Sheet Policy (Master/Monthly fail-closed)", () => {
 
 // --- Case 6: Missing Sheet Policy (Bulletin sheets skipped gracefully) ---
 runCase("Case 6: Missing Sheet Policy (Bulletin sheets skipped gracefully)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "相生町" }];
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
   // 掲示板シート・連絡履歴シートは存在しない
   assert.equal(ss.getSheetByName("掲示板"), null);
@@ -505,42 +529,42 @@ runCase("Case 6: Missing Sheet Policy (Bulletin sheets skipped gracefully)", () 
 
 // --- Case 7: Data Row Immutability (2行目以降不可侵) ---
 runCase("Case 7: Data Row Immutability (Row >= 2 untouched by healSchemaHeaders)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "相生町" }];
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
   const flyerSheet = ss.getSheetByName("保有チラシ枚数の原本");
   flyerSheet.grid[0][6] = ""; // 7列目欠損
-  flyerSheet.grid.push([1, "S001", "配布員A", "桑名市", 500, "10/01 10:00", "ORIGINAL_DATA"]);
+  flyerSheet.grid.push([1, "STF001", "TEST_USER_A", "CITY_A", 500, "10/01 10:00", "ORIGINAL_DATA"]);
 
   const res = ctx.healSchemaHeaders({ isDryRun: false, targetMonth: "2026-10" });
   assert.equal(res.success, true);
   assert.equal(flyerSheet.grid[0][6], "lineUserId", "Header must be healed");
   assert.deepEqual(
     flyerSheet.grid[1],
-    [1, "S001", "配布員A", "桑名市", 500, "10/01 10:00", "ORIGINAL_DATA"],
+    [1, "STF001", "TEST_USER_A", "CITY_A", 500, "10/01 10:00", "ORIGINAL_DATA"],
     "Data row 2 must be 100% untouched"
   );
 });
 
 // --- Case 8: Past Month Immutability (過去月シート不可侵) ---
 runCase("Case 8: Past Month Immutability (Past months ignored and untouched)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "相生町" }];
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
   // 過去月シートを配置
   const pastDist = ss.addSheet("配布実績2026-09", [
     ["ID", "市町村", "町域"],
-    [1, "桑名市", "相生町"]
+    [1, "CITY_A", "AREA_A"]
   ]);
 
   const initialPastMutations = pastDist.mutationCount;
@@ -551,7 +575,7 @@ runCase("Case 8: Past Month Immutability (Past months ignored and untouched)", (
 
 // --- Case 9: TransferService ensureHeaders (14列保証 & 異種値衝突Fail) ---
 runCase("Case 9: TransferService.ensureHeaders (14 cols healed & collision fail)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   // 1. 12列の旧シートに対して実行 -> 14列に拡張補完
@@ -573,17 +597,26 @@ runCase("Case 9: TransferService.ensureHeaders (14 cols healed & collision fail)
     ctx.TransferService.getInstance().ensureHeaders(trSheet2);
   }, /HEADER_COLLISION/);
   assert.equal(trSheet2.mutationCount, initialMutations, "Must not mutate sheet on collision");
+
+  // 3. 追加反例: 旧 alias 表記（"要請日時", "LINE状態" 等）に対する HEADER_COLLISION 例外スロー
+  const aliasHeaders = [["要請日時", "要請者名", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE状態", "LINE HTTP", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
+  const trSheet3 = ss.addSheet("受渡要請履歴_旧表記", aliasHeaders, 14);
+  const mutationsBeforeAlias = trSheet3.mutationCount;
+  assert.throws(() => {
+    ctx.TransferService.getInstance().ensureHeaders(trSheet3);
+  }, /HEADER_COLLISION/);
+  assert.equal(trSheet3.mutationCount, mutationsBeforeAlias, "Must not mutate sheet on legacy alias collision");
 });
 
 // --- Case 10: OUT_OF_GRID Handling (当月17列専用 & Phase 1 getRange呼出0回) ---
 runCase("Case 10: OUT_OF_GRID Handling (Monthly 17-col only & no getRange in Phase 1)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "相生町" }];
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
   // 配布実績2026-10 を 16列 (maxColumns: 16) に設定し、17列目 requestId を OUT_OF_GRID とする
   const distMonthly = ss.getSheetByName("配布実績2026-10");
@@ -605,10 +638,10 @@ runCase("Case 10: OUT_OF_GRID Handling (Monthly 17-col only & no getRange in Pha
 
 // --- Case 11: Rollover State Machine (5/5 No-op & 1-4/5 Fail-Closed) ---
 runCase("Case 11: Rollover State Machine (5/5 complete No-op & 1-4/5 Fail-Closed)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "相生町" }];
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
 
   // 1. 初回 0/5 -> 5シート生成
@@ -635,7 +668,7 @@ runCase("Case 11: Rollover State Machine (5/5 complete No-op & 1-4/5 Fail-Closed
 
 // --- Case 12: BulletinService 5-col Initial ---
 runCase("Case 12: BulletinService.getBulletinSheet initial 5-col creation", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   assert.equal(ss.getSheetByName("掲示板"), null);
@@ -647,23 +680,23 @@ runCase("Case 12: BulletinService.getBulletinSheet initial 5-col creation", () =
 
 // --- Case 13: SYSTEM_INFO SSOT & Immutability ---
 runCase("Case 13: inspectSystemInfoKeys (11 standard keys inspection & custom key preserved)", () => {
-  const ss = new MockSpreadsheet("KUWANA");
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
   const sysGrid = [
     ["項目", "内容"],
-    ["地区コード", "KUWANA"],
-    ["地区名", "桑名市"],
-    ["HアプリURL", "https://kuwana.postingmap.jp/"],
-    ["Dashboard URL", "https://kuwana.postingmap.jp/active/manager/"],
-    ["LIFFアプリ名", "POSTING MAP KUWANA"],
-    ["LIFF ID", "1234567890-abcdef"],
-    ["LIFF URL", "https://liff.line.me/1234567890-abcdef"],
-    ["Endpoint URL", "https://kuwana.postingmap.jp/"],
+    ["地区コード", "TEST_DISTRICT"],
+    ["地区名", "TEST_DISTRICT_NAME"],
+    ["HアプリURL", "https://test.example.invalid/"],
+    ["Dashboard URL", "https://test.example.invalid/active/manager/"],
+    ["LIFFアプリ名", "POSTING MAP TEST"],
+    ["LIFF ID", "1234567890-dummy"],
+    ["LIFF URL", "https://liff.line.me/1234567890-dummy"],
+    ["Endpoint URL", "https://test.example.invalid/"],
     ["Manager認証パスワード", "999999"],
     ["状態", "ACTIVE"],
     ["契約終了日", "2026-12-31"],
-    ["CUSTOM_OPERATOR", "三重第3区"] // 未知キー
+    ["CUSTOM_OPERATOR", "TEST_OPERATOR_VAL"] // 未知キー
   ];
   const sysSheet = ss.addSheet("SYSTEM_INFO", sysGrid);
 
@@ -676,7 +709,7 @@ runCase("Case 13: inspectSystemInfoKeys (11 standard keys inspection & custom ke
   assert.equal(res.missingStandardKeys.length, 0);
   assert.equal(res.extraKeys.length, 1);
   assert.equal(res.extraKeys[0].key, "CUSTOM_OPERATOR");
-  assert.equal(res.extraKeys[0].value, "三重第3区");
+  assert.equal(res.extraKeys[0].value, "TEST_OPERATOR_VAL");
   assert.equal(sysSheet.mutationCount, initialMutations, "SYSTEM_INFO must not be mutated during inspection");
 
   // 不在時の検証
@@ -687,5 +720,5 @@ runCase("Case 13: inspectSystemInfoKeys (11 standard keys inspection & custom ke
 });
 
 console.log("\n====================================================");
-console.log(`🎉 ALL 13 TEST CASES PASSED PERFECTLY! (${passCount}/13)`);
+console.log(`🎉 ALL 14 TEST CASES PASSED PERFECTLY! (${passCount}/14)`);
 console.log("====================================================");

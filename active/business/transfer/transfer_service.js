@@ -54,15 +54,6 @@
         "requesterLineUserId", "holderLineUserId"
       ];
 
-      const aliases = {
-        1: ["日時", "要請日時"],
-        2: ["要請者", "要請者名"],
-        4: ["保管者", "保管者名"],
-        10: ["LINE送信状態", "LINE状態"],
-        11: ["LINE HTTP status", "LINE HTTP", "LINE HTTPステータス"],
-        12: ["LINE送信日時", "LINE日時"]
-      };
-
       const maxCols = typeof sheet.getMaxColumns === 'function' ? sheet.getMaxColumns() : 14;
       const lastCol = typeof sheet.getLastColumn === 'function' ? sheet.getLastColumn() : 0;
       const lastRow = typeof sheet.getLastRow === 'function' ? sheet.getLastRow() : 0;
@@ -95,8 +86,7 @@
             plan.push({ col, expected });
           } else {
             const strVal = String(val).trim();
-            const allowed = aliases[col] || [expected];
-            if (!allowed.includes(strVal)) {
+            if (strVal !== expected) {
               collisions.push({ col, expected, actual: val });
             }
           }
