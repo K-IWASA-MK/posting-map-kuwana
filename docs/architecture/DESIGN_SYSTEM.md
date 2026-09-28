@@ -104,7 +104,8 @@ Pages (Composition / render.js)
 2. **No Direct API Access (API 直接呼び出し禁止)**:
    - **Canonical Requirement / Current Fact**: コンポーネント内部で GAS API や外部通信を行ってはならない。通信はページ層（`render.js` / `app.js`）が担う（現行 Runtime 遵守済み）。
 3. **Pure Rendering (純粋レンダリング)**:
-   - **Canonical Requirement / Current Fact**: コンポーネントの責務は渡された JSON データから純粋に HTML 文字列を組み立てて返却することである（現行 Runtime 遵守済み）。
+   - **Canonical Requirement**: コンポーネントは、渡された入力データから HTML 文字列を組み立てて返却する。
+   - **現行 Runtime の未達事項 (Current Fact)**: `ranking.js` は `window._myRankingSummary` にも依存するため、引数だけで出力が決まる純粋レンダリングには未達。§4 Stateless と同一の Deferred UI Runtime Candidate として扱う。
 4. **No Raw Color Hardcoding (生カラー直書き禁止)**:
    - **Canonical Requirement**: CSS 変数（`--color-*`）を参照し、HTML/JS への直接の色コード埋め込みを禁止する。
    - **現行 Runtime の未達事項 (Current Fact)**: `ranking.js` および `staff.js` において、`#EA5F08` や `#1C1C1E`、`#22c55e` 等の生カラーコードおよびインラインスタイルが残存している（Deferred UI Runtime Candidate）。
