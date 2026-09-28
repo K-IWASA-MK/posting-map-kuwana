@@ -1,6 +1,20 @@
 [
   ".agents/current-scope.json",
-  "active/gas/v2_migration.js",
-  "active/business/transfer/transfer_service.js",
-  "tests/test_schema_provisioning_healing.mjs"
+  "active/dashboard/db.js",
+  "active/dashboard/app.js",
+  "active/business/gps/gps_service.js",
+  "active/business/gps/gps_repository.js",
+  "docs/data/DATA_DICTIONARY.md",
+  "docs/data/DATA_LIFECYCLE.md",
+  "docs/architecture/01_DESIGN_CONTRACT.md",
+  "docs/architecture/decisions/ADR-005.md",
+  "docs/architecture/decisions/ADR-009.md",
+  "docs/architecture/decisions/ADR-011_POSTING_FLOW_SPECIFICATION.md",
+  "docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md",
+  "docs/architecture/decisions/ADR-013_ACTIVITY_STATE_MACHINE.md",
+  "docs/api/API_CONTRACT.md",
+  "docs/requirements/REQUIREMENTS_TRACEABILITY.md",
+  "tests/test_durable_queue_verification.mjs",
+  "tests/test_posting_flow_verification.mjs",
+  "tests/test_phase11_activity_state_machine.mjs"
 ]
