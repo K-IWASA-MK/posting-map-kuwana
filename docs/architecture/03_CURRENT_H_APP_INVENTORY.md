@@ -124,7 +124,7 @@
 | `staff/staff_model.js` | 56 | 🟢 継承 | 配布員データモデル。 |
 | `staff/staff_repository.js` | 198 | 🟢 継承 | 名簿シートへの読み書きリポジトリ。 |
 | `staff/staff_service.js` | 145 | 🟢 継承 | 配布員登録、LINE User IDからのIdentity解決（`resolveStaffIdentity`）。 |
-| `system/district_provisioner.js` | 670 | 🔴 廃止 | **【旧複製モデル】** 地区別スプレッドシート一括作成スクリプト。Universal POSTING MAPでは単独リポジトリ・単一エンジン運用となるため廃止。 |
+| `system/district_provisioner.js` | 670 | 🔴 廃止 | **【旧個別作成モデル】** 共通Runtime（`active/`）内の地区別スプレッドシート個別作成スクリプト。Universal Engine では共通Runtimeコード改変を禁止し、プロビジョニング手順（RUNBOOK / 独立ツール）へ分離したため廃止。 |
 | `system/monthly_sheet_resolver.js` | 77 | 🟢 継承 | 当月シート名（YYYY-MM）の厳格な参照解決SSOT。 |
 | `system/system_info_service.js` | 329 | 🟢 継承 | `SYSTEM_INFO` シートの管理、契約期間チェック、管理者認証。 |
 | `system/system_summary_service.js` | 115 | 🟢 継承 | システム全体の進捗・統計サマリ提供。 |
@@ -177,7 +177,7 @@
 | `scripts/generate-boundaries-geojson.py` | 🟢 継承 | e-Stat ShapefileからGeoJSONを生成するパイプライン。 |
 | `scripts/sort-address-master.py` | 🟢 継承 | 住所マスターの正規化・ソートツール。 |
 | `scripts/test_browser_h_app*.mjs` (3種) | 🟢 継承 | Hアプリ実機ブラウザ動作検証スクリプト。 |
-| `scripts/provision-district.mjs` | 🔴 廃止 | 旧地区別リポジトリ作成スクリプト。Universalアーキテクチャに反するため廃止。 |
+| `scripts/provision-district.mjs` | 🔴 廃止 | **【旧コード複製モデル】** 旧コードコピー改変方式のプロビジョニングスクリプト。共通Runtime（`active/`）改変禁止および `data/` 交換・正規プロビジョニング手順への移行により廃止。 |
 | `scripts/sync-deployment-config.mjs` | 🔴 廃止 | 旧地区別デプロイ同期スクリプト。廃止。 |
 | `scripts/check-pre-copy-purity.mjs` | 🔴 廃止 | 旧地区複製前の純度検証スクリプト。廃止。 |
 | `scripts/check-provisioning-gate.mjs` | 🔴 廃止 | 旧プロビジョニング検証スクリプト。廃止。 |

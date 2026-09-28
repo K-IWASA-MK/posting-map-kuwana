@@ -1453,7 +1453,7 @@ Universal Engine の完成状態を固定し、無秩序な改変を防ぐため
 ### 凍結対象 (Frozen Scope)
 - **Universal Engine Core (`active/**`)**: フロントエンド、バックエンドGAS、共通ライブラリ
 - **API Contract (`docs/api/API_CONTRACT.md`)**: 全27アクションおよび通信プロトコル
-- **Data Schema (`docs/data/DATA_DICTIONARY.md`)**: 12シート構成およびカラム定義
+- **Data Schema (`docs/data/DATA_DICTIONARY.md`)**: 13シート標準構造（初期プロビジョニング時 11 Core Sheets 複製 ➔ 現場2シートオンデマンド生成）およびカラム定義
 - **Identity / Tenant Boundary**: LINE User ID からの正規導出、DISTRICT_REGISTRY ルーティング、SYSTEM_INFO Integrity Guard
 - **Offline / Idempotency Model**: Durable Queue、requestId による重複遮断
 - **Universal Invariants**: INV-001 〜 INV-009
@@ -1653,7 +1653,7 @@ Phase 20 で確立された監視項目を恒久的な運用指標として整�
 
 1. **Universal Engine Version (`v1.0.0`)**: 共通Runtime全体のバージョン。
 2. **API Contract Version (`v2.0.0`)**: フロント・バックエンド通信インターフェース。
-3. **Data Schema Version (`v1.0.0`)**: 12シート Pure DB のデータ構造。
+3. **Data Schema Version (`v1.0.0`)**: 13シート標準構造 Pure DB のデータ構造（DATA_DICTIONARY.md 準拠）。
 4. **District Provisioning Spec Version (`v1.0.0`)**: プロビジョニング手順・マスター構造。
 
 ### 地区互換性追跡 (DESIGNED / PROPOSED)

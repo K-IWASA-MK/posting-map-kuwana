@@ -129,7 +129,7 @@
      - `契約終了日` (必須): 契約有効期限（YYYY-MM-DD）。
      - `管理者PIN`: 初期管理者PIN（英数字8桁以上、推測困難なランダム文字列）。
      - ※注: `engine_baseline_version` や `schema_version` 等のメタデータ記録は将来拡張設計（DESIGNED）であり、現行 v1.0 スキーマにおける必須キーではない。
-  4. 12シート標準構成（`DATA_DICTIONARY.md` 準拠）のカラム構造・ヘッダーがTemplateと100%一致することを確認。
+  4. 初期プロビジョニング時における 11 Core Sheets（`SYSTEM_INFO`, 原本5種, 当月5種。現場系2シートは運用時オンデマンド生成、`DATA_DICTIONARY.md` 準拠の 13シート標準構造）のカラム構造・ヘッダーがTemplateと100%一致することを確認。
   5. スプレッドシートID（`spreadsheetId`）を取得。
 - **Validation**:
   - `SYSTEM_INFO` の `district_id` とリクエスト `districtId` が完全一致すること（Integrity Guard）。
@@ -141,7 +141,7 @@
   - 複製したスプレッドシートの完全削除（ゴミ箱破棄）
 - **HARD STOP Condition**:
   - スプレッドシート内にコンテナバインドスクリプトが混入している場合。
-  - 12シートのヘッダー構成が Template と異なる場合。
+  - 初期複製 11 Core Sheets のヘッダー構成が Template と異なる場合。
 
 ---
 
@@ -313,7 +313,7 @@
 | 2 | **DISTRICT_REGISTRY 整合** | 親GAS Registry に登録され、対象 spreadsheetId と一致 | PASS / FAIL |
 | 3 | **SYSTEM_INFO Integrity Guard** | DB側 `district_id` とリクエスト `districtId` が一致 | PASS / FAIL |
 | 4 | **Pure DB 完全性** | スプレッドシート内にバインドスクリプトが存在しない | PASS / FAIL |
-| 5 | **12シート構造整合** | `DATA_DICTIONARY.md` 定義の全12シート・ヘッダー完全一致 | PASS / FAIL |
+| 5 | **シート構造整合** | `DATA_DICTIONARY.md` 準拠（初期11 Core Sheets複製、運用時13シート標準構造）のヘッダー完全一致 | PASS / FAIL |
 | 6 | **地区別 Maps Key 運用** | `GOOGLE_MAPS_API_KEY_<districtId>` が設定済み | PASS / FAIL |
 | 7 | **Legacy Fallback 不使用** | 新規地区において無印 `GOOGLE_MAPS_API_KEY` を参照しない | PASS / FAIL |
 | 8 | **Maps API 制限確認** | HTTPリファラー制限および許可API制限が有効 | PASS / FAIL |

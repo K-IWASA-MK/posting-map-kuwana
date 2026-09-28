@@ -1,124 +1,135 @@
-# POSTING MAP Design System v2.0
+# POSTING MAP Universal Design System Specification
 
-* **Figma Design SSOT URL**: [https://www.figma.com/design/cmjPPVlC7d373Vv5YYf0Xo/%E7%84%A1%E9%A1%8C?node-id=0-1&t=4nxLb6FmkkA7sjd4-1](https://www.figma.com/design/cmjPPVlC7d373Vv5YYf0Xo/%E7%84%A1%E9%A1%8C?node-id=0-1&t=4nxLb6FmkkA7sjd4-1)
+- **Version**: 2.0.0
+- **Status**: ACTIVE / CANONICAL SSOT
+- **Supreme Authority**: [AGENTS.md](../../AGENTS.md)
+- **Master Plan**: [01_DESIGN_CONTRACT.md](01_DESIGN_CONTRACT.md)
+- **Token Source of Truth**: [active/dashboard/style.css](../../active/dashboard/style.css) (`:root`)
 
-本ドキュメントは、Figma 上で手作業で定義される共通コンポーネント・デザイントークンを、実装（HTML / CSS / JavaScript）へ正確にマッピングするための設計ガイドラインです。
+本書は、POSTING MAP Universal Engine（H-App / Dashboard）における UI/UX 設計標準およびガバナンスの唯一の正本（Single Source of Truth）である。旧 `DESIGN_GOVERNANCE.md` を統合し、デザイン変数の定義からコンポーネント責務境界までを一元規定する。
 
 ---
 
-## 🛡️ Design System Architecture
+## 1. Design System Architecture & 責務境界
 
-```
-Design Tokens (JSON / CSS) ➔ Components (JS Functions) ➔ Pages (Composition / render.js)
+```text
+Design Tokens (active/dashboard/style.css :root)
+       │
+       ▼
+Components (active/dashboard/components/ : JS Functions)
+       │
+       ▼
+Pages (Composition / render.js)
 ```
 
-1. **Design Tokens (`design-tokens.json` / `style.css`)**:
-   - 設計変数の SSOT。色・余白・フォントスケール等を一元管理。
-2. **Components (`/components/`)**:
-   - 再利用可能な UI レンダリングの **Single Source of Truth (SSOT)**。
-   - 状態を持たず（Stateless）、API コールを行わず（No API Access）、HTML 文字列（HTML string）を返却する。
+1. **Design Tokens (`active/dashboard/style.css` `:root`)**:
+   - 見た目の設計変数（色、余白、角丸、シャドウ）の唯一の正本（SSOT）。
+   - コードベース内の CSS カスタムプロパティとして管理され、外部ファイルや架空の JSON に依存しない。
+2. **Components (`active/dashboard/components/`)**:
+   - 再利用可能な UI レンダリングコンポーネントの SSOT。
+   - 状態を持たず（**Stateless**）、外部 API を直接叩かず（**No Direct API Access**）、入力データから純粋に HTML 文字列または DOM 要素を構築して返却する。
 3. **Pages (`render.js`)**:
-   - 画面合成（Composition）および状態管理（State Management）の所有者。
+   - 画面の合成（Composition）および状態管理（State Management）の所有者。
+   - API 通信、イベントリスナー登録、タブ切り替え、各コンポーネントへのデータ配分を担当する。
 
 ---
 
-## 🎭 Brand Voice & Outdoor Usability (ブランド方針)
+## 2. 現場・屋外利用原則 (Outdoor Usability & Accessibility)
 
-### 1. Brand Voice (ブランドのトーン＆マナー)
-* **Professional** (正確で信頼のおける振る舞い)
-* **Reliable** (データ欠損のない堅牢さ)
-* **Friendly** (現場スタッフに寄り添う親しみやすさ)
-* **Fast** (瞬時に判断・操作できる速度)
-* **Outdoor First** (屋外使用を最優先とした画面構成)
+現場配布員が歩行中・直射日光下・手袋着用時でも安全かつ確実に操作できるよう、以下の必須要件を厳守する：
 
-### 2. Outdoor Readability Check (屋外視認性必須要件)
-各コンポーネントおよび画面レイアウトは、以下の基準をすべてクリアしなければならない：
-* **晴天下での可読性**: 直射日光や屋外の環境でもコントラストが十分に確保され、読めるか。
-* **操作の容易さ**: 手袋や濡れた手でもタップしやすい十分なサイズ（最小44px〜48px以上）が確保されているか。
-* **色依存の排除**: 赤や緑などの「色だけ」で成功・エラーを表現せず、テキストやアイコンを併用して状態を判別できるか。
-* **文字サイズの確保**: 小さすぎるフォント（10px未満）を避け、屋外歩行中でも見えやすい文字サイズになっているか。
+### ① Outdoor Readability (屋外視認性)
+- 晴天下・直射日光下でも高いコントラスト比を維持し、主要テキストや境界線を明瞭に視認できること。
+- 背景と文字のコントラスト不足や、視認不能な薄色テキスト（10px未満や過剰な透過）を禁止する。
 
----
+### ② Accessible Touch Target Sizes (操作性・タップ領域)
+- ボタンおよびタップ可能領域のサイズは **原則48px以上** を確保する（[01_DESIGN_CONTRACT.md](01_DESIGN_CONTRACT.md) §16 準拠）。
+- 歩行中や手袋を着用した状態でも誤タップなく押下可能なサイズ・余白を設計する。
 
-## 🔒 Freeze Scope (凍結範囲)
+### ③ Non-Color Dependent States (色依存の排除)
+- 成功、警告、エラー、進行中などの状態を「赤」や「緑」といった色情報のみに依存して表現してはならない。
+- 必ずテキストラベルや明瞭なアイコンを併用し、色覚多様性および強光下での識別性を担保する。
 
-本デザインシステムにおける各要素の凍結・非凍結範囲は以下のように定義されます。
-
-| Scope | Category | 対象要素 | 管理方針 |
-|---|---|---|---|
-| ❄️ **Frozen** | Color Tokens | アクセントカラー、成功/警告/エラー色、背景色、文字色 | 変更不可（JSON SSOT） |
-| ❄️ **Frozen** | Typography | 見出し・本文・数値などのフォントサイズ・太さ（ウエイト） | 変更不可（JSON SSOT） |
-| ❄️ **Frozen** | Spacing | 8px グリッドシステム（4px, 8px, 16px, 24px 等の固定スケール） | 変更不可（JSON SSOT） |
-| ❄️ **Frozen** | Radius & Shadows | カード・ボタンの角丸半径、半透明シャドウ（ぼかし量） | 変更不可（JSON SSOT） |
-| ❄️ **Frozen** | Component API | コンポーネント関数の入力（Input）/ 出力（Output = HTML string） | 変更不可（シグネチャ固定） |
-| 🟢 **Not Frozen** | Screen Layout | 各画面（HOME, AREA, ID, Dashboard (Mobile)）における部品の配置・順序 | アプリケーション側で変更可能 |
-| 🟢 **Not Frozen** | Animations | ホバーエフェクトやローディングアニメーションの挙動・速度 | UX 改善のためにチューニング可能 |
-| 🟢 **Not Frozen** | Screen Composition| 新しい画面・セクションの追加・レイアウト構成 | 既存コンポーネントの組み合わせで自由 |
+### ④ 8px Grid Layout (グリッド整合)
+- 余白（Margin / Padding）はすべて 8px グリッドシステム（4px, 8px, 16px, 24px, 32px）を基準とする。
 
 ---
 
-## 01. Design Tokens (Figma ➔ CSS Variables)
+## 3. Design Tokens Specification
 
-Figma 上のスタイルは、すべて以下の CSS 変数（カスタムプロパティ）にマッピングされ、`style.css` 内で一元管理されます。H-App および Dashboard (Mobile) のコード内での生コード（色のハードコードや ad-hoc な Tailwind クラス）の記述は禁止します。
+すべてのスタイル変数は `active/dashboard/style.css` の `:root` に定義された CSS カスタムプロパティを使用する。HTML / JavaScript / CSS 内でのカラーコードや余白の生値ハードコードは禁止する。
 
 ### 🎨 Colors
-| Figma Style | CSS Variable | Value (Default) | 用途 |
-|---|---|---|---|
-| Primary Orange | `--color-primary` | `#f4700f` | 主要アクション、アクセントカラー |
-| Success Green | `--color-success` | `#22C55E` | 正常、ONLINE、同期良好インジケータ |
-| Warning Orange | `--color-warning` | `#F59E0B` | 警告、SYNCING |
-| Danger Red | `--color-danger` | `#EF4444` | エラー、削除、危険操作 |
-| Text Main | `--color-text-main` | `#FFFFFF` | 主要テキスト |
-| Text Muted | `--color-text-muted`| `rgba(255,255,255,0.4)` | 補助テキスト、ラベル |
-| Card Backdrop | `--color-bg-card` | `rgba(28,28,30,0.65)` | グラスモーフィズムカード背景 |
+| CSS Variable | Value | 用途 |
+|---|---|---|
+| `--color-primary` | `#f4700f` | 主要アクション、アクセントカラー、自陣営ブランドカラー |
+| `--color-info` | `#00B7FF` | 情報表示、ハイライト |
+| `--color-success` | `#22C55E` | 正常、完了、ONLINE インジケータ |
+| `--color-warning` | `#F59E0B` | 警告、SYNCING、注意喚起 |
+| `--color-danger` | `#EF4444` | エラー、危険操作、削除 |
+| `--color-text-main` | `#FFFFFF` | 主要テキスト（高コントラスト白） |
+| `--color-text-muted` | `rgba(255, 255, 255, 0.4)` | 補助テキスト、ラベル、プレースホルダー |
+| `--color-bg-base` | `#000000` | ベース背景（純黒、省電力・屋外ハイコントラスト） |
+| `--color-bg-surface` | `#111315` | サーフェス背景 |
+| `--color-bg-card` | `rgba(28, 28, 30, 0.65)` | グラスモーフィズムカード背景 |
 
 ### 📐 Spacing (8px Grid System)
-| Figma Auto-Layout | CSS Variable | Value | 用途 |
-|---|---|---|---|
-| Space Extra Small | `--space-4` | `4px` | 微細な位置調整 |
-| Space Small | `--space-8` | `8px` | 子要素間の基本余白 |
-| Space Medium | `--space-16` | `16px` | コンテナ内部の基本パディング |
-| Space Large | `--space-24` | `24px` | カード間の余白、ヘッダー間隔 |
-| Space Extra Large | `--space-32` | `32px` | 大規模セクションの区切り |
+| CSS Variable | Value | 用途 |
+|---|---|---|
+| `--space-4` | `4px` | 微細な位置調整 |
+| `--space-8` | `8px` | 子要素間の基本余白 |
+| `--space-16` | `16px` | コンテナ内部の基本パディング |
+| `--space-24` | `24px` | カード間の余白、セクション区切り |
+| `--space-32` | `32px` | 大規模セクションの区切り |
 
-### 🔘 Radii & Shadows
-| Figma Corner Radius | CSS Variable | Value | 用途 |
-|---|---|---|---|
-| Card Rounded | `--radius-card` | `24px` | 各種グラスモーフィズムカードの角丸 |
-| Button Rounded | `--radius-btn` | `16px` | ボタン、フォーム入力部品の角丸 |
-| Avatar Circle | `--radius-avatar` | `50%` | プロフィールアイコンの円形化 |
-| Border Thin | `--border-width-thin`| `1px` | グラスモフィズム用のアウトライン幅 |
+### 🔘 Corner Radius & Glassmorphism
+| CSS Variable | Value | 用途 |
+|---|---|---|
+| `--radius-card` | `24px` | 各種グラスモーフィズムカードの角丸 |
+| `--radius-btn` | `16px` | ボタン、フォーム入力部品の角丸 |
+| `--glass-blur` | `20px` | グラスモーフィズム背景ぼかし |
+| `--glass-border` | `1px solid rgba(255, 255, 255, 0.08)` | カード・パネル境界線 |
+| `--glass-shadow` | `0 8px 32px 0 rgba(0, 0, 0, 0.37)` | パネル浮き上がりシャドウ |
 
 ---
 
-## 02. Component API Freeze Spec (Input ➔ Output)
+## 4. コンポーネント設計原則 (Component Principles)
 
-### 05. Card Component (`/components/card.js`)
-* **Signature**: `renderCard(contentHtml, options)`
-* **Input**: `contentHtml` (string), `options` (object: `{ className?: string }`)
-* **Output**: `HTML string` (representing glassmorphism card element)
+1. **Stateless (ステートレス)**:
+   - コンポーネントは内部状態を保持しない。同じデータ入力に対して常に全く同じ HTML 出力を返す（冪等性）。
+2. **No Direct API Access (API 直接呼び出し禁止)**:
+   - コンポーネント内部で GAS API や外部通信を行ってはならない。通信はページ層（`render.js` / `app.js`）が担う。
+3. **Pure Rendering (純粋レンダリング)**:
+   - コンポーネントの責務は渡された JSON データから HTML 文字列または DOM 要素を組み立てることのみである。
 
-### 06. Button Component (CSS Classes)
-* **Usage**: `<button class="btn-primary">Text</button>` (Primary), `<button class="btn-secondary">Text</button>` (Secondary)
-* **Output**: Styled buttons using standardized rounded corner and spacing tokens.
+---
 
-### 07. Badge Component (`/components/badge.js`)
-* **Signature**: `renderStatusBadge(status)`
-* **Input**: `status` (string: `'ONLINE' | 'OFFLINE' | 'SYNCING' | 'ERROR'`)
-* **Output**: `HTML string` (representing styled status badge)
+## 5. 実在共通コンポーネント (Universal Components)
 
-### 08. Progress Component (`/components/progress.js`)
-* **Signature**: `renderProgressBar(done, total)`
-* **Input**: `done` (number), `total` (number)
-* **Output**: `HTML string` (representing horizontal progress bar container)
+現在 `active/dashboard/components/` に配備されている実在コンポーネントは以下の通りである：
 
-### 09. Bottom Navigation Component (`/components/navigation.js`)
-* **Signature**: `renderBottomNavigation(activePage)`
-* **Input**: `activePage` (string: `'areas' | 'ranking' | 'settings' | 'storage-register' | 'storage-list'`)
-* **Output**: `HTML string` (representing responsive bottom navigation bar)
+### ① Bottom Navigation Component (`active/dashboard/components/navigation.js`)
+- **責務**: 配布員現場画面（H-App）の下部ナビゲーションバーのレンダリング。
+- **インターフェース**: `renderBottomNavigation(activePage)`
+- **入力**: `activePage` (`'areas' | 'ranking' | 'settings' | 'storage-register' | 'storage-list'`)
+- **出力**: 下部固定ナビゲーションバーの HTML 文字列。
 
-### 10. List Item Components (`/components/area.js`, `/components/ranking.js`, `/components/staff.js`)
-* **Signatures**:
-  - `renderStaffCard(userInfo)` ➔ Returns `HTML string` for staff ID card.
-  - `renderAreaCard(areaData)` ➔ Returns `HTML string` for area stats card.
-  - `renderRankingCard(rankingData)` ➔ Returns `HTML string` for ranking row.
+### ② Ranking Component (`active/dashboard/components/ranking.js`)
+- **責務**: 配布実績に基づくランキング一覧・統計情報のレンダリング。
+- **インターフェース**: `renderRanking(rankingData, container)`
+- **入力**: ランキング集計データ配列、描画先 DOM コンテナ。
+- **出力**: ランキングカード群の DOM 描画。
+
+### ③ Staff Component (`active/dashboard/components/staff.js`)
+- **責務**: スタッフ情報・名簿・保有チラシ情報カードのレンダリング。
+- **インターフェース**: `renderStaff(staffData, container)`
+- **入力**: スタッフ情報オブジェクト、描画先 DOM コンテナ。
+- **出力**: スタッフカード要素の DOM 描画。
+
+---
+
+## 6. UI ガバナンス規則 (UI Governance Rules)
+
+- **Rule 1: No Custom Inline Styles / Arbitrary Colors**: CSS 変数（`--color-*`）を使用し、HTML/JS への直接の色コード埋め込みを禁止する。
+- **Rule 2: Component Reusability**: 共通 UI 部品はコンポーネントとして定義し、画面間でのベタ書き重複を禁止する。
+- **Rule 3: Accessibility Compliance**: タップ領域は原則 48px 以上を維持し、屋外での操作性を損なわないこと。

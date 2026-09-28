@@ -21,7 +21,7 @@ Universal POSTING MAPは、Phase 0〜21（再構築フェーズ）の完了を�
 
 > [!IMPORTANT]
 > **Universal Engine 完成の定義**:
-> 「単独アプリ・単独リポジトリ・単独ドメイン・単一親Standalone GAS」により、日本全国のいかなる自治体・選挙区・支部であっても、**共通Runtime（`active/`）に一切変更を加えることなくデータ投入（Provisioning）のみで稼働可能である状態**。
+> 「1地区 = 1完成アプリ = 1単独フォルダー = 1単独リポジトリ = 1単独ドメイン」のアーキテクチャ原則（AGENTS.md §1）のもと、日本全国のいかなる自治体・選挙区・支部であっても、**共通Runtime（`active/`）に一切変更を加えることなくデータ投入（Provisioning）のみで稼働可能である状態**。
 
 ---
 
@@ -33,7 +33,7 @@ Universal Engine v1.0 における各コンポーネントのベースライン�
 |:---|:---|:---|:---|
 | **Universal Engine Core** | `v1.0.0` | 共通フロントエンド（H App / Dashboard）およびバックエンドUniversal Standalone GAS Runtime | `active/` 全域<br>`index.html` |
 | **API Contract** | `v2.0.0` | Web App Gateway / RPC 通信規約（27アクション、認証ゲート、レスポンス構造） | `docs/api/API_CONTRACT.md`<br>`active/api/v2_api.js` |
-| **Data Schema (Pure DB)** | `v1.0.0` | スプレッドシート 12シート標準スキーマ、カラム定義、数式注入防御 | `docs/data/DATA_DICTIONARY.md`<br>`active/business/` |
+| **Data Schema (Pure DB)** | `v1.0.0` | スプレッドシート 13シート標準スキーマ（初期11 Core複製+現場2オンデマンド生成、DATA_DICTIONARY.md準拠）、カラム定義、数式注入防御 | `docs/data/DATA_DICTIONARY.md`<br>`active/business/` |
 | **Provisioning Spec** | `v1.0.0` | 新地区プロビジョニング仕様、マスターデータ構造（住所・境界・自治体）、DISTRICT_REGISTRY規約 | `docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md` |
 | **Security Baseline** | `v1.0.0` | SEC-001〜SEC-007 セキュリティ境界（セッション、サニタイズ、テナント分離、PIN秘匿等） | `docs/security/SECURITY_BASELINE.md` |
 | **Deployment Baseline** | `v1.0.0` | 単一親GASプロジェクト、Head固定Web App公開、動的Spreadsheetルーティング | `docs/architecture/UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md` |
@@ -55,12 +55,12 @@ Universal Engine v1.0 における各コンポーネントのベースライン�
 2. **API Contract (`docs/api/API_CONTRACT.md`)**:
    - アクション名、リクエスト/レスポンスパラメータ定義、エラーコード
 3. **Data Schema & Sheet Structure (`docs/data/DATA_DICTIONARY.md`)**:
-   - 12シート構成（SYSTEM_INFO, STAFF, DISTRIBUTION_RECORDS 等）のカラム配列
+   - 13シート標準構造（初期11 Core複製+現場2オンデマンド生成、DATA_DICTIONARY.md準拠）のカラム配列
 4. **Identity & Tenant Boundary**:
    - `LINE User ID → Staff Identity → Branch → Target Area` 導出チェーン
    - `DISTRICT_REGISTRY` 動的解決および `SYSTEM_INFO` Integrity Guard
 5. **Universal Invariants (INV-001 〜 INV-009)**:
-   - 単一アプリ/リポジトリ/ドメイン/親GAS、地域差=データ原則
+   - 1地区1アプリ/1リポジトリ/1ドメイン原則、共通Runtime（`active/`）改変禁止原則、地域差=データ層吸収原則
 
 ### 3.2 凍結解除・変更プロトコル (Universal Gap Protocol)
 新地区展開や運用過程において、万が一起動不可・機能不全が発生した場合、以下のプロトコルを厳格に執行する。

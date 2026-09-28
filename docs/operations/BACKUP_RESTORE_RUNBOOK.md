@@ -89,7 +89,7 @@
        ↓
 [スプレッドシート複製 & 整合性検証]
        ↓
-[SYSTEM_INFO 及び 12シート構造の確認]
+[SYSTEM_INFO 及び シート構造（DATA_DICTIONARY.md 準拠）の確認]
        ↓
 [DISTRICT_REGISTRY の spreadsheetId 差替え]
        ↓

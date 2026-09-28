@@ -122,7 +122,7 @@ description: POSTING MAP公式データ確定監査プロトコル。公式一�
 - **原本**: スプレッドシート名（地区名SSOT） ＋ `data/address_master.csv`
 - **PASS条件**:
   1. スプレッドシート名が地区名と完全一致し、GASがスタンドアロン展開されていること。
-  2. 12シートが自動生成され、総ピン数・分母が `address_master.csv` と完全一致すること。
+  2. `DATA_DICTIONARY.md` 準拠のシート構造（初期プロビジョニング時 11 Core Sheets 複製、現場2シートオンデマンド生成による 13シート標準構造）が確立され、総ピン数・分母が `address_master.csv` と完全一致すること。
   3. 業務シート（実績・名簿等）に前地区の残骸や不要なテストデータが一切ないこと（初期ゼロ状態）。
   4. `scripts/check-provisioning-gate.mjs` ALL PASS ＆ ブラウザE2Eで全ピン描画・エラー0件、`active/` 配下に改変がないこと。
 
