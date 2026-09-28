@@ -1,4 +1,13 @@
 [
+  ".agents/current-scope.json",
+  "docs/ai-foundation.md",
+  "AGENTS.md",
+  ".agents/rules/agent-authority.md",
   ".agents/rules/verification-gates.md",
-  ".agents/skills/census-small-area-master/SKILL.md"
+  ".agents/workflows/development/workflow.md",
+  ".agents/agents/architect/agent.md",
+  ".agents/agents/execution/agent.md",
+  ".agents/agents/auditor/agent.md",
+  ".agents/agents/deployer/agent.md",
+  "package.json"
 ]
