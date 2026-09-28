@@ -182,7 +182,7 @@
 | `scripts/check-pre-copy-purity.mjs` | 🔴 廃止 | 旧地区複製前の純度検証スクリプト。廃止。 |
 | `scripts/check-provisioning-gate.mjs` | 🔴 廃止 | 旧プロビジョニング検証スクリプト。廃止。 |
 | `scripts/test-copy-simulation.mjs` | 🔴 廃止 | 旧地区コピーシミュレーションスクリプト。廃止。 |
-| `scripts/validate-district-data-gate.mjs` | 🔴 廃止 | 旧地区データ検証スクリプト。廃止。 |
+| `scripts/validate-district-data-gate.mjs` | 🟢 継承 | Universal Master Triad & Election 閉包整合性検証ゲート（Safe Deploy Preflight）。 |
 
 ---
 
