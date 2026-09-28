@@ -1,10 +1,6 @@
 [
   ".agents/current-scope.json",
-  "active/business/system/district_provisioner.js",
   "active/gas/v2_migration.js",
   "active/business/transfer/transfer_service.js",
-  "active/business/bulletin/bulletin_service.js",
-  "docs/data/DATA_DICTIONARY.md",
-  "tests/run_all_tests.mjs",
   "tests/test_schema_provisioning_healing.mjs"
 ]
