@@ -18,8 +18,11 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_DATA_DIR = path.join(REPO_ROOT, 'data');
 
 /**
- * RFC 4180 準拠のステートマシン型 CSV パーサー
+ * RFC 4180 準拠の厳格ステートマシン型 CSV パーサー
  * - UTF-8 BOM 除去
+ * - クォートフィールド (フィールド先頭が ") と非クォートフィールドの厳格峻別
+ * - 非クォートフィールド内の途中引用符 (例: a"b) を構文エラーとして検出
+ * - クォートフィールドの閉じ引用符直後の不正文字 (例: "a"b) を構文エラーとして検出
  * - 引用符内の改行 (CRLF / LF) およびカンマを正確に保持
  * - 二重引用符 ("") のエスケープ解除
  * - 閉じていない引用符、重複ヘッダー、列数不一致を検出して例外スロー
@@ -29,55 +32,99 @@ export function parseCSV(content, sourceName = 'CSV') {
   const rows = [];
   let currentRow = [];
   let currentField = '';
-  let inQuotes = false;
+  let fieldStarted = false;
+  let isQuotedField = false;
+  let quoteClosed = false;
   const len = cleanContent.length;
+
+  function endField() {
+    currentRow.push(currentField);
+    currentField = '';
+    fieldStarted = false;
+    isQuotedField = false;
+    quoteClosed = false;
+  }
+
+  function endRow() {
+    endField();
+    rows.push(currentRow);
+    currentRow = [];
+  }
 
   for (let i = 0; i < len; i++) {
     const char = cleanContent[i];
 
-    if (inQuotes) {
+    if (!fieldStarted) {
       if (char === '"') {
-        if (i + 1 < len && cleanContent[i + 1] === '"') {
-          currentField += '"';
-          i++; // スキップ
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        currentField += char;
-      }
-    } else {
-      if (char === '"') {
-        inQuotes = true;
+        fieldStarted = true;
+        isQuotedField = true;
+        quoteClosed = false;
       } else if (char === ',') {
-        currentRow.push(currentField);
-        currentField = '';
+        endField();
       } else if (char === '\r') {
         if (i + 1 < len && cleanContent[i + 1] === '\n') {
           i++;
         }
-        currentRow.push(currentField);
-        rows.push(currentRow);
-        currentRow = [];
-        currentField = '';
+        endRow();
       } else if (char === '\n') {
-        currentRow.push(currentField);
-        rows.push(currentRow);
-        currentRow = [];
-        currentField = '';
+        endRow();
+      } else {
+        fieldStarted = true;
+        isQuotedField = false;
+        currentField += char;
+      }
+    } else if (isQuotedField) {
+      if (quoteClosed) {
+        if (char === ',') {
+          endField();
+        } else if (char === '\r') {
+          if (i + 1 < len && cleanContent[i + 1] === '\n') {
+            i++;
+          }
+          endRow();
+        } else if (char === '\n') {
+          endRow();
+        } else {
+          throw new Error(`[${sourceName}] Parse error: Invalid character "${char}" after closing quote.`);
+        }
+      } else {
+        if (char === '"') {
+          if (i + 1 < len && cleanContent[i + 1] === '"') {
+            currentField += '"';
+            i++; // エスケープされた二重引用符スキップ
+          } else {
+            quoteClosed = true;
+          }
+        } else {
+          currentField += char;
+        }
+      }
+    } else {
+      // 非クォートフィールド
+      if (char === '"') {
+        throw new Error(`[${sourceName}] Parse error: Unexpected quote inside unquoted field.`);
+      } else if (char === ',') {
+        endField();
+      } else if (char === '\r') {
+        if (i + 1 < len && cleanContent[i + 1] === '\n') {
+          i++;
+        }
+        endRow();
+      } else if (char === '\n') {
+        endRow();
       } else {
         currentField += char;
       }
     }
   }
 
-  if (inQuotes) {
+  if (isQuotedField && !quoteClosed) {
     throw new Error(`[${sourceName}] Parse error: Unclosed quote detected.`);
   }
 
   // 最後のフィールド/行の flush
-  if (currentField.length > 0 || currentRow.length > 0) {
-    currentRow.push(currentField);
+  if (fieldStarted || currentField.length > 0 || currentRow.length > 0) {
+    endField();
     rows.push(currentRow);
   }
 
@@ -174,6 +221,14 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
     return results;
   }
 
+  // データ行が 0 件のケースの厳格遮断
+  if (addressData.rows.length === 0) {
+    fail('address_master.csv has zero data rows (must have at least 1 row).');
+  }
+  if (muniData.rows.length === 0) {
+    fail('municipality_master.csv has zero data rows (must have at least 1 row).');
+  }
+
   // address_master 必須ヘッダー検査
   const requiredAddrHeaders = ['rowId', 'city_name', 'town_name', 'latitude', 'longitude'];
   for (const h of requiredAddrHeaders) {
@@ -198,7 +253,7 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
   const muniExpectedMap = new Map();
   let expectedTotalN = 0;
   for (const m of muniData.rows) {
-    const cityName = m.city_name.trim();
+    const cityName = (m.city_name ?? '').toString().trim();
     if (!cityName) {
       fail(`municipality_master.csv contains empty city_name.`);
       continue;
@@ -207,6 +262,13 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
       fail(`municipality_master.csv duplicate city_name: ${cityName}`);
       continue;
     }
+
+    // city_code の 5桁または6桁の数字形式検証
+    const cityCode = (m.city_code ?? '').toString().trim();
+    if (!/^\d{5,6}$/.test(cityCode)) {
+      fail(`municipality_master.csv invalid city_code "${m.city_code}" for "${cityName}" (must be 5 or 6 digits).`);
+    }
+
     const totalTownsNum = Number(m.total_towns);
     if (!Number.isInteger(totalTownsNum) || totalTownsNum <= 0) {
       fail(`municipality_master.csv invalid total_towns for "${cityName}": ${m.total_towns}`);
@@ -214,6 +276,10 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
     }
     muniExpectedMap.set(cityName, totalTownsNum);
     expectedTotalN += totalTownsNum;
+  }
+
+  if (expectedTotalN <= 0) {
+    fail('municipality_master.csv total_towns sum must be > 0.');
   }
 
   const validCities = new Set(muniExpectedMap.keys());
@@ -233,8 +299,8 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
       continue;
     }
 
-    const cityName = row.city_name.trim();
-    const townName = row.town_name.trim();
+    const cityName = (row.city_name ?? '').toString().trim();
+    const townName = (row.town_name ?? '').toString().trim();
     if (!cityName) fail(`address_master.csv row ${i + 2}: empty city_name.`);
     if (!townName) fail(`address_master.csv row ${i + 2}: empty town_name.`);
 
@@ -242,12 +308,23 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
       fail(`address_master.csv row ${i + 2}: undefined city_name "${cityName}" not in municipality_master.csv.`);
     }
 
-    const lat = Number(row.latitude);
-    const lng = Number(row.longitude);
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+    // 空白座標の厳格拒絶 ＆ 有限数値・座標範囲検査
+    const rawLat = (row.latitude ?? '').toString().trim();
+    const rawLng = (row.longitude ?? '').toString().trim();
+
+    if (rawLat.length === 0) {
+      fail(`address_master.csv row ${i + 2}: empty latitude.`);
+    }
+    if (rawLng.length === 0) {
+      fail(`address_master.csv row ${i + 2}: empty longitude.`);
+    }
+
+    const lat = Number(rawLat);
+    const lng = Number(rawLng);
+    if (rawLat.length > 0 && (!Number.isFinite(lat) || lat < -90 || lat > 90)) {
       fail(`address_master.csv row ${i + 2}: invalid latitude "${row.latitude}".`);
     }
-    if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+    if (rawLng.length > 0 && (!Number.isFinite(lng) || lng < -180 || lng > 180)) {
       fail(`address_master.csv row ${i + 2}: invalid longitude "${row.longitude}".`);
     }
 
@@ -268,6 +345,10 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
   if (!geojsonData || geojsonData.type !== 'FeatureCollection' || !Array.isArray(geojsonData.features)) {
     fail(`boundaries.geojson must be a FeatureCollection with features array.`);
     return results;
+  }
+
+  if (geojsonData.features.length === 0) {
+    fail('boundaries.geojson has zero features (must have at least 1 feature).');
   }
 
   const geoFeatureMap = new Map();
@@ -339,7 +420,7 @@ export function runDistrictDataValidation(dataDir = DEFAULT_DATA_DIR) {
   }
 
   // Rule-02: rowId 1..N 1:1 対応・連続性
-  if (N_address === expectedTotalN && N_geo === expectedTotalN) {
+  if (N_address === expectedTotalN && N_geo === expectedTotalN && expectedTotalN > 0) {
     for (let id = 1; id <= expectedTotalN; id++) {
       const addrRow = addressRowMap.get(id);
       const geoFeat = geoFeatureMap.get(id);

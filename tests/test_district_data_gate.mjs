@@ -20,7 +20,7 @@ console.log('====================================================\n');
 // ─────────────────────────────────────────────────────────────
 console.log('▶ [1/4] Testing RFC 4180 CSV Parser...');
 
-// 1.1 引用符内改行・カンマ・エスケープの正常パース
+// 1.1 引用符内改行・カンマ・エスケープの正常パース (受容)
 {
   const sampleCSV = [
     'col1,col2,col3',
@@ -46,7 +46,7 @@ console.log('▶ [1/4] Testing RFC 4180 CSV Parser...');
   console.log('  ✅ 1.2 UTF-8 BOM stripped transparently');
 }
 
-// 1.3 異常系: 未閉鎖の引用符
+// 1.3 異常系: 未閉鎖の引用符拒絶
 {
   const badQuote = 'col1,col2\nval1,"unclosed quote';
   assert.throws(
@@ -57,7 +57,7 @@ console.log('▶ [1/4] Testing RFC 4180 CSV Parser...');
   console.log('  ✅ 1.3 Rejected unclosed quote');
 }
 
-// 1.4 異常系: 重複ヘッダー
+// 1.4 異常系: 重複ヘッダー拒絶
 {
   const dupHeader = 'col1,col2,col1\n1,2,3';
   assert.throws(
@@ -68,7 +68,7 @@ console.log('▶ [1/4] Testing RFC 4180 CSV Parser...');
   console.log('  ✅ 1.4 Rejected duplicate column header');
 }
 
-// 1.5 異常系: 列数不一致
+// 1.5 異常系: 列数不一致拒絶
 {
   const colMismatch = 'col1,col2,col3\n1,2';
   assert.throws(
@@ -77,6 +77,28 @@ console.log('▶ [1/4] Testing RFC 4180 CSV Parser...');
     'Must fail on column count mismatch'
   );
   console.log('  ✅ 1.5 Rejected row column count mismatch');
+}
+
+// 1.6 異常系: 非クォートフィールド内の途中引用符拒絶
+{
+  const quoteInMiddle = 'col1,col2\nval1,val"with"quote';
+  assert.throws(
+    () => parseCSV(quoteInMiddle, 'quoteInMiddle.csv'),
+    /Unexpected quote inside unquoted field/,
+    'Must fail on quote inside unquoted field'
+  );
+  console.log('  ✅ 1.6 Rejected unexpected quote inside unquoted field');
+}
+
+// 1.7 異常系: 閉じ引用符直後の不正文字拒絶
+{
+  const badTrailing = 'col1,col2\n"val"bad,next';
+  assert.throws(
+    () => parseCSV(badTrailing, 'badTrailing.csv'),
+    /Invalid character "b" after closing quote/,
+    'Must fail on invalid character after closing quote'
+  );
+  console.log('  ✅ 1.7 Rejected invalid trailing character after closing quote');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -95,9 +117,9 @@ console.log('\n▶ [2/4] Testing Current Active District Data (Pass Case)...');
 }
 
 // ─────────────────────────────────────────────────────────────
-// 3. 合成フィクスチャによる各種異常系拒絶テスト
+// 3. 合成フィクスチャによる各種異常系拒絶 & 受容テスト
 // ─────────────────────────────────────────────────────────────
-console.log('\n▶ [3/4] Testing Negative Cases with Synthetic Fixtures...');
+console.log('\n▶ [3/4] Testing Negative and Positive Edge Cases with Synthetic Fixtures...');
 
 function createSyntheticFixture(overrides = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'district-gate-test-'));
@@ -161,7 +183,7 @@ function createSyntheticFixture(overrides = {}) {
   return tmpDir;
 }
 
-// 3.1 ファイル欠落検知
+// 3.1 ファイル欠落拒絶
 {
   const dir = createSyntheticFixture({ skipBounds: true });
   const rep = runDistrictDataValidation(dir);
@@ -171,7 +193,7 @@ function createSyntheticFixture(overrides = {}) {
   console.log('  ✅ 3.1 Missing file detected and rejected');
 }
 
-// 3.2 必須ヘッダー欠落検知 (latitude 欠落)
+// 3.2 必須ヘッダー欠落拒絶 (latitude 欠落)
 {
   const badAddr = 'rowId,city_name,town_name,longitude\n1,City-A,Town-1,136.0';
   const dir = createSyntheticFixture({ addressCsv: badAddr });
@@ -182,7 +204,7 @@ function createSyntheticFixture(overrides = {}) {
   console.log('  ✅ 3.2 Missing required header (latitude) rejected');
 }
 
-// 3.3 座標形式異常検知 (NaN / 範囲外)
+// 3.3 座標形式異常拒絶 (NaN / 範囲外)
 {
   const badCoord = [
     'rowId,city_name,town_name,latitude,longitude',
@@ -196,26 +218,111 @@ function createSyntheticFixture(overrides = {}) {
   console.log('  ✅ 3.3 Invalid coordinate format rejected');
 }
 
-// 3.4 全体件数 N 不一致検知 (Rule-01)
+// 3.4 空白座標拒絶 (空文字 "" および 空白 "   ")
+{
+  const emptyCoord = [
+    'rowId,city_name,town_name,latitude,longitude',
+    '1,City-A,Town-1,"",136.0',
+    '2,City-A,Town-2,35.1,"   "',
+    '3,City-B,Town-3,35.2,136.2'
+  ].join('\n');
+  const dir = createSyntheticFixture({ addressCsv: emptyCoord });
+  const rep = runDistrictDataValidation(dir);
+  assert.equal(rep.pass, false);
+  assert.ok(rep.errors.some(e => e.includes('empty latitude')), 'Must detect empty latitude');
+  assert.ok(rep.errors.some(e => e.includes('empty longitude')), 'Must detect empty longitude');
+  fs.rmSync(dir, { recursive: true, force: true });
+  console.log('  ✅ 3.4 Blank coordinates ("" and "   ") detected and rejected');
+}
+
+// 3.5 数値 0 の有効座標受容 (0.0, 0.0 は有効な非空座標として受容)
+{
+  const zeroCoordAddr = [
+    'rowId,city_name,town_name,latitude,longitude,households,population,e_stat_code',
+    '1,City-A,Town-1,0,0,10,20,1001',
+    '2,City-A,Town-2,0.0,0.0,15,30,1002',
+    '3,City-B,Town-3,35.2,136.2,20,40,1003'
+  ].join('\n');
+  const dir = createSyntheticFixture({ addressCsv: zeroCoordAddr });
+  const rep = runDistrictDataValidation(dir);
+  assert.equal(rep.pass, true, `Valid coordinate 0 / 0.0 must be accepted: ${JSON.stringify(rep.errors)}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+  console.log('  ✅ 3.5 Valid numerical coordinate 0 / 0.0 accepted correctly');
+}
+
+// 3.6 全マスター空拒絶 (データ件数 0 件のケース)
+{
+  const emptyAddr = 'rowId,city_name,town_name,latitude,longitude\n';
+  const emptyMuni = 'city_name,city_code,total_towns\n';
+  const emptyGeo = JSON.stringify({ type: 'FeatureCollection', features: [] });
+  const dir = createSyntheticFixture({
+    addressCsv: emptyAddr,
+    muniCsv: emptyMuni,
+    boundariesGeo: emptyGeo
+  });
+  const rep = runDistrictDataValidation(dir);
+  assert.equal(rep.pass, false);
+  assert.ok(rep.errors.some(e => e.includes('zero data rows') || e.includes('zero features')));
+  fs.rmSync(dir, { recursive: true, force: true });
+  console.log('  ✅ 3.6 Empty master data (0 rows / 0 features) rejected');
+}
+
+// 3.7 無効 city_code 拒絶 (空、英字混入、4桁、7桁)
+{
+  // 3.7.1 英字混入
+  const alphaMuni = 'city_name,city_code,total_towns\nCity-A,24A05,2\nCity-B,99002,1';
+  const dir1 = createSyntheticFixture({ muniCsv: alphaMuni });
+  const rep1 = runDistrictDataValidation(dir1);
+  assert.equal(rep1.pass, false);
+  assert.ok(rep1.errors.some(e => e.includes('invalid city_code "24A05"')));
+  fs.rmSync(dir1, { recursive: true, force: true });
+
+  // 3.7.2 4桁 (桁数不足)
+  const shortMuni = 'city_name,city_code,total_towns\nCity-A,2420,2\nCity-B,99002,1';
+  const dir2 = createSyntheticFixture({ muniCsv: shortMuni });
+  const rep2 = runDistrictDataValidation(dir2);
+  assert.equal(rep2.pass, false);
+  assert.ok(rep2.errors.some(e => e.includes('invalid city_code "2420"')));
+  fs.rmSync(dir2, { recursive: true, force: true });
+
+  // 3.7.3 7桁 (桁数過大)
+  const longMuni = 'city_name,city_code,total_towns\nCity-A,2420501,2\nCity-B,99002,1';
+  const dir3 = createSyntheticFixture({ muniCsv: longMuni });
+  const rep3 = runDistrictDataValidation(dir3);
+  assert.equal(rep3.pass, false);
+  assert.ok(rep3.errors.some(e => e.includes('invalid city_code "2420501"')));
+  fs.rmSync(dir3, { recursive: true, force: true });
+
+  console.log('  ✅ 3.7 Invalid city_code (alpha, 4-digit, 7-digit) rejected');
+}
+
+// 3.8 有効 city_code 受容 (5桁および6桁数字形式)
+{
+  const validMuni = 'city_name,city_code,total_towns\nCity-A,24205,2\nCity-B,242055,1';
+  const dir = createSyntheticFixture({ muniCsv: validMuni });
+  const rep = runDistrictDataValidation(dir);
+  assert.equal(rep.pass, true, `Valid 5-digit and 6-digit city_code must be accepted: ${JSON.stringify(rep.errors)}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+  console.log('  ✅ 3.8 Valid 5-digit and 6-digit city_code accepted correctly');
+}
+
+// 3.9 全体件数 N 不一致拒絶 (Rule-01)
 {
   const shortAddr = [
     'rowId,city_name,town_name,latitude,longitude',
     '1,City-A,Town-1,35.0,136.0',
     '2,City-A,Town-2,35.1,136.1'
-    // 3番が欠落して 2件
   ].join('\n');
   const dir = createSyntheticFixture({ addressCsv: shortAddr });
   const rep = runDistrictDataValidation(dir);
   assert.equal(rep.pass, false);
   assert.ok(rep.errors.some(e => e.includes('Rule-01 Total count mismatch')));
   fs.rmSync(dir, { recursive: true, force: true });
-  console.log('  ✅ 3.4 Total count mismatch rejected');
+  console.log('  ✅ 3.9 Total count mismatch rejected');
 }
 
-// 3.5 自治体別件数内訳不一致検知 (全体 N=3 は一致だが内訳が狂っているケース)
+// 3.10 自治体別件数内訳不一致拒絶
 {
-  // expected: City-A=2, City-B=1
-  // actual in address: City-A=1, City-B=2 (N=3 で合計は同じ)
   const skewedAddr = [
     'rowId,city_name,town_name,latitude,longitude',
     '1,City-A,Town-1,35.0,136.0',
@@ -227,44 +334,43 @@ function createSyntheticFixture(overrides = {}) {
   assert.equal(rep.pass, false);
   assert.ok(rep.errors.some(e => e.includes('Municipality town count mismatch')));
   fs.rmSync(dir, { recursive: true, force: true });
-  console.log('  ✅ 3.5 Per-municipality subtotal count mismatch rejected');
+  console.log('  ✅ 3.10 Per-municipality subtotal count mismatch rejected');
 }
 
-// 3.6 rowId 欠番検知 (Rule-02)
+// 3.11 rowId 欠番拒絶 (Rule-02)
 {
   const gapAddr = [
     'rowId,city_name,town_name,latitude,longitude',
     '1,City-A,Town-1,35.0,136.0',
     '2,City-A,Town-2,35.1,136.1',
-    '4,City-B,Town-3,35.2,136.2' // 3 が欠番で 4
+    '4,City-B,Town-3,35.2,136.2'
   ].join('\n');
   const dir = createSyntheticFixture({ addressCsv: gapAddr });
   const rep = runDistrictDataValidation(dir);
   assert.equal(rep.pass, false);
   assert.ok(rep.errors.some(e => e.includes('Rule-02 Sequence gap')));
   fs.rmSync(dir, { recursive: true, force: true });
-  console.log('  ✅ 3.6 rowId sequence gap rejected');
+  console.log('  ✅ 3.11 rowId sequence gap rejected');
 }
 
-// 3.7 定義外自治体名の混入検知
+// 3.12 定義外自治体名の混入拒絶
 {
   const unknownCityAddr = [
     'rowId,city_name,town_name,latitude,longitude',
     '1,City-A,Town-1,35.0,136.0',
     '2,City-A,Town-2,35.1,136.1',
-    '3,Unknown-City-X,Town-3,35.2,136.2' // 未知の自治体
+    '3,Unknown-City-X,Town-3,35.2,136.2'
   ].join('\n');
   const dir = createSyntheticFixture({ addressCsv: unknownCityAddr });
   const rep = runDistrictDataValidation(dir);
   assert.equal(rep.pass, false);
   assert.ok(rep.errors.some(e => e.includes('undefined city_name "Unknown-City-X"')));
   fs.rmSync(dir, { recursive: true, force: true });
-  console.log('  ✅ 3.7 Undefined city_name rejected');
+  console.log('  ✅ 3.12 Undefined city_name rejected');
 }
 
-// 3.8 選挙履歴キー不一致検知 (欠落 & 余剰)
+// 3.13 選挙履歴キー不一致拒絶 (欠落 & 余剰)
 {
-  // 欠落: City-B がない
   const missingEl = JSON.stringify({
     elections: [{ electionId: 'E-01', municipalities: { 'City-A': 50.0 } }]
   });
@@ -274,7 +380,6 @@ function createSyntheticFixture(overrides = {}) {
   assert.ok(rep1.errors.some(e => e.includes('missing expected municipality "City-B"')));
   fs.rmSync(dir1, { recursive: true, force: true });
 
-  // 余剰: 未知の City-Z がある
   const extraEl = JSON.stringify({
     elections: [{ electionId: 'E-01', municipalities: { 'City-A': 50.0, 'City-B': 60.0, 'City-Z': 70.0 } }]
   });
@@ -283,10 +388,10 @@ function createSyntheticFixture(overrides = {}) {
   assert.equal(rep2.pass, false);
   assert.ok(rep2.errors.some(e => e.includes('undefined municipality key "City-Z"')));
   fs.rmSync(dir2, { recursive: true, force: true });
-  console.log('  ✅ 3.8 Election history municipality key mismatch rejected (both missing and extra)');
+  console.log('  ✅ 3.13 Election history municipality key mismatch rejected (both missing and extra)');
 }
 
-// 3.9 補助 JSON 形式不正検知 (area_mapping.json が配列でない)
+// 3.14 補助 JSON 形式不正拒絶 (area_mapping.json が配列でない)
 {
   const notArray = JSON.stringify({ key: 'not an array' });
   const dir = createSyntheticFixture({ areaMappingJson: notArray });
@@ -294,7 +399,7 @@ function createSyntheticFixture(overrides = {}) {
   assert.equal(rep.pass, false);
   assert.ok(rep.errors.some(e => e.includes('area_mapping.json must be an array')));
   fs.rmSync(dir, { recursive: true, force: true });
-  console.log('  ✅ 3.9 Auxiliary JSON non-array format rejected');
+  console.log('  ✅ 3.14 Auxiliary JSON non-array format rejected');
 }
 
 // ─────────────────────────────────────────────────────────────
