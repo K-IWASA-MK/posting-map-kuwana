@@ -537,19 +537,17 @@ window.triggerUISyncRefresh = async function() {
       if (found) {
         p.syncStatus = found.syncStatus || found.status; // 'pending' | 'sending' | 'failed'
       } else {
-        // キューに存在しない場合
+        // キューに存在しない場合（Queue消滅だけを根拠にCOMPLETEDへ新規昇格させることは絶対禁止）
         if (p.syncStatus === 'REJECTED') {
-          // STALE_MONTH 等の非受諾終端: COMPLETED に昇格させず未完了へ戻す
+          // STALE_MONTH 等の非受諾終端: COMPLETED に昇格させず未完了へ戻す（submitMissionComplete の判定のため消去しない）
           p.isDone = false;
           delete p.isReadyToSubmit;
           delete p.tempPhotoUrl;
-          delete p.syncStatus;
-        } else if (p.syncStatus && p.syncStatus !== 'synced') {
-          // もし以前送信待機中（pending/SYNCING/RETRY等）だったアイテムがキューから消滅した場合、
-          // Backend永続化が成功して dequeueSync されたことを意味するため、COMPLETED (isDone=true) に昇格
-          p.isDone = true;
+        } else if (p.isDone === true) {
+          // Backend正常受諾済み（db.js により p.isDone = true 確定済み）の場合のみ完了状態・ピンロックを維持
           delete p.isReadyToSubmit;
-          p.syncStatus = 'synced';
+          delete p.tempPhotoUrl;
+          delete p.syncStatus;
           if (typeof window.setPinInProgress === 'function') {
             window.setPinInProgress(p.rowId, "remove");
           }
@@ -838,24 +836,29 @@ async function submitMissionComplete(areaName, rowId) {
             return; // 重要：後段の「送信処理中です」へ落ちずに即時終了
           }
 
-          // 通常の Backend永続化成功 ＝ 真の配布完了確定
-          p.isDone = true;
-          delete p.isReadyToSubmit;
-          p.syncStatus = 'synced';
-          if (typeof window.setPinInProgress === 'function') {
-            window.setPinInProgress(rowId, "remove");
-          }
-          if (window.globalPinStatus) {
-            if (!window.globalPinStatus.completed.includes(rowId)) {
-              window.globalPinStatus.completed.push(rowId);
+          // 正常完了判定: Queue消滅かつ db.js 正常経路によって既に p.isDone === true と確定されている場合のみ成功
+          if (p.isDone === true) {
+            p.isDone = true;
+            delete p.isReadyToSubmit;
+            p.syncStatus = 'synced';
+            if (typeof window.setPinInProgress === 'function') {
+              window.setPinInProgress(rowId, "remove");
             }
-            window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== rowId);
+            if (window.globalPinStatus) {
+              if (!window.globalPinStatus.completed.includes(rowId)) {
+                window.globalPinStatus.completed.push(rowId);
+              }
+              window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== rowId);
+            }
+            if (typeof window.lockActivePinAndBubble === 'function') {
+              window.lockActivePinAndBubble(rowId);
+            }
+            isPersisted = true;
+            break;
           }
-          if (typeof window.lockActivePinAndBubble === 'function') {
-            window.lockActivePinAndBubble(rowId);
-          }
-          isPersisted = true;
-          break;
+
+          // status === null かつ p.isDone !== true かつ p.syncStatus !== 'REJECTED' の場合:
+          // Queue消滅だけから成功を推定せず、待機ループ内で受諾結果確定（p.isDone または REJECTED）を待つ
         }
         if (status === 'RETRY') {
           throw new Error("GAS Save Failed");

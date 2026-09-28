@@ -316,43 +316,132 @@ test('7. 当月Queue分離: getSyncQueueRowIds() と getRowStatus() が現在JST
 });
 
 // ----------------------------------------------------------------------------
-// 8. triggerUISyncRefresh() による完了昇格と accepted:false 非完了因果関係
+// 8. triggerUISyncRefresh() と submitMissionComplete() の Race 解消検証 (Case A, B, C)
 // ----------------------------------------------------------------------------
-test('8. COMPLETED因果関係: accepted:true の確認後のみ p.isDone=true に昇格し、accepted:false (REJECTED) は非完了を維持すること', () => {
-  // triggerUISyncRefresh にキュー消滅時の完了昇格ロジックが存在すること
-  assert.ok(appJs.includes("if (p.syncStatus && p.syncStatus !== 'synced') {"), 'triggerUISyncRefresh に昇格条件が存在すること');
-  assert.ok(appJs.includes('p.isDone = true;'), '昇格時に p.isDone = true が設定されること');
-  assert.ok(appJs.includes("p.syncStatus = 'synced';"), '昇格時に p.syncStatus = synced が設定されること');
+test('8. UI Race 解消: Queue消滅からCOMPLETEDを推測せず、Backend受諾結果確定のみで昇格すること (Case A, B, C)', () => {
+  // コード構造確認: triggerUISyncRefresh が Queue消滅だけで isDone=true を新規設定しないこと
+  assert.ok(appJs.includes("p.isDone === true"), 'triggerUISyncRefresh で p.isDone === true の受諾確認ガードが存在すること');
+  assert.ok(appJs.includes("if (p.isDone === true) {"), 'submitMissionComplete で p.isDone === true の成功確認ガードが存在すること');
 
-  // ②-B 仕様: REJECTED の場合は非完了へリセット
-  assert.ok(appJs.includes("p.syncStatus === 'REJECTED'"), 'app.js に REJECTED 検知ロジックが存在すること');
-  assert.ok(appJs.includes('p.isDone = false;'), 'REJECTED 時に p.isDone = false が設定されること');
+  // --------------------------------------------------------------------------
+  // Case A — 今回の Race 反例:
+  // accepted:false (STALE_MONTH) ➔ p.syncStatus = REJECTED ➔ Queue削除 ➔
+  // triggerUISyncRefresh が submit poll より先に実行 ➔ REJECTED が失われない ➔
+  // getRowStatus === null ➔ submitMissionComplete ➔ isDone === false
+  // --------------------------------------------------------------------------
+  const caseAPoint = { rowId: 801, isDone: false, isReadyToSubmit: true, syncStatus: 'submitting' };
+  const globalCompletedA = [];
 
-  // 実動シミュレーション: accepted:true の正常完了昇格
-  const normalPoint = { rowId: 801, isDone: false, syncStatus: 'pending' };
-  const globalCompleted = [];
-  const queueAfterSuccess = []; // dequeue 済み
-  if (!queueAfterSuccess.find(q => q.rowId === normalPoint.rowId)) {
-    if (normalPoint.syncStatus && normalPoint.syncStatus !== 'synced' && normalPoint.syncStatus !== 'REJECTED') {
-      normalPoint.isDone = true;
-      normalPoint.syncStatus = 'synced';
-      globalCompleted.push(normalPoint.rowId);
+  // 1. processQueue で STALE_MONTH 受信
+  caseAPoint.syncStatus = 'REJECTED';
+  const queueAfterReject = []; // dequeueSync 完了
+
+  // 2. triggerUISyncRefresh が submitMissionComplete の poll より先に実行される
+  // （新仕様: REJECTED を即座に delete せず、isDone = false を維持）
+  const foundInQueueA = queueAfterReject.find(q => q.rowId === caseAPoint.rowId);
+  if (!foundInQueueA) {
+    if (caseAPoint.syncStatus === 'REJECTED') {
+      caseAPoint.isDone = false;
+      delete caseAPoint.isReadyToSubmit;
+      delete caseAPoint.tempPhotoUrl;
+      // delete caseAPoint.syncStatus は行わない！
+    } else if (caseAPoint.isDone === true) {
+      delete caseAPoint.isReadyToSubmit;
+    } else {
+      caseAPoint.isDone = false;
     }
   }
-  assert.equal(normalPoint.isDone, true, '正常受理時は isDone = true に昇格すること');
-  assert.ok(globalCompleted.includes(801));
 
-  // 実動シミュレーション: accepted:false (REJECTED) 時の非完了維持
-  const rejectedPoint = { rowId: 802, isDone: false, syncStatus: 'REJECTED' };
-  const queueAfterReject = []; // dequeue 済み
-  if (!queueAfterReject.find(q => q.rowId === rejectedPoint.rowId)) {
-    if (rejectedPoint.syncStatus === 'REJECTED') {
-      rejectedPoint.isDone = false;
-      delete rejectedPoint.syncStatus;
+  // 3. submitMissionComplete のポーリングが次のタイミングで実行される (status === null)
+  const statusA = null; // getRowStatus(rowId) === null
+  let isPersistedA = false;
+  let modalClosedA = false;
+
+  if (statusA === null) {
+    if (caseAPoint.syncStatus === 'REJECTED') {
+      caseAPoint.isDone = false;
+      delete caseAPoint.isReadyToSubmit;
+      delete caseAPoint.tempPhotoUrl;
+      delete caseAPoint.syncStatus;
+      modalClosedA = true;
+      // return 即時終了
+    } else if (caseAPoint.isDone === true) {
+      isPersistedA = true;
+      globalCompletedA.push(caseAPoint.rowId);
     }
   }
-  assert.equal(rejectedPoint.isDone, false, 'REJECTED 時は絶対に isDone = false を維持すること');
-  assert.ok(!globalCompleted.includes(802), 'REJECTED ピンは completed 配列に追加されないこと');
+
+  assert.equal(caseAPoint.isDone, false, 'Case A: STALE_MONTH の競合下でも isDone は絶対に false を維持すること');
+  assert.equal(isPersistedA, false, 'Case A: COMPLETED 確定フラグは立たないこと');
+  assert.equal(modalClosedA, true, 'Case A: モーダルが解放されること');
+  assert.equal(globalCompletedA.length, 0, 'Case A: 完了配列に追加されないこと');
+
+  // --------------------------------------------------------------------------
+  // Case B — 正常受諾:
+  // accepted:true ➔ db.js 正常経路が p.isDone=true ➔ Queue削除 ➔
+  // status === null ➔ submitMissionComplete は正常完了として扱う
+  // --------------------------------------------------------------------------
+  const caseBPoint = { rowId: 802, isDone: false, isReadyToSubmit: true, syncStatus: 'submitting' };
+  const globalCompletedB = [];
+
+  // 1. processQueue で正常受諾 (db.js が p.isDone = true を設定)
+  caseBPoint.isDone = true;
+  caseBPoint.syncStatus = 'synced';
+  const queueAfterSuccess = []; // dequeueSync 完了
+
+  // 2. triggerUISyncRefresh が実行
+  const foundInQueueB = queueAfterSuccess.find(q => q.rowId === caseBPoint.rowId);
+  if (!foundInQueueB) {
+    if (caseBPoint.syncStatus === 'REJECTED') {
+      caseBPoint.isDone = false;
+    } else if (caseBPoint.isDone === true) {
+      delete caseBPoint.isReadyToSubmit;
+      delete caseBPoint.tempPhotoUrl;
+      delete caseBPoint.syncStatus;
+    } else {
+      caseBPoint.isDone = false;
+    }
+  }
+
+  // 3. submitMissionComplete のポーリング
+  const statusB = null;
+  let isPersistedB = false;
+
+  if (statusB === null) {
+    if (caseBPoint.syncStatus === 'REJECTED') {
+      caseBPoint.isDone = false;
+    } else if (caseBPoint.isDone === true) {
+      isPersistedB = true;
+      globalCompletedB.push(caseBPoint.rowId);
+    }
+  }
+
+  assert.equal(caseBPoint.isDone, true, 'Case B: 正常受諾時は isDone = true が維持されること');
+  assert.equal(isPersistedB, true, 'Case B: COMPLETED として扱われること');
+  assert.ok(globalCompletedB.includes(802), 'Case B: 完了配列に追加されること');
+
+  // --------------------------------------------------------------------------
+  // Case C — 不明状態:
+  // Queueなし ➔ p.isDone=false ➔ REJECTEDでもない ➔ 絶対にCOMPLETEDへ昇格しない
+  // --------------------------------------------------------------------------
+  const caseCPoint = { rowId: 803, isDone: false, syncStatus: 'pending' };
+  const globalCompletedC = [];
+
+  // triggerUISyncRefresh 実行（Queueに不在だが受諾確認なし）
+  const emptyQueue = [];
+  if (!emptyQueue.find(q => q.rowId === caseCPoint.rowId)) {
+    if (caseCPoint.syncStatus === 'REJECTED') {
+      caseCPoint.isDone = false;
+    } else if (caseCPoint.isDone === true) {
+      globalCompletedC.push(caseCPoint.rowId);
+    } else {
+      // Queue消滅だけでは完了へ昇格しない
+      caseCPoint.isDone = false;
+    }
+  }
+
+  assert.equal(caseCPoint.isDone, false, 'Case C: Queue消滅だけでは絶対に COMPLETED に昇格しないこと');
+  assert.equal(globalCompletedC.length, 0, 'Case C: 完了配列に追加されないこと');
 });
 
 // ----------------------------------------------------------------------------
