@@ -1,9 +1,4 @@
 [
   ".agents/current-scope.json",
-  ".agents/rules/district-data-transition-rule.md",
-  ".agents/skills/official-data-confirmation-audit/SKILL.md",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
-  "docs/architecture/CURRENT_ARCHITECTURE.md",
-  "docs/architecture/DESIGN_SYSTEM.md",
-  "docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md"
+  "docs/architecture/DESIGN_SYSTEM.md"
 ]
