@@ -13,7 +13,8 @@
     "liff:acquire": "node scripts/acquire-liff-id.mjs",
     "check:ssot": "node scripts/validate-gas-endpoint-ssot.mjs",
     "verify:gas": "node scripts/verify-gas-deployment.mjs",
-    "deploy:gas": "node scripts/safe-deploy.mjs"
+    "deploy:gas": "node scripts/safe-deploy.mjs",
+    "audit:gate": "node scripts/check-scope.mjs"
   },
   "keywords": [],
   "author": "",

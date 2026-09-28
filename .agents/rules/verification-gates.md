@@ -18,18 +18,24 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 ### V3 Regression Verification
 - 既存機能への副作用がないことの確認。
 
-### Auditor Subagent Verification
-- 独立検品サブエージェント（`.agents/agents/auditor/agent.md`）へ検品依頼パッケージを渡し、3観点でのPASS判定を取得する。
+### Auditor Subagent Verification (独立検品関門)
+- Independent Auditor AI（`.agents/agents/auditor/agent.md`）へ検品依頼パッケージ（Handover Package）を提示し、以下の5大固定観点に基づく独立判定（PASS）を取得する（詳細仕様は Canonical SSOT [docs/ai-foundation.md](../../docs/ai-foundation.md) §2・§5 参照）。
+  1. **観点①: 最上位絶対原則**（Universal Engine非侵襲・コピー原則の遵守）
+  2. **観点②: Scope厳守・余計な差分の排除**（Staged Diff と current-scope.json の完全一致）
+  3. **観点③: No Evidence No PASS**（客観的証跡の真偽・網羅性）
+  4. **観点④: Zero Avoidable Manual**（可避な手作業要求の排除・コピー耐性）
+  5. **観点⑤: 公式データ確定品質ゲート**（一次資料整合・不純物排除）
+  ※当該タスクに該当しない観点については、Auditor が `N/A + その客観的理由` を明記して判定することを認容する。
 
 ### Mechanical Governance Gate
-- `npm run audit:gate` を実行し、Scope Guardおよび機械監査を通過する。
+- `npm run audit:gate` を実行し、Scope Guard（`scripts/check-scope.mjs`）による機械監査を通過する。
 
-### Commit Gate & Push Gate
-- **Commit Gate**: V1〜V3検証のPASS、Auditor SubagentのPASS、Mechanical Governance Gateの通過、Scope監査（Staged Diff）がすべて完了した場合のみCommitを許可。
-- **Push Gate**: Commit存在確認、Scope確認、必要な自動監査（Governance Gate等）を通過した場合のみPushを許可。
+### Commit Gate & Push Gate (自律実行関門)
+- **Commit Gate**: V1〜V3自己検証のPASS、Auditor SubagentのPASS、Mechanical Governance Gateの通過、Scope監査がすべて完了した場合、Execution AI は追加MASTER承認なしで自律的に Commit を執行する。
+- **Push Gate**: Commit存在確認、Scope確認、必要な自動監査を通過した場合、Execution AI は追加MASTER承認なしで自律的に Push を執行する（特別Governance Transactionである Scope Commit を含めて最終Pushとする）。
 
 ### Crisp Deployment Gate & V4 Deployment Verification
-- **Crisp Deployment Gate**: Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）である場合、独立工程として実際の稼働環境へのデプロイを実施する。実環境への反映を必要としない変更は「Deployment対象外」と明示的に判定・記録すること。対象外であることを根拠なく推測してはならない。
+- **Crisp Deployment Gate**: Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）である場合のみ、独立工程として実際の稼働環境へのデプロイを実施する。実環境への反映を必要としない変更は「Deployment対象外 (N/A)」と明示的に判定・記録すること。対象外であることを根拠なく推測してはならない。
 - **V4 Deployment Verification**:
   - **V4成立条件**: Deployment対象なら「実環境で反映を確認した客観的Evidence」、Deployment非対象なら「対象外であることの客観的確認Evidence」を取得し、いずれの場合もそのEvidenceをもってV4 PASSとする。
   - **重要**: `git status`、`git log`、`Script is already up to date.` 等のGit/Crisp実行結果だけでは、V4 Deployment VerificationのEvidenceとして扱わない。

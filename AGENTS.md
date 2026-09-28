@@ -37,12 +37,12 @@
 
 ## 6. Execution Governance & Approval Gates — ABSOLUTE
 1. **Implementation Approval Gate**:
-   - **調査 ➔ 実装計画提出（Execution AI） ➔ HARD STOP ➔ MASTER明示承認 ➔ 実装** のシーケンスを絶対厳守する。
+   - **調査 ➔ 実装計画提出（Execution AI） ➔ HARD STOP ➔ MASTER明示承認 (Proceed) ➔ 実装** のシーケンスを絶対厳守する。
    - 「調査」「計画」「レビュー」「確認」「相談」の依頼を実装承認（Proceed）として解釈してはならない。
    - MASTERからの明示的な着手承認（Proceed）を受領するまで、1文字たりともファイル変更を行ってはならない。
 2. **Autonomous Execution on Proceed**:
-   - MASTERのProceed受領後は、承認済みScope内において **Implement ➔ Test ➔ Diff Audit ➔ Commit ➔ Push** まで追加承認なしで自律実行する。
-   - 途中でHARD STOP条件（エラー残存、予期せぬ不整合、Scope外変更要求等）が発生した場合のみ直ちに作業を停止し、MASTERへ報告する。
+   - MASTERのProceed受領後は、承認済みScope内において **Proceed ➔ Implement ➔ Self Verify ➔ Auditor PASS ➔ Commit ➔ Push** を正式フローとし、追加MASTER承認なしで自律実行する。
+   - 途中でHARD STOP条件（Scope外変更要求、未解決エラー、Universal Gap等）が発生した場合のみ直ちに作業を停止し、MASTERへ報告する。
 3. **Scope Expansion Gate**:
    - 承認済み計画外の変更が必要になった場合、自己判断で勝手にコードを変更してはならない。
    - 直ちに作業を停止（HARD STOP）し、改訂計画を提出してMASTERの再承認を待つこと。
@@ -54,29 +54,31 @@
 
 ## 7. Commit, Push & Deploy Authority — ABSOLUTE
 1. **Commit & Push Authority**:
-   - 承認された実装範囲内において、テスト検証および `git diff` 監査を通過した場合に限り、AI社員は追加承認なしで Commit および Push まで自律実行する。
+   - 承認された実装範囲内において、自己検証（V1〜V3）および Independent Auditor AI の PASS 判定を取得した場合に限り、AI社員は追加承認なしで Commit および Push まで自律実行する。
 2. **Deploy Authority**:
    - Deploy（本番環境への配備）は、**MASTER承認済みScopeに明示的に含まれる場合のみ**実施する。
-   - 「Implementation → Test → Commit → Push → Deploy」を無条件の一連シーケンスとしてはならない。
-   - ドキュメント改定や内部テスト追加など、実稼働環境への反映を必要としない変更は「Deployment対象外」と明示的に判定・記録し、Push完了をもって完了報告へ進むこと。
+   - 「Proceed → Implement → Self Verify → Auditor PASS → Commit → Push → Deploy」を無条件の一連シーケンスとしてはならない。
+   - ドキュメント改定や内部テスト追加など、実稼働環境への反映を必要としない変更は「Deployment対象外 (N/A)」と明示的に判定・記録し、Push完了をもって完了報告へ進むこと。
 3. **Definition of Done**:
-   - Implementation → Test (`npm test` 30/30 PASS等) → Diff/Audit → Commit → Push (→ Deploy ※対象時のみ) → Evidence Verification.
+   - Proceed ➔ Implement ➔ Self Verify (`npm test`, Scope Guard) ➔ Auditor PASS ➔ Commit ➔ Push (➔ Deploy ※対象時のみ) ➔ Evidence Verification.
    - If any required verification FAILS: STOP.
    - Git PASS is not deployment PASS. Production deployment requires production runtime evidence.
 
 ## 8. AI Role Boundary & Authority — ABSOLUTE
+各AI役職の4役職×8軸仕様、ツール統制、Handoffプロトコルの詳細契約は、Canonical SSOT である [docs/ai-foundation.md](docs/ai-foundation.md) を唯一の正本とする。各役職の絶対境界は以下の通りである。
+
 - **Design / Direction AI**:
-  - *Authority*: 全体構造設計、アーキテクチャレビュー、スコープ判断、方針指示。
-  - *Prohibition*: MASTER承認前のコード変更、自己判断による実装着手。
+  - *Authority*: 全体構造設計、アーキテクチャレビュー、スコープ判断、方針指示、Lean Blueprint 策定。
+  - *Prohibition*: **常時 READ ONLY**。ファイル編集・Commit・Push・Deployは絶対禁止（設計のrepo反映はExecution AIが行う）。MASTER承認前のコード変更、自己判断による実装着手。
 - **Execution AI**:
-  - *Authority*: 調査、実装計画策定・提出、MASTER承認受領後の承認Scope内最小侵襲実装、自己テスト実行、差分照合、承認範囲内のCommit/Push。
+  - *Authority*: 調査、実装計画策定・提出、MASTER承認受領後の承認Scope内最小侵襲実装、自己テスト実行、差分照合、Auditor PASS後の自律Commit/Push。
   - *Prohibition*: 計画外変更、仕様の勝手な追加・変更、自己検品での完了報告、未承認のDeploy。
-- **Auditor AI**:
-  - *Authority*: READ ONLYによる調査、`git diff` 照合、テスト・検証コマンド実行（`run_command` 等）、PASS / REJECT の客観的判定。
-  - *Prohibition*: ファイル変更、Commit、Push、Deploy、忖度・推測によるPASS判定、自己検品。
+- **Independent Auditor AI**:
+  - *Authority*: READ ONLYによる独立査読、READ ONLY allowlist 方式による検証コマンド実行（`git diff`, `npm test` 等）、客観的証跡に基づく独立判定（PASS / REJECT）。
+  - *Prohibition*: ファイル編集、Git Commit/Push/Deploy、非 allowlist コマンド実行、忖度・推測によるPASS判定、自己検品、自身でのコード修正。
 - **District Provisioning AI**:
-  - *Authority*: 外部リソース受領後の自律的プロビジョニング手順執行、マスターデータ生成、受入ゲート検証。
-  - *Prohibition*: 外部リソース（Drive/LIFF/DNS等）の勝手な推測・作成、共通Runtime（`active/`）の改変、Auditor検品なしの完了判定。
+  - *Authority*: 外部リソース受領後の自律的プロビジョニング手順執行、マスターデータ生成、受入ゲート検証。書込対象は `data/**` および不可避な地区固有設定のみ。
+  - *Prohibition*: 外部リソース（Drive/LIFF/DNS等）の勝手な推測・作成、共通Runtime（`active/**`）の改変、**共通テスト（`tests/**`）の改変（共通テスト変更が必要な場合は Universal Gap として停止）**、Auditor検品なしの完了判定。
 
 ## 9. Data Protection — ABSOLUTE
 - Never modify production data outside approved scope.
@@ -93,13 +95,15 @@
 AI社員は作業フェーズに応じて、必ず以下の詳細規程・ワークフローを参照・遵守すること。
 - 最高位設計契約 (Supreme Design Contract): [docs/architecture/01_DESIGN_CONTRACT.md](docs/architecture/01_DESIGN_CONTRACT.md)
 - 現行アーキテクチャ定義: [docs/architecture/CURRENT_ARCHITECTURE.md](docs/architecture/CURRENT_ARCHITECTURE.md)
+- AI社員基盤・正本仕様書 (Canonical SSOT): [docs/ai-foundation.md](docs/ai-foundation.md)
 - 開発・完了報告手順 (8-Stage Protocol): [.agents/workflows/development/workflow.md](.agents/workflows/development/workflow.md)
 - 検証・検品規程 & HARD STOP条件 (V1〜V4): [.agents/rules/verification-gates.md](.agents/rules/verification-gates.md)
 - 権限境界・Scope最小化・詳細禁止事項: [.agents/rules/agent-authority.md](.agents/rules/agent-authority.md)
-- AI社員基盤・アーキテクチャ体系: [docs/ai-foundation.md](docs/ai-foundation.md)
 - リポジトリ内知識体系:
   - Supreme Contract: `docs/architecture/01_DESIGN_CONTRACT.md`
+  - Canonical SSOT: `docs/ai-foundation.md`
   - Rules: `.agents/rules/` および `AGENTS.md`
   - Skills: `.agents/skills/`
   - Workflows: `.agents/workflows/`
   - Docs: `docs/`
+
