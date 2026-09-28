@@ -1,4 +1,7 @@
 [
   ".agents/current-scope.json",
-  "docs/architecture/DESIGN_SYSTEM.md"
+  "scripts/validate-district-data-gate.mjs",
+  "tests/test_district_data_gate.mjs",
+  "tests/run_all_tests.mjs",
+  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
 ]
