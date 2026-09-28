@@ -12,7 +12,7 @@
 > 2. **所属支部と活動場所の完全分離**: 「支部の活動対象地域」は組織上の管理・観測対象地域であり、「党員のポスティング可能範囲」ではない。所属支部から活動場所を制限・限定・選択肢化してはならない。
 > 3. **配布実績（事実）の記録**: 「誰が・いつ・どこで・何枚配ったか」という発生した客観的事実のみを記録する。
 > 4. **Hアプリのランキングは動機付け機能**: 配布員本人のモチベーション・活動意欲を高めるための機能であり、管理・監督・評価のための機能ではない。評価スコア（`rankingScore` 等）は新設しない。
-> 5. **操作単位の冪等性と正当な再配布の保証**: `rowId`（町丁目識別子）と `requestId`（操作単位の冪等性キー）を厳格に分離し、正当な再配布を duplicate 扱いしない。
+> 5. **操作単位の冪等性と月次進捗保護**: `rowId`（町丁目識別子）と `requestId`（操作単位の冪等性キー）を厳格に分離し、同一 `requestId` の再送のみを duplicate 扱いとし、当月完了行に対する別 `requestId` は `alreadyCompleted` として既存実績を保護する（同月再配布なし、翌月新月シートで新規開始）。
 > 6. **基盤適合性**: Google Apps Script (GAS) および Google Spreadsheet (Pure DB) の実行環境・制約と整合した、実現可能な契約として定義する（非現実的なRDB前提の一般論を排除）。
 > 7. **AI Agent / MCP ガバナンスの確立**: 最小権限、読み書き分離、リポジトリ境界、人間による承認（Human-in-the-Loop）を強制する。
 
@@ -33,7 +33,7 @@
 10. [Dashboard Read API (全体観測契約)](#10-dashboard-read-api-全体観測契約)
 11. [Validation / Boundary Conditions (入力検証・境界条件)](#11-validation--boundary-conditions-入力検証境界条件)
 12. [State Machine (状態遷移マシン)](#12-state-machine-状態遷移マシン)
-13. [Idempotency / Concurrency (冪等性・並行性排他制御・正当な再配布の保証)](#13-idempotency--concurrency-冪等性並行性排他制御正当な再配布の保証)
+13. [Idempotency / Concurrency (冪等性・並行性排他制御・月次進捗保護)](#13-idempotency--concurrency-冪等性並行性排他制御月次進捗保護)
 14. [Error Contract (エラー契約・障害分類)](#14-error-contract-エラー契約障害分類)
 15. [Timeout / Retry (タイムアウト・リトライ契約 & 状態遷移マトリクス)](#15-timeout--retry-タイムアウトリトライ契約--状態遷移マトリクス)
 16. [Offline / Synchronization (オフライン同期・永続化保証)](#16-offline--synchronization-オフライン同期永続化保証)
@@ -512,12 +512,12 @@ Step 4: ドラフト保存 (READY_TO_SUBMIT) ──► 端末内に未送信 (UN
                                     【絶対不変条件】写真撮影完了だけでCOMPLETEDに先行遷移しない
 Step 5: 送信実行 (SENDING) ──────► 完了報告ボタン押下、updateRecordWithGPSPhoto リクエスト送信
 Step 6: Backend 排他ロック・永続化 ─► 15秒排他ロック下で検証、Drive保存、実績追記、PinStatus解除
-Step 7: 完了確定 (COMPLETED) ────► サーバー success: true 受信 かつ getRowStatus(rowId) === null を確認して確定
+Step 7: 完了確定 (COMPLETED) ────► サーバー success: true かつ accepted !== false の受諾成功を確認して確定 (getRowStatus(rowId) === null によりQueue消滅を検知するが、accepted: false / REJECTED の場合は非COMPLETEDとして未完了へ復帰)
 ```
 
 ---
 
-## 13. Idempotency / Concurrency (冪等性・並行性排他制御・正当な再配布の保証)
+## 13. Idempotency / Concurrency (冪等性・並行性排他制御・月次進捗保護)
 
 ### (1) `rowId` と `requestId` の厳格な責務分離
 システムの二重登録防止と正当な活動記録を両立させるため、以下の2つの識別子を厳格に区別する。
@@ -527,32 +527,39 @@ Step 7: 完了確定 (COMPLETED) ────► サーバー success: true 受�
 │ 識別子                        │ 責務・定義                                                   │
 ├──────────────────────────────┼─────────────────────────────────────────────────────────────┤
 │ **rowId (地域行識別子)**      │ 「どこで配るか」を表す地理的マスターの町丁目識別子。         │
-│                              │ ※ 1回の配布操作やトランザクションを一意に特定するものではない。│
+│                              │ ※ 1か月・1 rowId = 1行 の月次進捗台帳の行キー。             │
 ├──────────────────────────────┼─────────────────────────────────────────────────────────────┤
 │ **requestId (冪等性キー)**   │ 「1回の配布完了操作」を一意に特定する暗号学的UUID v4キー。   │
 │                              │ ※ 通信寸断や端末リトライによる同一操作の二重書込を防ぐ。    │
 └──────────────────────────────┴─────────────────────────────────────────────────────────────┘
 ```
 
-- **rowId を重複拒否キーにしてはならない原則 (ADR-005)**:
-  - `rowId` は町丁目の地理的位置情報であり、活動トランザクションの一意識別子ではない。
-  - 「同一 `rowId` のレコードが既に存在するから」という理由で後続の配布リクエストを一律拒否・破棄してはならない。
+- **月次進捗台帳における rowId と requestId の連携原則**:
+  - `rowId` は町丁目の固定行を特定するインデックスキー。
+  - `requestId` は端末の1回の送信操作を特定する冪等性照合キー。
+  - 同一 `requestId` による再送のみを `duplicate` として扱い、同一内容を再書込しない（DB書込0、Drive追加0）。
 
-### (2) 正当な再配布の保護 (Non-Duplicate Guarantee)
-- **原則**: **異なる `requestId` を持つ正当な再配布を duplicate 扱いしてはならない。**
-  - 同じ町丁目（同一 `rowId`）であっても、
-    * 別の日に再度ポスティングを行った場合
-    * 同月内に同一町丁目の未配布エリアに追加配布を行った場合
-    * 複数人の党員が手分けして同一町丁目を配布した場合
-    これらはすべて独立した新しい活動実績（`DistributionRecord`）であり、サーバーはこれを正常に受容・保存する。
-- **排除すべき誤った設計**:
-  - ❌ 「同一 `rowId` が既に完了（OK/OK）なら、いかなるリクエストも一律更新スキップする」という設計は、正当な追加配布や再配布を破壊するため禁止する。
+### (2) 月次初回完了固定および既存実績保護モデル
+- **原則**: **1か月・1 rowId = 1行。当月の初回完了のみを保存し、既存実績を保護する。**
+  - **同一 requestId 再送**:
+    * 通信リトライ等による同一操作の再送。
+    * `duplicate: true`, `accepted: true`, DB書込0, Drive追加0 で既存完了結果を返却。
+  - **別 requestId + 当月完了済み rowId**:
+    * 当月既に D列 `completedAt` が記録されている町丁目に対する別の完了リクエスト。
+    * `alreadyCompleted: true`, `accepted: true`, DB書込0, 新規追記0, 上書き0 で既存完了結果を返却（同月再配布なし）。
+  - **翌月の扱い**:
+    * 翌月は新しい月次シート（`配布実績YYYY-MM`）が作成され、全町丁目が「未配布」から新しく開始する。
+  - **旧月 Queue の終端**:
+    * 月跨ぎにより旧月の送信が遅れて届いた場合、サーバーは `success: true`, `accepted: false`, `code: "STALE_MONTH"` を返却。
+    * 当月シートへの書込は0件とし、端末側は Queue からアイテムを削除（終端）するが、Hアプリ側では完了（COMPLETED）扱いにせず未完了状態を維持する。
 
-### (3) 真の冪等性（Idempotency）保証アーキテクチャ (ADR-009)
+### (3) 冪等性（Idempotency）照合アーキテクチャ (Q列照合)
 - **対象**: 通信タイムアウト、回線切断、UI連打等によって、**「同一の `requestId`（または端末キュー内の同一未完了タスク）」が複数回送信された場合**のみ。
-- **2段階検証アーキテクチャ (Q列照合)**:
-  1. **第1段階 (Transient高速判定)**: `CacheService` による直近同一 `requestId` の照合。直近のリトライや連打による多重送信を瞬時に検知し、前回の確定レスポンス（`already_completed`）を即座に返却。
-  2. **第2段階 (Persistent確定判定)**: スプレッドシート `配布実績YYYY-MM` の Q列（`requestId`）を照合。キャッシュ喪失後や長時間の遅延リトライであっても、永続化済みレコードの二重登録を永続的に防止。
+- **Q列・D列による照合手順**:
+  1. **Step 1 (timestamp月判定)**: 有効な有限正数 timestamp に対し、当月と一致しない旧月リクエストは DB書込前に `accepted: false`, `code: "STALE_MONTH"` で即時終端（timestamp欠損・無効値はLegacy互換として月判定をスキップ）。
+  2. **Step 2 (requestId duplicate判定)**: スプレッドシート `配布実績YYYY-MM` の Q列（`requestId`）を照合。一致すれば DB/Drive 書込0 で `duplicate: true`, `accepted: true` を返却。
+  3. **Step 3 (completedAt alreadyCompleted判定)**: D列 `completedAt` が既に存在する場合、別 `requestId` であっても DB書込0 で `alreadyCompleted: true`, `accepted: true` を返却。
+  4. **Step 4 (初回通常保存)**: 当月・未完了 rowId の初回操作のみ、D〜Q列の14列（Q列に `requestId`）を一括永続化。
 
 ### (4) 並行性排他制御 (GAS Pessimistic Script Lock)
 - **排他制御方式**: Google Apps Script の `LockService.getScriptLock()` による悲観的スクリプト排他ロックを採用。
@@ -847,7 +854,7 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
 | **EXISTING** | LINE Token 認証 | `auth.js` にて LINE Profile API 照合および 30分キャッシュ実装済。 | トークン検証とキャッシュの維持。 | **完全整合 (GAPなし)** |
 | **EXISTING** | オフライン同期キュー | `db.js` にて IndexedDB (`PostingMapDB`) と指数バックオフ (10s〜60s) 実装済。 | 端末内ローカル退避と自動同期の維持。 | **完全整合 (GAPなし)** |
 | **EXISTING** | 原本＋月次シート運用 | `MonthlySheetResolver` により `配布実績YYYY-MM` を動的解決して更新。 | 月次シート分割の継承。 | **完全整合 (GAPなし)** |
-| **REQUIRED** | 操作単位の `requestId` 冪等性保証 | 現在は同一 `rowId` かつ GPS OK / 写真 OK で一律更新スキップ。`requestId` の照合未永続化。 | `requestId` による同一操作の重複排除と、**正当な再配布（異なる `requestId`）の完全受容**。 | **【GAPあり】**: 将来のBackend実装フェーズにおいて、`rowId` による一律スキップを廃止し、`requestId` 照合による真の冪等性制御への改修が必要。 |
+| **EXISTING** | 操作単位の `requestId` 冪等性保証 | `gps_service.js` および `gps_repository.js` にて Q列 `requestId` 重複排除と当月 `completedAt` 照合 (`alreadyCompleted`) 実装済。 | `requestId` による同一操作の重複排除と当月進捗保護。 | **完全整合 (GAPなし・Phase ②-B 実装済)** |
 | **REQUIRED** | 構造化ログ出力 | 現在は `console.log` によるテキストログ出力が中心。 | JSON 形式による構造化ログ（`traceId`, `latencyMs` 等）。 | **【GAPあり】**: 将来のロギング強化フェーズにて JSON 出力ラッパーの導入が必要。 |
 | **REQUIRED** | 厳格な境界値チェック | 現在は `rowIdNum < 1` 判定のみ。極端な枚数（> 10,000）のバリデーションは未実装。 | `INVALID_COUNT` 等の厳格な業務バリデーション。 | **【GAPあり】**: 将来のバリデーション層強化フェーズにて実装を検討。 |
 | **REQUIRED** | AI Agent / MCP ガバナンス | 現時点ではリポジトリ共通ルール（`AGENTS.md`）のみ存在。 | MCP レベルでの最小権限・READ/WRITE分離・PreToolUse遮断の設計契約。 | **【GAPあり】**: 将来の MCP エージェント基盤導入フェーズにおいて、本契約に沿ったサーバー・プロキシ構成を適用。 |

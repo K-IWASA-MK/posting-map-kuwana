@@ -193,8 +193,8 @@ RankingSummary (個人ランキング)
   配布実績は「1か月・1 rowId = 1行」として管理し、当月初回完了のみを記録する。同一町丁目の完了実績が既に存在する場合、別 `requestId` 操作は新規追記せず `alreadyCompleted: true` として返し既存実績を保護する（同月再配布なし、翌月に新しい月次シートで未配布から新しく開始する）。システム全体の監査・操作証跡（活動履歴シート・エラーログシート等）は追記専用（Append-Only）の不変ログとして保持する。
 - **Timestamp Winner (上書きルール) の採用禁止 (REJECT)**:
   タイムスタンプ比較によって既存の完了実績行を無秩序に上書き・更新することは厳禁。
-- **2段階冪等性照合 (Durable SSOT Authority / ADR-009)**:
-  同一 `requestId` の再送時は、CacheService（一次キャッシュ）およびスプレッドシート Q列（`requestId`）と照合し、新規書き込みをスキップして既存レコード情報を返却する（HTTP 200, duplicate: true）。
+- **Q列・D列による冪等性・進捗保護照合 (Durable SSOT Authority / ADR-009)**:
+  同一 `requestId` の再送時は、スプレッドシート Q列（`requestId`）と照合し、新規書き込みをスキップして既存レコード情報を返却する（HTTP 200, duplicate: true）。また、当月完了済みの町丁目（D列 `completedAt` 存在）に対する別 `requestId` 操作は上書きせず `alreadyCompleted: true` として返し、既存実績を保護する。
 - **配布完了確定の厳格な条件 (ADR-011 / ADR-012 / ADR-013)**:
   写真撮影・GPS取得の完了はあくまで下書き確認（READY_TO_SUBMIT / DRAFT）であり、この時点で `p.isDone = true` を確定させてはならない。真の配布完了（COMPLETED）は、**Backend永続化および受諾成功（Spreadsheet [配布実績YYYY-MM] への書き込み完了 / getRowStatus === null かつ accepted !== false）** のみを確定条件とする。非受諾終端（accepted: false / STALE_MONTH）時はキューから削除されるが未完了を維持する。
 

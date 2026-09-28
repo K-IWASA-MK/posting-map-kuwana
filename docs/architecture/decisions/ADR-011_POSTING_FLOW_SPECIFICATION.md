@@ -92,11 +92,12 @@ READ ONLY監査において、現行コードベース（`active/dashboard/`）�
   - 提出せずにモーダルを閉じた場合やキャンセル時は、データ本体の `p.isDone` が元から `false` であるため、未提出ピンが配布済みとして誤認される可能性を物理的にゼロとする。
   - Backend保存成功（`status === null`）時に初めて、データ本体の `p.isDone = true` を正式確定し、`isReadyToSubmit` を消去し、`globalPinStatus.completed` への追加およびピンロックを実行する。
 
-### (3) `getRowStatus === null` の厳密な意味の確定
-現行 `db.js` の実装に基づき、`getRowStatus` の返却値の意味を以下のように確定する：
-- `getRowStatus(rowId)` は、IndexedDB の `syncQueue` を探索し、対象アイテムが存在する間は `'PENDING'`, `'SYNCING'`, `'RETRY'` を返す。
-- アイテムがキューから削除（`dequeueSync`）されるのは、**`callApiPost('updateRecordWithGPSPhoto')` が HTTP 200 かつ `res.success === true` で正常終了した瞬間のみ** である。
-- したがって、`enqueueSync` 投入後に `getRowStatus(rowId)` が `null` となることは、**「Backend永続化が100%成功し、キューから正常消化されたこと」を一意かつ厳密に意味する**。
+### (3) Queue消滅と完了確定条件（COMPLETED）の厳密な定義
+現行 `db.js` および `app.js` の実装に基づき、Queue消滅と完了確定の因果関係を以下のように確定する：
+- `getRowStatus(rowId)` は、IndexedDB の `syncQueue`（当月Queue）を探索し、対象アイテムが存在する間は `'PENDING'`, `'SYNCING'`, `'RETRY'` を返す。
+- アイテムがキューから削除（`dequeueSync`）されるのは、`callApiPost('updateRecordWithGPSPhoto')` が `res.success === true` で応答した際である。
+- ただし、旧月送信等による `res.accepted === false`（STALE_MONTH 等）の場合も再試行不要として `dequeueSync` される。この場合、対象ピンは `p.syncStatus = 'REJECTED'` となり、COMPLETED には昇格せず通常未完了へ復帰する。
+- したがって、**Queue消滅（`getRowStatus === null`）単独ではCOMPLETED確定条件にならず、「Backend受諾成功（`res.success === true && res.accepted !== false`）」を確認した瞬間のみが真の完了確定（COMPLETED）である**。
 
 ### (4) Phase境界の厳格な分離
 

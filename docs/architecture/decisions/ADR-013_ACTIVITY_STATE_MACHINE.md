@@ -108,7 +108,7 @@ UI・キュー・API・DB間で以下の状態遷移モデル（State Transition
 
 ### (3) 完了確定条件 (Backend Persistence Confirmed as Single Source of Truth)
 
-**配布完了（COMPLETED）の唯一の確定条件は、「Backend永続化成功（Spreadsheet [配布実績YYYY-MM] への書き込み完了）」とする。**
+**配布完了（COMPLETED）の唯一の確定条件は、「Backend永続化成功および受諾確認（`res.success === true && res.accepted !== false`）」とする。**
 
 以下の状態はいずれも完了（COMPLETED）ではない：
 1. テンキーで枚数を確定した状態 ≠ COMPLETED
@@ -116,8 +116,9 @@ UI・キュー・API・DB間で以下の状態遷移モデル（State Transition
 3. IndexedDB の送信キューに登録された状態 ≠ COMPLETED (PENDING)
 4. HTTP リクエストを送信中の状態 ≠ COMPLETED (SUBMITTING)
 5. オフラインで端末内に退避された状態 ≠ COMPLETED (PENDING)
+6. STALE_MONTH 等によりサーバーで非受諾となった状態 (`res.accepted === false`) ≠ COMPLETED (キュー終端だが未完了維持)
 
-Backend API からの成功応答（`res.success === true`）を受信し、Durable Queue からレコードが安全にデキュー（`dequeueSync` / `getRowStatus === null`）された瞬間にのみ、UIおよびメモリの `p.isDone = true` を確定させ、完了ピン（橙色ロック）へと昇格させる。
+Backend API からの受諾成功応答（`res.success === true && res.accepted !== false`）を受信し、Durable Queue からレコードが安全にデキュー（`dequeueSync` / `getRowStatus === null`）された瞬間にのみ、UIおよびメモリの `p.isDone = true` を確定させ、完了ピン（橙色ロック）へと昇格させる（旧月送信等の `res.accepted === false` / `STALE_MONTH` の場合は、Queueから削除されるが COMPLETED には昇格せず通常未完了へ復帰する）。
 
 ---
 
