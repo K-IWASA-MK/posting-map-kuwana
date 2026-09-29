@@ -44,135 +44,58 @@ function renderAreas() {
   }
 }
 
-// ── 自治体選挙統計SSOTデータ取得 & 投票率判定（Manager Dashboard完全準拠・Universal Engine契約） ──
-let electionHistoryCache = null;
-async function fetchElectionHistory() {
-  if (electionHistoryCache) return electionHistoryCache;
-  try {
-    const res = await fetch('../../data/election_history.json');
-    if (res.ok) {
-      electionHistoryCache = await res.json();
-    }
-  } catch (err) {
-    console.warn('[H-App] Failed to load election_history.json:', err);
-  }
-  return electionHistoryCache;
-}
-
-function getMunicipalityTurnout(electionData, cityName) {
-  const isAll = !cityName || cityName === 'ALL';
-  const targetName = isAll ? '全域' : cityName;
-
-  if (!electionData || !Array.isArray(electionData.elections) || electionData.elections.length === 0) {
-    return {
-      name: targetName,
-      electionName: '選挙データ',
-      turnout: '--'
-    };
-  }
-
-  const elections = electionData.elections;
-  const currentElection = elections[0] || {};
-
-  const getCityValue = (election) => {
-    if (!election) return null;
-    if (election.turnout !== undefined) return Number(election.turnout);
-    if (isAll) return Number(election.districtTurnout !== undefined ? election.districtTurnout : (election.district3 !== undefined ? election.district3 : 0));
-    const munis = election.municipalities || {};
-    if (munis[cityName] !== undefined) return Number(munis[cityName]);
-    const cleanTarget = cityName.replace(/（一部）/g, '').replace(/市|町|村|郡/g, '').trim();
-    for (const [key, val] of Object.entries(munis)) {
-      const cleanKey = key.replace(/（一部）/g, '').replace(/市|町|村|郡/g, '').trim();
-      if (cleanKey && (cleanTarget.includes(cleanKey) || cleanKey.includes(cleanTarget))) {
-        return Number(val);
-      }
-    }
-    if (Array.isArray(election.municipalitiesTurnout)) {
-      const found = election.municipalitiesTurnout.find(m => {
-        const mClean = (m.name || '').replace(/（一部）/g, '').trim();
-        return cityName.includes(mClean) || mClean.includes(cityName);
-      });
-      if (found) return Number(found.turnout);
-    }
-    return Number(election.districtTurnout !== undefined ? election.districtTurnout : (election.district3 !== undefined ? election.district3 : 0));
-  };
-
-  const currentVal = getCityValue(currentElection);
-  return {
-    electionName: currentElection.electionName || '選挙',
-    turnout: currentVal !== null ? currentVal.toFixed(2) : '--'
-  };
-}
-
 // Open point detail modal
 function openPointDetailModal(rowId) {
   if (!allPoints) {
     allPoints = [];
   }
   let p = allPoints.find(point => point.rowId === rowId);
-  const csvRow = Array.isArray(window.masterPins)
-    ? window.masterPins.find(item => String(item.rowId) === String(rowId))
-    : null;
 
   if (!p) {
     // 【Hアプリ専用フォールバック】allPointsが未初期化、または対象データが存在しない場合
     // initMainMap完了済みの masterPins から構造データを復元する。
     // ※実績データはスプレッドシートのもの（Dashboardが見るもの）と混同しないよう、初期状態をセット。
-    if (csvRow) {
-      p = {
-        // 基本・位置情報 (CSVマッピング修正)
-        rowId: csvRow.rowId,
-        address: `${csvRow.city_name} ${csvRow.town_name}`,
-        cityName: csvRow.city_name,
-        townName: csvRow.town_name,
-        lat: csvRow.latitude,
-        latitude: csvRow.latitude,
-        lng: csvRow.longitude,
-        longitude: csvRow.longitude,
-        households: csvRow.households,
-        population: csvRow.population,
+    if (Array.isArray(window.masterPins)) {
+      const csvRow = window.masterPins.find(item => String(item.rowId) === String(rowId));
+      if (csvRow) {
+        p = {
+          // 基本・位置情報 (CSVマッピング修正)
+          rowId: csvRow.rowId,
+          address: `${csvRow.city_name} ${csvRow.town_name}`,
+          cityName: csvRow.city_name,
+          townName: csvRow.town_name,
+          lat: csvRow.latitude,
+          latitude: csvRow.latitude,
+          lng: csvRow.longitude,
+          longitude: csvRow.longitude,
+          
+          // 業務ステータス初期化
+          isDone: false,
+          count: 0,
+          staffName: '',
+          staffId: '',
+          completedAt: '',
+          total: 0,
+          done: 0,
+          status: '未着手',
 
-        // 業務ステータス初期化
-        isDone: false,
-        count: 0,
-        staffName: '',
-        staffId: '',
-        completedAt: '',
-        total: 0,
-        done: 0,
-        status: '未着手',
-
-        // UI・同期状態管理（正常系動作に必須）
-        syncStatus: '',
-        photoStatus: 'NONE',
-        photoBase64: null,
-        photoUrl: '',
-        gpsStatus: 'NO',
-        gps: '',
-        gpsLog: '',
-        accuracy: null
-      };
-      allPoints.push(p);
+          // UI・同期状態管理（正常系動作に必須）
+          syncStatus: '',
+          photoStatus: 'NONE',
+          photoBase64: null,
+          photoUrl: '',
+          gpsStatus: 'NO',
+          gps: '',
+          gpsLog: '',
+          accuracy: null
+        };
+        allPoints.push(p);
+      }
     }
-  } else if (csvRow) {
-    if (p.households === undefined || p.households === null) p.households = csvRow.households;
-    if (p.population === undefined || p.population === null) p.population = csvRow.population;
-    if (!p.cityName && csvRow.city_name) p.cityName = csvRow.city_name;
   }
 
   if (!p) {
     return;
-  }
-
-  // 投票率データ非同期遅延時のリフレッシュバインド
-  if (!electionHistoryCache) {
-    fetchElectionHistory().then(() => {
-      const modal = $('detail-modal');
-      const modalContent = $('detail-modal-content');
-      if (modal && !modal.classList.contains('opacity-0') && modalContent && window.currentPointDetailRowId === rowId) {
-        modalContent.innerHTML = renderDetailModalContent(p);
-      }
-    });
   }
 
   window.currentPointDetailRowId = rowId;
@@ -273,26 +196,6 @@ function renderDetailModalContent(p) {
 
   // 「大字」除去 + 余分な空白整理
   const cleanAddr = (p.address || '').replace(/大字/g, '').replace(/\s+/g, ' ').trim();
-
-  // 統計3項目（世帯数・人口・自治体投票率）の算出（Manager Dashboard完全準拠・Universal Engine契約）
-  const csvRow = Array.isArray(window.masterPins)
-    ? window.masterPins.find(item => String(item.rowId) === String(p.rowId))
-    : null;
-  const rawHouseholds = p.households != null ? p.households : (csvRow ? csvRow.households : null);
-  const rawPopulation = p.population != null ? p.population : (csvRow ? csvRow.population : null);
-
-  const householdsVal = rawHouseholds != null && !isNaN(rawHouseholds)
-    ? `${Number(rawHouseholds).toLocaleString()}<span style="font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, 0.45); margin-left: 2px;">世帯</span>`
-    : '--';
-  const populationVal = rawPopulation != null && !isNaN(rawPopulation)
-    ? `${Number(rawPopulation).toLocaleString()}<span style="font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, 0.45); margin-left: 2px;">人</span>`
-    : '--';
-
-  const cityName = p.cityName || (csvRow ? csvRow.city_name : '') || window.currentCityDetailAreaName || '';
-  const turnoutData = getMunicipalityTurnout(electionHistoryCache, cityName);
-  const electionNameStr = turnoutData.electionName || '自治体 選挙データ';
-  const turnoutValStr = turnoutData.turnout !== '--' ? `${turnoutData.turnout}%` : '--';
-
   return `
     <div style="display: flex; flex-direction: column; gap: 12px; width: 100%; box-sizing: border-box;">
       <!-- 1行目: 住所バッジ（中央寄せ） -->
@@ -301,26 +204,6 @@ function renderDetailModalContent(p) {
           🏠 ${escapeHtml(cleanAddr)}
         </div>
         ${p.memo ? `<div class="text-xs text-white/50 bg-white/5 rounded-xl p-3 border border-white/5 select-text w-full text-center mt-1">${escapeHtml(p.memo)}</div>` : ''}
-      </div>
-
-      <!-- 2行目: 統計3項目（世帯数・人口・自治体投票率: Solid Dark Surface契約） -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%;">
-        <div style="background: var(--apple-surface, #141722); border: 1px solid var(--apple-border-solid, rgba(255, 255, 255, 0.08)); border-radius: 16px; padding: 10px 12px; text-align: center;">
-          <span style="font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.45); display: block; margin-bottom: 2px;">世帯数 (国勢調査)</span>
-          <div style="font-size: 16px; font-weight: 900; font-family: monospace; color: #FFFFFF;">${householdsVal}</div>
-        </div>
-        <div style="background: var(--apple-surface, #141722); border: 1px solid var(--apple-border-solid, rgba(255, 255, 255, 0.08)); border-radius: 16px; padding: 10px 12px; text-align: center;">
-          <span style="font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.45); display: block; margin-bottom: 2px;">人口 (国勢調査)</span>
-          <div style="font-size: 16px; font-weight: 900; font-family: monospace; color: #FFFFFF;">${populationVal}</div>
-        </div>
-      </div>
-
-      <div style="background: var(--apple-surface, #141722); border: 1px solid var(--apple-border-solid, rgba(255, 255, 255, 0.08)); border-radius: 16px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; width: 100%; box-sizing: border-box;">
-        <div style="display: flex; flex-direction: column; text-align: left;">
-          <span style="font-size: 11px; font-weight: 900; color: rgba(255, 255, 255, 0.85);">${escapeHtml(electionNameStr)}</span>
-          <span style="font-size: 9px; font-weight: 700; color: rgba(255, 255, 255, 0.45);">自治体 前回投票率</span>
-        </div>
-        <span style="font-size: 16px; font-weight: 900; font-family: monospace; color: #0A84FF;">${turnoutValStr}</span>
       </div>
 
       ${!p.isDone ? `
@@ -1046,7 +929,6 @@ window.initMainMap = function() {
     if (window.masterMarkers.length > 0) return;
 
     window.masterPins = pins;
-    fetchElectionHistory();
 
     // 初回表示時かつ currentMapState が未確定の場合、pins のバウンディングボックスまたは先頭ピンで自動フィット
     if (!window.currentMapState && pins.length > 0) {

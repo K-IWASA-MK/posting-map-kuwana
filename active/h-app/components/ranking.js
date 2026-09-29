@@ -36,7 +36,7 @@ window.renderRankingCard = function(rankingData, myStaffId) {
     }
 
     return `
-      <div ${meBg} style="background: var(--apple-surface); border: 1px solid var(--apple-border-solid);" class="flex items-center justify-between p-4 rounded-2xl">
+      <div ${meBg} class="flex items-center justify-between p-4 rounded-2xl border border-white/5 bg-[#1C1C1E]/50">
         <div class="flex items-center gap-3">
           ${rankBadgeHtml}
           <span class="text-sm font-black font-mono truncate max-w-[140px] ${nameColor}">${(item.staffId || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
