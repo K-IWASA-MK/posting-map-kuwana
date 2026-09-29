@@ -4,6 +4,17 @@ import path from 'path';
 const deploymentPath = path.join(process.cwd(), 'deployment.json');
 const deploymentData = JSON.parse(fs.readFileSync(deploymentPath, 'utf8'));
 const ssotUrl = deploymentData?.resources?.webAppUrl || deploymentData?.webAppUrl;
+const districtId = String(
+  deploymentData?.districtId ||
+  deploymentData?.resources?.districtId ||
+  ''
+).trim();
+
+if (!districtId) {
+  console.error('❌ districtId is missing in deployment.json');
+  process.exit(1);
+}
+
 
 console.log('=== GAS Endpoint Production Verification Suite ===\n');
 
@@ -42,7 +53,10 @@ async function runValidation() {
     const res2 = await fetch(ssotUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'getMapsApiKey' }),
+      body: JSON.stringify({
+        action: 'getMapsApiKey',
+        districtId
+      }),
       redirect: 'follow'
     });
     const responseTime2 = Date.now() - startTime2;
