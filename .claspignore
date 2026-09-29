@@ -6,8 +6,8 @@ node_modules/
 package.json
 package-lock.json
 
-# Ignore everything in dashboard
-dashboard/**
+# Ignore H-App frontend files
+h-app/**
 
 # Ignore manager frontend files
 manager/**
