@@ -115,8 +115,8 @@ console.log('  ✅ Gate 2 PASS: API errors & Authentication failure の機械的
 // ─── GATE 3: Queue backlog & Duplicate events 監視可能性検証 ───
 console.log('\n[Gate 3] Queue backlog & Duplicate events 監視可能性検証...');
 
-const dbPath = path.join(REPO_ROOT, 'active/dashboard/db.js');
-assert.ok(fs.existsSync(dbPath), 'active/dashboard/db.js must exist');
+const dbPath = path.join(REPO_ROOT, 'active/h-app/db.js');
+assert.ok(fs.existsSync(dbPath), 'active/h-app/db.js must exist');
 const dbContent = fs.readFileSync(dbPath, 'utf8');
 
 // 1. Queue backlog: DurableQueue 構造および滞留追跡関数
@@ -213,8 +213,8 @@ for (const phase of incidentPhases) {
 }
 
 // 2. Map failure: Google Maps API 初期化ガード契約
-const renderPath = path.join(REPO_ROOT, 'active/dashboard/render.js');
-assert.ok(fs.existsSync(renderPath), 'active/dashboard/render.js must exist');
+const renderPath = path.join(REPO_ROOT, 'active/h-app/render.js');
+assert.ok(fs.existsSync(renderPath), 'active/h-app/render.js must exist');
 const renderContent = fs.readFileSync(renderPath, 'utf8');
 
 assert.ok(

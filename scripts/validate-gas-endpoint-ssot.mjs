@@ -92,22 +92,22 @@ if (!fs.existsSync(activeConfigPath)) {
 }
 
 // active/ ディレクトリ内に config.js が残存していないことの不可侵性検証
-const forbiddenActiveConfig = path.join(rootDir, 'active', 'dashboard', 'config.js');
+const forbiddenActiveConfig = path.join(rootDir, 'active', 'h-app', 'config.js');
 if (fs.existsSync(forbiddenActiveConfig)) {
-  console.error(`❌ Architecture Violation: active/dashboard/config.js must be removed! Config belongs to data/config.js only.`);
+  console.error(`❌ Architecture Violation: active/h-app/config.js must be removed! Config belongs to data/config.js only.`);
   hasMismatch = true;
 } else {
-  console.log(`✅ PASS: active/dashboard/ is clean (zero config files).`);
+  console.log(`✅ PASS: active/h-app/ is clean (zero config files).`);
 }
 
-const appJsPath = path.join(rootDir, 'active', 'dashboard', 'app.js');
+const appJsPath = path.join(rootDir, 'active', 'h-app', 'app.js');
 if (fs.existsSync(appJsPath)) {
   const appContent = fs.readFileSync(appJsPath, 'utf8');
   if (appContent.includes('https://script.google.com/macros/s/')) {
-    console.error(`❌ Hardcoded GAS Endpoint in active/dashboard/app.js: Found script.google.com fallback!`);
+    console.error(`❌ Hardcoded GAS Endpoint in active/h-app/app.js: Found script.google.com fallback!`);
     hasMismatch = true;
   } else {
-    console.log(`✅ PASS: active/dashboard/app.js has no hardcoded GAS fallback URL.`);
+    console.log(`✅ PASS: active/h-app/app.js has no hardcoded GAS fallback URL.`);
   }
 }
 

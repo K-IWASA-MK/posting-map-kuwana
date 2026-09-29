@@ -3,7 +3,7 @@
 - **Status**: ACCEPTED (OFFICIAL SPECIFICATION)
 - **Date**: 2026-09-25
 - **Deciders**: Universal POSTING MAP Architecture Board / MASTER
-- **Consulted**: `AGENTS.md`, `docs/architecture/01_DESIGN_CONTRACT.md`, `docs/architecture/decisions/ADR-011_POSTING_FLOW_SPECIFICATION.md`, `docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md`, `active/dashboard/`, `active/business/`
+- **Consulted**: `AGENTS.md`, `docs/architecture/01_DESIGN_CONTRACT.md`, `docs/architecture/decisions/ADR-011_POSTING_FLOW_SPECIFICATION.md`, `docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md`, `active/h-app/`, `active/business/`
 
 ---
 

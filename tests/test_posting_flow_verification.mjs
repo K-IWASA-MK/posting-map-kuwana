@@ -17,10 +17,10 @@ import path from 'node:path';
 const rootDir = process.cwd();
 
 // テスト対象ファイル
-const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
-const renderJsPath = path.join(rootDir, 'active/dashboard/render.js');
-const dbJsPath = path.join(rootDir, 'active/dashboard/db.js');
-const apiJsPath = path.join(rootDir, 'active/dashboard/modules/api.js');
+const appJsPath = path.join(rootDir, 'active/h-app/app.js');
+const renderJsPath = path.join(rootDir, 'active/h-app/render.js');
+const dbJsPath = path.join(rootDir, 'active/h-app/db.js');
+const apiJsPath = path.join(rootDir, 'active/h-app/modules/api.js');
 const v2ApiPath = path.join(rootDir, 'active/api/v2_api.js');
 const gpsServicePath = path.join(rootDir, 'active/business/gps/gps_service.js');
 const gpsRepositoryPath = path.join(rootDir, 'active/business/gps/gps_repository.js');

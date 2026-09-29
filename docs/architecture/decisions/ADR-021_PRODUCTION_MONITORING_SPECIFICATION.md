@@ -67,7 +67,7 @@ POSTING MAP Universal Engine は、フィールドオペレーション（現場
 
 #### (2) queue backlog 監視運用
 - **検知メカニズム**:
-  - Hアプリ（`active/dashboard/db.js`）の `syncQueue`（IndexedDB）において、`getQueue()` で取得される未送信件数を追跡。
+  - Hアプリ（`active/h-app/db.js`）の `syncQueue`（IndexedDB）において、`getQueue()` で取得される未送信件数を追跡。
   - `updateUISyncStatus()` を通じて、未送信件数が 0 より大きい場合はヘッダー等に同期中バッジを表示。
 - **一次対応**:
   1. 現場作業者の通信状態（電波微弱、機内モード、Wi-Fi接続不良）を確認。

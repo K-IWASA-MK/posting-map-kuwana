@@ -39,8 +39,8 @@ console.log("  ✅ GATE 1 PASS: 6大 Cutover Criteria および安全停止契�
 
 // ─── Gate 2: Freeze & DurableQueue Preservation Contract ──────────
 console.log("\n▶ [GATE 2] Freeze & DurableQueue Preservation Contract");
-const dbJsPath = path.join(REPO_ROOT, 'active/dashboard/db.js');
-assert.ok(fs.existsSync(dbJsPath), "active/dashboard/db.js must exist for client queue");
+const dbJsPath = path.join(REPO_ROOT, 'active/h-app/db.js');
+assert.ok(fs.existsSync(dbJsPath), "active/h-app/db.js must exist for client queue");
 const dbJsContent = fs.readFileSync(dbJsPath, 'utf8');
 
 // クライアント側 DurableQueue が通信失敗時に安全に保留する仕組みを持つことの確認

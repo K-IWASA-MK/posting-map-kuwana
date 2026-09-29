@@ -22,12 +22,12 @@
 | **GASコア・運用基盤 (`active/gas/`)** | 9ファイル | **2,167行** | 71,947 bytes | GAS / JS (バッチ・展開・移行) |
 | **インフラアダプター (`active/infrastructure/`)** | 4ファイル | **321行** | 10,678 bytes | GAS / JS (Spreadsheet, Drive等) |
 | **GASマニフェスト (`active/appsscript.json`)** | 1ファイル | **16行** (※2) | 495 bytes | JSON (OAuth Scopes, V8) |
-| **【ゾンビコード】スプシUIスクリプト** | 1ファイル | **601行** (※1) | 21,253 bytes | `active/dashboard/v2_ui.js` |
+| **【ゾンビコード】スプシUIスクリプト** | 1ファイル | **601行** (※1) | 21,253 bytes | `active/h-app/v2_ui.js` |
 | **`active/` 配下 小計 (テキスト全54ファイル)** | **55ファイル** (54テキスト + 1画像) | **17,292行** (※3) | 724,320 bytes | 実行アプリケーション中核 |
 | **マスターデータ・設定 (`data/`)** | 12ファイル (7ルート + 5e-Stat) | 428行 + 1MB GeoJSON | 1,028,843 bytes | CSV, GeoJSON, JSON |
 | **リポジトリ全体 (テスト・スクリプト等含む)** | **175ファイル** (144 Git追跡) | — | — | 全体資産 |
 
-> ※1: `active/dashboard/v2_ui.js`（601行）は、スプレッドシートのメニュー・UI操作を行うコンテナバウンドGAS用スクリプトであり、フロントエンドコードではないため別枠で計上（Hアプリ 5,572行 + ゾンビコード 601行 = 6,173行）。  
+> ※1: `active/h-app/v2_ui.js`（601行）は、スプレッドシートのメニュー・UI操作を行うコンテナバウンドGAS用スクリプトであり、フロントエンドコードではないため別枠で計上（Hアプリ 5,572行 + ゾンビコード 601行 = 6,173行）。
 > ※2: `active/appsscript.json` は末尾に改行コードが無いため、`wc -l`（改行数）では 16行、論理行数では 17行となる（本書では標準 `wc -l` の 16行で集計）。  
 > ※3: 内訳合計: 5,572 (Hアプリ) + 3,892 (Manager) + 7,227 (Backend 39ファイル小計: 1,083+3,640+2,167+321+16) + 601 (v2_ui.js) = **17,292行** となり、`wc -l` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
 
@@ -68,25 +68,25 @@
 - 🟡 **再構築**: Universal POSTING MAP（単独アプリ・単独リポジトリ・単独ドメイン）に適合させるための構造再設計。
 - 🔵 **要検証**: 現場での利用実態・非機能要件・負荷耐性の検証が必要な項目（推測での分類禁止）。
 
-### (1) Frontend — Hアプリ (`active/dashboard/`, `index.html`)
+### (1) Frontend — Hアプリ (`active/h-app/`, `index.html`)
 
 | ファイル / コンポーネント | 行数 | 分類 | 分類理由・現物根拠 |
 |---|---|---|---|
 | `index.html` (ルート) | 43 | 🟡 再構築 | LIFF初期化とリダイレクトを担う。Universal共通エントリとして単一ドメインルーティングへ最適化が必要。 |
-| `active/dashboard/index.html` | 354 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
-| `active/dashboard/style.css` | 618 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
-| `active/dashboard/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/dashboard/app.js` | 2,278 | 🟡 再構築 | アプリ起動・Optimistic First Paint・地図制御・イベント管理。長大かつ一部管理思想が混在しているため、モジュール分割再構築が必要。 |
-| `active/dashboard/render.js` | 1,129 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
-| `active/dashboard/db.js` | 321 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。現場作業継続の重要基盤。 |
-| `active/dashboard/components/navigation.js` | 52 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
-| `active/dashboard/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |
-| `active/dashboard/components/staff.js` | 82 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）。 |
-| `active/dashboard/modules/api.js` | 87 | 🟡 再構築 | `PMS_CLIENT_CONFIG.api.gasWebAppUrl` 経由のPOST通信。認証ヘッダー・共通エラーハンドリングの標準化が必要。 |
-| `active/dashboard/modules/device.js` | 122 | 🟢 継承 | 高精度GPS取得（`getGPSLocation`）および写真撮影・クライアント側画像圧縮（`compressImage`）。 |
-| `active/dashboard/modules/navigation.js` | 136 | 🟢 継承 | 画面遷移（`switchPage`）・スクロール位置保持・ナビ切り替え。 |
-| `active/dashboard/v2_ui.js` | 601 | 🔴 廃止 | **【ゾンビコード】** `SpreadsheetApp.getUi()`, `onOpen()` 等を含むコンテナバウンドGAS用UIスクリプト。フロントエンドディレクトリに誤配置されており、全編廃止対象。 |
-| `active/dashboard/assets/icon180-v2.png` | 31KB | 🟢 継承 | PWA / LIFF 用公式アプリアイコン。 |
+| `active/h-app/index.html` | 354 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
+| `active/h-app/style.css` | 618 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
+| `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
+| `active/h-app/app.js` | 2,278 | 🟡 再構築 | アプリ起動・Optimistic First Paint・地図制御・イベント管理。長大かつ一部管理思想が混在しているため、モジュール分割再構築が必要。 |
+| `active/h-app/render.js` | 1,129 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
+| `active/h-app/db.js` | 321 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。現場作業継続の重要基盤。 |
+| `active/h-app/components/navigation.js` | 52 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
+| `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |
+| `active/h-app/components/staff.js` | 82 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）。 |
+| `active/h-app/modules/api.js` | 87 | 🟡 再構築 | `PMS_CLIENT_CONFIG.api.gasWebAppUrl` 経由のPOST通信。認証ヘッダー・共通エラーハンドリングの標準化が必要。 |
+| `active/h-app/modules/device.js` | 122 | 🟢 継承 | 高精度GPS取得（`getGPSLocation`）および写真撮影・クライアント側画像圧縮（`compressImage`）。 |
+| `active/h-app/modules/navigation.js` | 136 | 🟢 継承 | 画面遷移（`switchPage`）・スクロール位置保持・ナビ切り替え。 |
+| `active/h-app/v2_ui.js` | 601 | 🔴 廃止 | **【ゾンビコード】** `SpreadsheetApp.getUi()`, `onOpen()` 等を含むコンテナバウンドGAS用UIスクリプト。フロントエンドディレクトリに誤配置されており、全編廃止対象。 |
+| `active/h-app/assets/icon180-v2.png` | 31KB | 🟢 継承 | PWA / LIFF 用公式アプリアイコン。 |
 
 ### (2) Frontend — Manager Dashboard (`active/manager/`)
 
@@ -197,7 +197,7 @@
    - `active/business/transfer/transfer_service.js`（358行）および `page-storage-list`。
    - 検証項目: LINE Messaging API によるプッシュ通知送信の月間クォータ消費、送信失敗時のリトライ・フォールバック仕様、当事者間連絡の成立実態。
 3. **境界GeoJSON描画パフォーマンス（モバイル低スペック端末耐性）**:
-   - `data/boundaries.geojson`（1.0MB）および `active/dashboard/render.js`。
+   - `data/boundaries.geojson`（1.0MB）および `active/h-app/render.js`。
    - 検証項目: スマートフォン（特に低スペック機や通信制限下）において、Google Maps 上でのポリゴン描画負荷、ズーム操作時のFPS低下、メモリ消費量の限界値。
 4. **過去選挙実績データ（`election_history.json`）の機能的有用性**:
    - `data/election_history.json`（58行）。

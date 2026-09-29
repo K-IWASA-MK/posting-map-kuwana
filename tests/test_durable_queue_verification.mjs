@@ -23,9 +23,9 @@ import path from 'node:path';
 
 const rootDir = process.cwd();
 
-const dbJsPath = path.join(rootDir, 'active/dashboard/db.js');
-const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
-const renderJsPath = path.join(rootDir, 'active/dashboard/render.js');
+const dbJsPath = path.join(rootDir, 'active/h-app/db.js');
+const appJsPath = path.join(rootDir, 'active/h-app/app.js');
+const renderJsPath = path.join(rootDir, 'active/h-app/render.js');
 const designContractPath = path.join(rootDir, 'docs/architecture/01_DESIGN_CONTRACT.md');
 const apiContractPath = path.join(rootDir, 'docs/api/API_CONTRACT.md');
 const v2ApiPath = path.join(rootDir, 'active/api/v2_api.js');

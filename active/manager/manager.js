@@ -2676,8 +2676,8 @@ function generateRecordsReportPdfHtml(state) {
   }
 
   const logoUrl = (typeof window !== 'undefined' && window.location)
-    ? `${window.location.origin}/active/dashboard/assets/icon180-v2.png`
-    : '/active/dashboard/assets/icon180-v2.png';
+    ? `${window.location.origin}/active/h-app/assets/icon180-v2.png`
+    : '/active/h-app/assets/icon180-v2.png';
 
   return `<!DOCTYPE html>
 <html lang="ja">

@@ -18,9 +18,9 @@ function startLocalServer() {
     const server = http.createServer((req, res) => {
       let relativePath = req.url.split('?')[0];
       if (relativePath.startsWith('/app/')) {
-        relativePath = relativePath.replace('/app/', '/active/dashboard/');
+        relativePath = relativePath.replace('/app/', '/active/h-app/');
       } else if (relativePath === '/app') {
-        relativePath = '/active/dashboard/index.html';
+        relativePath = '/active/h-app/index.html';
       } else if (relativePath.startsWith('/business/')) {
         relativePath = relativePath.replace('/business/', '/active/business/');
       }

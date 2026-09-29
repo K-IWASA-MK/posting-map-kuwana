@@ -48,9 +48,9 @@ npm run test:dashboard:gate
   - 座標データに `NaN` / `null` / `0` などの異常値が混入してもクラッシュせず防御されること
 
 ### Phase 6: Hアプリ非干渉 & アーキテクチャ分離監査
-- **目的**: Dashboard 側の改修が現場アプリ（Hアプリ: `active/dashboard/`）に一切波及していないことを静的・動的に確認する。
+- **目的**: Dashboard 側の改修が現場アプリ（Hアプリ: `active/h-app/`）に一切波及していないことを静的・動的に確認する。
 - **検証項目**:
-  - Hアプリ（`active/dashboard/index.html`）がブラウザで正常起動し、例外が発生しないこと
+  - Hアプリ（`active/h-app/index.html`）がブラウザで正常起動し、例外が発生しないこと
   - Hアプリのロジック（`app.js`, `render.js` 等）が `staticMaster` を参照していないこと（`config.js` 定義のみに隔離）
 
 ---

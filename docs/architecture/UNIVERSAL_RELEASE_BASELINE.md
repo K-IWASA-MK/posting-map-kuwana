@@ -31,7 +31,7 @@ Universal Engine v1.0 における各コンポーネントのベースライン�
 
 | コンポーネント | バージョン | 概要 / 責務 | 基準ファイル / 定義 |
 |:---|:---|:---|:---|
-| **Universal Engine Core** | `v1.0.0` | 共通フロントエンド（H App / Dashboard）およびバックエンドUniversal Standalone GAS Runtime | `active/` 全域<br>`index.html` |
+| **Universal Engine Core** | `v1.0.1` | 共通フロントエンド（H App / Dashboard）およびバックエンドUniversal Standalone GAS Runtime | `active/` 全域<br>`index.html` |
 | **API Contract** | `v2.0.0` | Web App Gateway / RPC 通信規約（27アクション、認証ゲート、レスポンス構造） | `docs/api/API_CONTRACT.md`<br>`active/api/v2_api.js` |
 | **Data Schema (Pure DB)** | `v1.0.0` | スプレッドシート 13シート標準スキーマ（初期11 Core複製+現場2オンデマンド生成、DATA_DICTIONARY.md準拠）、カラム定義、数式注入防御 | `docs/data/DATA_DICTIONARY.md`<br>`active/business/` |
 | **Provisioning Spec** | `v1.0.0` | 新地区プロビジョニング仕様、マスターデータ構造（住所・境界・自治体）、DISTRICT_REGISTRY規約 | `docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md` |
@@ -50,8 +50,8 @@ Universal Engine v1.0 における各コンポーネントのベースライン�
    - `active/business/`: ドメインロジック（ポスティング、在庫、スタッフ、GPS等）
    - `active/infrastructure/`: スプレッドシート、キャッシュ、ロック、ドライブアダプター
    - `active/gas/`: GAS基盤初期化、デプロイゲート
-   - `active/dashboard/`: 管理画面UI/UX、セッションハンドラ
-   - `active/h_app/`: 配布員現場UI/UX、オフラインキュー
+   - `active/h-app/`: H-App / 配布員現場UI、オフラインキュー
+   - `active/manager/`: Manager Dashboard / 管理画面UI/UX、セッションハンドラ
 2. **API Contract (`docs/api/API_CONTRACT.md`)**:
    - アクション名、リクエスト/レスポンスパラメータ定義、エラーコード
 3. **Data Schema & Sheet Structure (`docs/data/DATA_DICTIONARY.md`)**:

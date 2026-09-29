@@ -58,7 +58,7 @@ Civic Tech Inc. (Provider)
 | :--- | :--- | :--- | :--- |
 | **LIFF Application Name**| `POSTING MAP Field` | `MIE-02/H` | 販売用正式名称 |
 | **Size** | `Full` | `Full` | 全画面表示 |
-| **Endpoint URL** | `https://app.posting-map.jp/active/dashboard/index.html` | `https://k-iwasa-mk.github.io/...` | 独自ドメイン絶対パス |
+| **Endpoint URL** | `https://app.posting-map.jp/active/h-app/index.html` | `https://k-iwasa-mk.github.io/...` | 独自ドメイン絶対パス |
 | **Scopes** | `profile`, `openid` | `profile`, `openid` | ユーザー識別用 |
 | **Bot Prompt** | `Aggressive` (友だち追加の自動推奨) | `Normal` | LINE公式アカウント登録促進 |
 | **Module Mode** | **無効 (OFF)** | **無効 (OFF)** | 通常LIFFモード |
@@ -72,7 +72,7 @@ Civic Tech Inc. (Provider)
 2. **LINE Login Channel**: `POSTING MAP Login` (新規作成なし・既存使用)
 
 ### 5.2. 設定・ドメイン連携更新項目 (Configuration Updates Only)
-1. **Endpoint URL**: 独自ドメイン `https://app.posting-map.jp/active/dashboard/index.html` へ統一設定
+1. **Endpoint URL**: 独自ドメイン `https://app.posting-map.jp/active/h-app/index.html` へ統一設定
 2. **Callback URL**: `https://app.posting-map.jp/` へ統一設定
 3. **チャネルアクセストークン (長期)**: 本番用トークンを GAS の `PropertiesService` へ設定
 4. **リッチメニュー (Rich Menu)**: LIFF URL を組み込んだリッチメニューの適用 (`createRichMenuForHApp()`)

@@ -4,7 +4,7 @@
  *
  * 目的:
  * HアプリCore 6領域（起動、Identity、Google Maps地域MAP、地図loader、活動入口、状態表示）、
- * および Phase境界・Universal原則が、現行コードベース（active/dashboard/）において
+ * および Phase境界・Universal原則が、現行コードベース（active/h-app/）において
  * 完全に成立し、既存境界を破壊していないことを機械判定する。
  */
 
@@ -17,10 +17,10 @@ const rootDir = process.cwd();
 
 // テスト対象ファイル
 const indexHtmlPath = path.join(rootDir, 'index.html');
-const dashboardHtmlPath = path.join(rootDir, 'active/dashboard/index.html');
-const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
-const renderJsPath = path.join(rootDir, 'active/dashboard/render.js');
-const apiJsPath = path.join(rootDir, 'active/dashboard/modules/api.js');
+const dashboardHtmlPath = path.join(rootDir, 'active/h-app/index.html');
+const appJsPath = path.join(rootDir, 'active/h-app/app.js');
+const renderJsPath = path.join(rootDir, 'active/h-app/render.js');
+const apiJsPath = path.join(rootDir, 'active/h-app/modules/api.js');
 const addressMasterServicePath = path.join(rootDir, 'active/business/area/address_master_service.js');
 
 const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
@@ -41,7 +41,7 @@ test('1. 起動: LIFFエントリーから初期画面表示までの導線と O
   // ① ルート index.html の LIFF 初期化とリダイレクト導線
   assert.ok(indexHtml.includes('liff.init({ liffId: liffId })'), 'ルート index.html に liff.init が存在すること');
   assert.ok(indexHtml.includes('liff.login()'), '未ログイン時に liff.login() が呼ばれること');
-  assert.ok(indexHtml.includes("window.location.replace('./active/dashboard/index.html')"), 'ログイン完了時に active/dashboard/index.html へリダイレクトすること');
+  assert.ok(indexHtml.includes("window.location.replace('./active/h-app/index.html')"), 'ログイン完了時に active/h-app/index.html へリダイレクトすること');
 
   // ② safeInitApp および startApp の導線
   assert.ok(appJs.includes('async function safeInitApp()'), 'app.js に safeInitApp が存在すること');
@@ -256,8 +256,8 @@ test('7. Phase境界: Phase 9以降の処理がPhase 8に侵入していない�
 // ----------------------------------------------------------------------------
 // 8. Universal原則 (District Neutrality)
 // ----------------------------------------------------------------------------
-test('8. Universal原則: active/dashboard/ 配下に地区固有ハードコードが存在しないこと', async (t) => {
-  const dashboardDir = path.join(rootDir, 'active/dashboard');
+test('8. Universal原則: active/h-app/ 配下に地区固有ハードコードが存在しないこと', async (t) => {
+  const dashboardDir = path.join(rootDir, 'active/h-app');
   const files = fs.readdirSync(dashboardDir, { recursive: true });
 
   const forbiddenDistrictTerms = ['kuwana', 'okayama', 'tsushima'];
@@ -267,7 +267,7 @@ test('8. Universal原則: active/dashboard/ 配下に地区固有ハードコー
     if (fs.statSync(fullPath).isFile() && (file.endsWith('.js') || file.endsWith('.html'))) {
       const content = fs.readFileSync(fullPath, 'utf8').toLowerCase();
       for (const term of forbiddenDistrictTerms) {
-        // 注釈やドキュメント文字列は除くが、active/dashboard の実コード内にKUWANA等の識別子が入っていないことを検証
+        // 注釈やドキュメント文字列は除くが、active/h-app の実コード内にKUWANA等の識別子が入っていないことを検証
         const hasForbidden = content.includes(term);
         assert.equal(
           hasForbidden,

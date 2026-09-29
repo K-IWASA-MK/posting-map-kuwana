@@ -183,7 +183,7 @@ Universal Engine 用の **親 Standalone GAS プロジェクトを「たった1�
     districtId: "KUWANA" (地区識別子の定義)
 
 [4] Frontend Communication Layer
-    active/dashboard/modules/api.js
+    active/h-app/modules/api.js
         ↓
     callApiPost: 全リクエストに config.districtId を自動マージ
 ```

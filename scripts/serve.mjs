@@ -16,9 +16,9 @@ const server = http.createServer((req, res) => {
   } else if (relativePath === '/manager') {
     relativePath = '/active/manager/index.html';
   } else if (relativePath.startsWith('/app/')) {
-    relativePath = relativePath.replace('/app/', '/active/dashboard/');
+    relativePath = relativePath.replace('/app/', '/active/h-app/');
   } else if (relativePath === '/app' || relativePath === '/mobile') {
-    relativePath = '/active/dashboard/index.html';
+    relativePath = '/active/h-app/index.html';
   } else if (relativePath.startsWith('/business/')) {
     relativePath = relativePath.replace('/business/', '/active/business/');
   }

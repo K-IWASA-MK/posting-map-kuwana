@@ -3,14 +3,14 @@
 - **Status**: ACCEPTED (OFFICIAL SPECIFICATION)
 - **Date**: 2026-09-24
 - **Deciders**: Universal POSTING MAP Architecture Board / MASTER
-- **Consulted**: `AGENTS.md`, `docs/architecture/01_DESIGN_CONTRACT.md`, `docs/api/API_CONTRACT.md`, `docs/architecture/decisions/ADR-009_H_APP_CORE_SPECIFICATION.md`, `active/dashboard/`
+- **Consulted**: `AGENTS.md`, `docs/architecture/01_DESIGN_CONTRACT.md`, `docs/api/API_CONTRACT.md`, `docs/architecture/decisions/ADR-009_H_APP_CORE_SPECIFICATION.md`, `active/h-app/`
 
 ---
 
 ## 1. Context (背景と課題)
 
 Phase 8「HアプリCore」の完了を受け、Phase 9「Posting Flow（オンライン配布完了登録フロー）」の仕様を確定する。
-READ ONLY監査において、現行コードベース（`active/dashboard/`）の Posting パイプラインを精査した結果、以下の構造が確認された：
+READ ONLY監査において、現行コードベース（`active/h-app/`）の Posting パイプラインを精査した結果、以下の構造が確認された：
 
 1. **現行パイプラインの健全性**:
    - `openPointDetailModal` ➔ `openNumpad` ➔ `pressNum('OK')` ➔ 写真・GPS確認 ➔ `submitMissionComplete` ➔ `enqueueSync` ➔ `processQueue` ➔ `updateRecordWithGPSPhoto` (GAS) ➔ `配布実績YYYY-MM` (Spreadsheet)

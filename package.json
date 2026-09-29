@@ -1,8 +1,8 @@
 {
   "name": "@kiwasa/posting-map",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "POSTING MAP Product",
-  "main": "active/dashboard/app.js",
+  "main": "active/h-app/app.js",
   "directories": {
     "doc": "docs",
     "test": "tests"

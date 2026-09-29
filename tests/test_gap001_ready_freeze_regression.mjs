@@ -28,7 +28,7 @@ console.log('====================================================\n');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
-const appJsPath = path.join(REPO_ROOT, 'active/dashboard/app.js');
+const appJsPath = path.join(REPO_ROOT, 'active/h-app/app.js');
 const appJsContent = fs.readFileSync(appJsPath, 'utf8');
 
 // DOM & ブラウザ環境のモック生成関数

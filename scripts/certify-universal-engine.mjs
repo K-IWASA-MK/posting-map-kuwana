@@ -116,7 +116,7 @@ console.log('▶ [Step 1] Gate 1 & 4 構造監査を実行中...');
   }
   scanDir(activeDir);
   if (forbiddenPatterns[3].test()) {
-    violations.push('active/dashboard/config.js is still present!');
+    violations.push('active/h-app/config.js is still present!');
   }
 
   const pass = violations.length === 0;
@@ -384,7 +384,7 @@ async function runBrowserTests() {
       localStorage.setItem('user_info', JSON.stringify({ id: 'STAFF_TEST', last: 'テスト', first: '配布員' }));
     });
 
-    await hPage.goto(`http://localhost:${PORT}/active/dashboard/index.html`, { waitUntil: 'networkidle', timeout: 15000 });
+    await hPage.goto(`http://localhost:${PORT}/active/h-app/index.html`, { waitUntil: 'networkidle', timeout: 15000 });
     await hPage.waitForTimeout(2500);
 
     const hResult = await hPage.evaluate(() => {

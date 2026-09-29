@@ -72,7 +72,7 @@ test('4. Input Validation: パラメータ型・必須チェック、未知ア�
 
 // ─── 5. XSS 防護検証 ────────────────────────────────────────────────
 test('5. XSS: escapeHtml (SEC-004) による特殊文字無害化とクライアント側サニタイズ適用', () => {
-  const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
+  const appJsPath = path.join(rootDir, 'active/h-app/app.js');
   const appJs = fs.readFileSync(appJsPath, 'utf8');
 
   // escapeHtml の実装ロジック検証
@@ -143,7 +143,7 @@ test('9. API Abuse & Idempotency: クライアント二重送信防止、LockSer
   assert.ok(lockAdapter.includes('LockService.getScriptLock()'), 'Must use GAS ScriptLock');
   assert.ok(lockAdapter.includes('lock.tryLock(timeoutMs)'), 'Must acquire lock with timeout');
 
-  const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
+  const appJsPath = path.join(rootDir, 'active/h-app/app.js');
   const appJs = fs.readFileSync(appJsPath, 'utf8');
   assert.ok(appJs.includes('generateRequestId'), 'app.js must generate unique requestId for idempotency');
 });

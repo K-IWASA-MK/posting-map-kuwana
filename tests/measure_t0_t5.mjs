@@ -91,7 +91,7 @@ function createMockEnvironment({ isOnline = true, hasUserInfo = false } = {}) {
       readyState: 'complete'
     },
     window: {
-      location: { href: 'https://kuwana.postingmap.jp/active/dashboard/', origin: 'https://kuwana.postingmap.jp', pathname: '/active/dashboard/', search: '' },
+      location: { href: 'https://kuwana.postingmap.jp/active/h-app/', origin: 'https://kuwana.postingmap.jp', pathname: '/active/h-app/', search: '' },
       history: { replaceState: () => {} },
       PMS_CLIENT_CONFIG: {
         line: { liffId: 'mock-liff-id' },

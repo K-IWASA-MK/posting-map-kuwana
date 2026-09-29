@@ -6,7 +6,7 @@ async function waitForServer(port = 8080, maxRetries = 20) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       await new Promise((resolve, reject) => {
-        const req = http.get(`http://localhost:${port}/active/dashboard/index.html`, (res) => {
+        const req = http.get(`http://localhost:${port}/active/h-app/index.html`, (res) => {
           if (res.statusCode < 500) resolve();
           else reject(new Error(`Status ${res.statusCode}`));
         });
@@ -53,7 +53,7 @@ async function main() {
   };
 
   try {
-    console.log('\n📱 [1/3] Testing H-App (active/dashboard/index.html)...');
+    console.log('\n📱 [1/3] Testing H-App (active/h-app/index.html)...');
     const hContext = await browser.newContext({
       viewport: { width: 390, height: 844 },
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Line/13.0.0'
@@ -106,7 +106,7 @@ async function main() {
       picture: ''
     });
 
-    await hPage.goto('http://localhost:8080/active/dashboard/index.html', { waitUntil: 'load', timeout: 15000 });
+    await hPage.goto('http://localhost:8080/active/h-app/index.html', { waitUntil: 'load', timeout: 15000 });
     await hPage.waitForTimeout(3000);
 
     const hDomCheck = await hPage.evaluate(() => {
@@ -199,12 +199,12 @@ async function main() {
     console.log('\n📦 [3/3] Testing PWA & Critical Endpoints...');
     const pwaUrls = [
       'http://localhost:8080/data/config.js',
-      'http://localhost:8080/active/dashboard/db.js',
-      'http://localhost:8080/active/dashboard/app.js',
-      'http://localhost:8080/active/dashboard/render.js',
-      'http://localhost:8080/active/dashboard/components/navigation.js',
-      'http://localhost:8080/active/dashboard/components/staff.js',
-      'http://localhost:8080/active/dashboard/components/ranking.js',
+      'http://localhost:8080/active/h-app/db.js',
+      'http://localhost:8080/active/h-app/app.js',
+      'http://localhost:8080/active/h-app/render.js',
+      'http://localhost:8080/active/h-app/components/navigation.js',
+      'http://localhost:8080/active/h-app/components/staff.js',
+      'http://localhost:8080/active/h-app/components/ranking.js',
       'http://localhost:8080/active/business/area/address_master_service.js',
       'http://localhost:8080/data/election_history.json'
     ];

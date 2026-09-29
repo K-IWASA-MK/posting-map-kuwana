@@ -192,7 +192,7 @@
 1. **Provider**: `Civic Tech Inc.` (最上位組織コンテナ)
 2. **LINE Login Channel**: `POSTING MAP Login` (共通認証チャネル、App type: Web app、Callback URL: `https://app.posting-map.jp/`)
 3. **Messaging API Channel**: `POSTING MAP Official` (Auto-reply: OFF, Greeting: ON, Webhook: ON)
-4. **LIFF Application**: `POSTING MAP Field` (Size: `Full`, Endpoint: `https://app.posting-map.jp/active/dashboard/index.html`, Scopes: `profile`, `openid`, Bot Prompt: `Aggressive`)
+4. **LIFF Application**: `POSTING MAP Field` (Size: `Full`, Endpoint: `https://app.posting-map.jp/active/h-app/index.html`, Scopes: `profile`, `openid`, Bot Prompt: `Aggressive`)
 5. **シークレット隔離**: 長期チャネルアクセストークン等の機密情報は、リポジトリやフロントエンドへ配置せず、親GASの `ScriptProperties` に隔離保管する。
 
 ---

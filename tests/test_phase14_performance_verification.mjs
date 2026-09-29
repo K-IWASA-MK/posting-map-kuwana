@@ -57,7 +57,7 @@ test('2. T0〜T5 測定境界・因果関係: T0 < T1 < T2 < T3 < T4 < T5 の順
 
 // ─── 3. Optimistic First Paint ロジック検証 ──────────────────────
 test('3. Optimistic First Paint: hasExistingStaffId 時に非同期 API を待たずに即時 T2 展開', () => {
-  const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
+  const appJsPath = path.join(rootDir, 'active/h-app/app.js');
   const appJs = fs.readFileSync(appJsPath, 'utf8');
 
   // Optimistic First Paint のロジックが存在することを確認
@@ -71,7 +71,7 @@ test('3. Optimistic First Paint: hasExistingStaffId 時に非同期 API を待�
 
 // ─── 4. Cold Start 非ブロッキング検証 ─────────────────────────────
 test('4. Cold Start 非ブロッキング: 初回未登録・キャッシュなし時もUIがクラッシュせず安全に進行', () => {
-  const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
+  const appJsPath = path.join(rootDir, 'active/h-app/app.js');
   const appJs = fs.readFileSync(appJsPath, 'utf8');
 
   // 初回起動時の分岐（hasExistingStaffId が false）の処理が存在すること
@@ -81,7 +81,7 @@ test('4. Cold Start 非ブロッキング: 初回未登録・キャッシュな�
 
 // ─── 5. マーカー差分更新 & 不要再生成スキップ検証 ─────────────────
 test('5. マーカー差分更新: masterMarkers.length > 0 時の再生成スキップ (H-App & Manager)', () => {
-  const renderJsPath = path.join(rootDir, 'active/dashboard/render.js');
+  const renderJsPath = path.join(rootDir, 'active/h-app/render.js');
   const renderJs = fs.readFileSync(renderJsPath, 'utf8');
 
   // H-App: masterMarkers.length > 0 でスキップ
@@ -95,7 +95,7 @@ test('5. マーカー差分更新: masterMarkers.length > 0 時の再生成ス�
 
 // ─── 6. Network Waterfall 非同期化検証 ────────────────────────────
 test('6. Network Waterfall: クリティカルパスに直列ブロッキング同期通信が存在しないこと', () => {
-  const appJsPath = path.join(rootDir, 'active/dashboard/app.js');
+  const appJsPath = path.join(rootDir, 'active/h-app/app.js');
   const appJs = fs.readFileSync(appJsPath, 'utf8');
 
   // 同期XMLHttpRequest(openの第3引数がfalse)が使用されていないこと

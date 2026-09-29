@@ -118,7 +118,7 @@ async function runChromeMeasurement(scenarioName, { isOnline = true, hasUserInfo
   const measurementsT2 = [];
   const measurementsFCP = [];
 
-  const targetUrl = pathToFileURL(path.join(REPO_ROOT, 'active/dashboard/index.html')).href;
+  const targetUrl = pathToFileURL(path.join(REPO_ROOT, 'active/h-app/index.html')).href;
 
   for (let r = 1; r <= runs; r++) {
     const chrome = new ChromeController();
@@ -272,7 +272,7 @@ async function main() {
   console.log("【測定環境】");
   console.log("  - ブラウザ: Google Chrome (Headless CDP / Blink Engine)");
   console.log("  - OS: macOS (Darwin)");
-  console.log("  - 測定対象: active/dashboard/index.html (H-App)");
+  console.log("  - 測定対象: active/h-app/index.html (H-App)");
   console.log("  - 測定方式: Web Performance API + CDP Script Injection (非侵入型)");
   console.log("  - 指標分離: FCP (ブラウザ標準補助指標) vs T2 (POSTING MAP固有正式指標)");
 

@@ -225,7 +225,7 @@
      - **Messaging API Channel**: `POSTING MAP Official` (Auto-reply: OFF, Greeting messages: ON [アプリ起動案内], Webhook: ON)
      - **LIFF Application**: `POSTING MAP Field`
        - Size: `Full` (全画面表示)
-       - Endpoint URL: `https://app.posting-map.jp/active/dashboard/index.html` (独自ドメイン絶対パス)
+       - Endpoint URL: `https://app.posting-map.jp/active/h-app/index.html` (独自ドメイン絶対パス)
        - Scopes: `profile`, `openid`
        - Bot Prompt: `Aggressive` (友だち追加自動推奨)
        - Module Mode: 無効 (OFF)

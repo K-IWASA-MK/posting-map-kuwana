@@ -131,4 +131,4 @@ backdrop-filter: blur(20px);
 - **App URL**: `https://app.posting-map.jp/`
 - **Dashboard URL**: `https://admin.posting-map.jp/`
 - **API Proxy Gateway**: `https://api.posting-map.jp/`
-- **LIFF Endpoint URL**: `https://app.posting-map.jp/active/dashboard/index.html`
+- **LIFF Endpoint URL**: `https://app.posting-map.jp/active/h-app/index.html`

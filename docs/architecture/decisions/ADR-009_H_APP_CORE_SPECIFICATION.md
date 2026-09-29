@@ -3,14 +3,14 @@
 - **Status**: ACCEPTED (OFFICIAL SPECIFICATION)
 - **Date**: 2026-09-24
 - **Deciders**: Universal POSTING MAP Architecture Board / MASTER
-- **Consulted**: `AGENTS.md`, `docs/architecture/01_DESIGN_CONTRACT.md`, `docs/api/API_CONTRACT.md`, `active/dashboard/`, `tests/test_h_app_core_verification.mjs`
+- **Consulted**: `AGENTS.md`, `docs/architecture/01_DESIGN_CONTRACT.md`, `docs/api/API_CONTRACT.md`, `active/h-app/`, `tests/test_h_app_core_verification.mjs`
 
 ---
 
 ## 1. Context (背景と課題)
 
 Phase 7（Pure DB / Snapshot）の完了に伴い、Phase 8「HアプリCore」の実装・確定フェーズへ移行した。
-READ ONLY監査において、現場配布員向けUI（Hアプリ）の現行コードベース（`active/dashboard/`）を精査した結果、以下の事実が確認された：
+READ ONLY監査において、現場配布員向けUI（Hアプリ）の現行コードベース（`active/h-app/`）を精査した結果、以下の事実が確認された：
 
 1. **現行実装の極めて高い完成度**:
    - 起動シーケンス、Identity同期、地図描画、マスターデータロード、活動入口（誤操作防止）、状態表示の6領域がすでに極めて強固かつ高度な水準で稼働している。
@@ -29,14 +29,14 @@ READ ONLY監査において、現場配布員向けUI（Hアプリ）の現行�
   - **Google Maps JavaScript API** を正式採用する。
   - 本決定は「LeafletからGoogle Mapsへ変更した」という仕様変更ではなく、**「現行Hアプリの実装実態を確認した結果、現場モバイル環境での高精度ズーム、スムーズなベクター描画、ピン上部への精密なオフセットパン、ダークテーマ視認性を最適化するため、Google Maps JavaScript APIをHアプリの正式な地図エンジンとして採用する設計決定」** である。
 - **Manager Dashboard（統括管理者UI）との併存**:
-  - 管理者用Dashboard（`active/manager/`）における Leaflet 実装と、現場配布員用Hアプリ（`active/dashboard/`）における Google Maps 実装は、それぞれのユースケースに特化した **「適材適所の併存アーキテクチャ」** として正式に位置づける。
+  - 管理者用Dashboard（`active/manager/`）における Leaflet 実装と、現場配布員用Hアプリ（`active/h-app/`）における Google Maps 実装は、それぞれのユースケースに特化した **「適材適所の併存アーキテクチャ」** として正式に位置づける。
 
 ### (2) HアプリCore 6領域の仕様確定
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ 【1. 起動】                                                                 │
-│  index.html (LIFF初期化/認証判定) ──> active/dashboard/index.html (safeInitApp)│
+│  index.html (LIFF初期化/認証判定) ──> active/h-app/index.html (safeInitApp)    │
 │  Optimistic First Paint (キャッシュ即時描画) ➔ 非同期バックグラウンド同期   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 【2. Identity】                                                             │
@@ -66,7 +66,7 @@ READ ONLY監査において、現場配布員向けUI（Hアプリ）の現行�
 ```
 
 ### (3) 非侵襲・0行変更原則の遵守
-- 現行コード（`active/dashboard/` 配下）はPhase 8要件を完全に満たしており、バグ・不整合も存在しないため、**プロダクションコードの改変は「0行（無変更）」** とする。
+- 現行コード（`active/h-app/` 配下）はPhase 8要件を完全に満たしており、バグ・不整合も存在しないため、**プロダクションコードの改変は「0行（無変更）」** とする。
 - `fetchSystemSummary()` の重複記述についても、`_systemSummaryPromise` キャッシュにより同一実行内の重複通信が安全に抑止されているため、リファクタリングを行わず現状維持とする。
 
 ### (4) Phase境界の厳格な分離（Phase 8では扱わないもの）
@@ -80,8 +80,12 @@ READ ONLY監査において、現場配布員向けUI（Hアプリ）の現行�
 - Phase 9 Posting Flow（枚数入力確定以降の処理）
 
 ### (5) Universal原則の適合
-- `active/dashboard/` 配下のスクリプトに特定地区名（KUWANA等）、特定Spreadsheet ID、特定GAS URLのハードコードは一切含めない。
+- `active/h-app/` 配下のスクリプトに特定地区名（KUWANA等）、特定Spreadsheet ID、特定GAS URLのハードコードは一切含めない。
 - すべて [data/config.js](../../../data/config.js)（`window.PMS_CLIENT_CONFIG`）および [data/address_master.csv](../../../data/address_master.csv) から動的解決する。
+
+### (6) 物理パス是正 (2026-09-29 追記: Pure Rename)
+- H-App の物理配置ディレクトリを旧来の誤認しやすい物理名から `active/h-app/` へ Pure Rename 実施。
+- 本是正は H-App の責務変更、UI変更、Runtimeロジック変更ではなく、Manager Dashboard (`active/manager/`) との物理的混同を解消し、確定済みの商品構造（H-App = 現場配布員アプリ）に物理パス名を一致させるための名称整合である。
 
 ---
 
