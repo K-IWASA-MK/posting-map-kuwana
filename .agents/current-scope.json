@@ -1,10 +1,7 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/style.css",
-  "active/h-app/index.html",
-  "active/h-app/components/navigation.js",
-  "active/h-app/components/staff.js",
-  "active/h-app/components/ranking.js",
-  "active/h-app/render.js"
+  "active/api/v2_api.js",
+  "active/business/staff/staff_repository.js",
+  "active/business/staff/staff_service.js",
+  "tests/test_multi_district_routing_auth.mjs"
 ]
-
