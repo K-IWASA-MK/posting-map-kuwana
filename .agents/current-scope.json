@@ -1,9 +1,10 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/index.html",
   "active/h-app/style.css",
+  "active/h-app/index.html",
   "active/h-app/components/navigation.js",
   "active/h-app/components/staff.js",
   "active/h-app/components/ranking.js",
   "active/h-app/render.js"
 ]
+
