@@ -60,6 +60,75 @@ body {
 .safe-top { padding-top: calc(env(safe-area-inset-top) + 2.2rem) !important; }
 .safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 1.5rem) !important; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   H-App Global Responsive Shell / 375px Baseline Contract
+   ============================================================ */
+#app {
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#content {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 通常ページ共通 375px Container 契約 */
+.page:not(#page-areas) {
+  width: 100%;
+  max-width: 375px;
+  margin-inline: auto;
+  padding-inline: 16px;
+  box-sizing: border-box;
+}
+
+/* MAP ページ（375px Cap 対象外・Main利用可能幅100%全幅使用） */
+#page-areas {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-inline: 0;
+  box-sizing: border-box;
+}
+
+/* Status Bar Inner (375px Baseline Container) */
+.status-inner {
+  width: 100%;
+  max-width: 375px;
+  margin-inline: auto;
+  padding-inline: 16px;
+  box-sizing: border-box;
+}
+
+/* Bottom Navigation Flex Dock */
+#bottom-nav {
+  flex: none;
+  width: 100%;
+  background-color: #111315;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 4000;
+}
+
+/* Bottom Navigation Tier Inner (375px Baseline Container) */
+#nav-tier-1,
+#nav-tier-2 {
+  width: 100%;
+  max-width: 375px;
+  margin-inline: auto;
+  padding-inline: 8px;
+  height: 64px;
+  box-sizing: border-box;
+}
+
+
 .page {
   display: block;
   opacity: 1;
@@ -335,10 +404,6 @@ input::placeholder { text-align: center; }
   box-shadow: 0 -20px 40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-/* 各ページ専用の下部パディング（フローティング下部ナビゲーションとの重なりを回避） */
-#page-areas {
-  padding-bottom: 160px;
-}
 #page-settings.hidden {
   display: none !important;
 }

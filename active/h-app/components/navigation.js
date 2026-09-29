@@ -8,8 +8,7 @@ window.renderBottomNavigation = function(activePage) {
 
   return `
     <!-- Tier 1 Container -->
-    <div id="nav-tier-1" style="backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);" 
-      class="rounded-[2.5rem] p-2 flex justify-around items-center h-[90px] relative shadow-2xl ${isTier2 ? 'hidden' : ''}">
+    <div id="nav-tier-1" class="flex justify-around items-center ${isTier2 ? 'hidden' : ''}">
       <button data-page="storage-register" onclick="switchPage('storage-register')" class="nav-btn flex flex-col items-center gap-1 flex-1 transition-all ${getOpacity('storage-register')}">
         <div class="text-xl">📦</div>
         <span class="text-[10px] font-black uppercase tracking-widest ${getTextClass('storage-register')}">在庫登録</span>
@@ -29,8 +28,7 @@ window.renderBottomNavigation = function(activePage) {
     </div>
 
     <!-- Tier 2 Container -->
-    <div id="nav-tier-2" style="backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);" 
-      class="rounded-[2.5rem] p-2 flex justify-around items-center h-[90px] relative shadow-2xl ${isTier2 ? '' : 'hidden'}">
+    <div id="nav-tier-2" class="flex justify-around items-center ${isTier2 ? '' : 'hidden'}">
       <button data-page="areas" onclick="navigateToAreaTab()" class="nav-btn flex flex-col items-center gap-1 flex-1 transition-all ${getOpacity('areas')}">
         <div class="text-xl">🗺️</div>
         <span class="text-[10px] font-black uppercase tracking-widest ${getTextClass('areas')}">エリア</span>

@@ -44,10 +44,10 @@
       overflow: hidden !important;
       display: flex !important;
       flex-direction: column !important;
-      padding-left: 1.5rem !important;
-      padding-right: 1.5rem !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
       padding-top: 16px !important;
-      padding-bottom: calc(env(safe-area-inset-bottom) + 98px + var(--card-vertical-margin)) !important;
+      padding-bottom: 0 !important;
     }
 
     main#content.is-map-view #page-areas,
@@ -106,24 +106,26 @@
   </div>
 
   <!-- 3. MAIN APP -->
-  <div id="app" class="fixed top-0 left-0 w-full h-[100dvh] z-[2000] flex flex-col bg-[#000000] opacity-0 transition-opacity duration-300 hidden">
-    <header class="safe-top px-6 pt-8 pb-4 flex items-center">
-      <div style="background: #1C1C1E; border: 1px solid rgba(255,255,255,0.1);" class="px-6 py-3 rounded-full flex items-center justify-between text-xs font-black tracking-tight w-full">
-        <div class="flex items-center gap-3">
-          <span class="text-white/40">全体エリア</span>
-          <span id="header-count" style="display: inline-block; transform: translateX(0.8em);" class="text-white/70 font-mono whitespace-pre">(  0/0)</span>
-        </div>
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-1.5">
-            <span id="sync-text" class="text-[8px] font-black uppercase tracking-[0.2em] text-[#22c55e] transition-all duration-300">ONLINE</span>
-            <div id="sync-status" class="w-2 h-2 bg-[#22c55e] rounded-full shadow-[0_0_8px_#22c55e] animate-soft-pulse transition-all duration-300"></div>
+  <div id="app" class="fixed top-0 left-0 w-full h-[100dvh] z-[2000] flex flex-col bg-[#000000] opacity-0 transition-opacity duration-300 overflow-hidden hidden">
+    <header class="safe-top w-full flex-none pt-8 pb-4 flex items-center px-0">
+      <div class="status-inner w-full max-w-[375px] mx-auto px-4 box-border">
+        <div style="background: #1C1C1E; border: 1px solid rgba(255,255,255,0.1);" class="px-6 py-3 rounded-full flex items-center justify-between text-xs font-black tracking-tight w-full">
+          <div class="flex items-center gap-3">
+            <span class="text-white/40">全体エリア</span>
+            <span id="header-count" style="display: inline-block; transform: translateX(0.8em);" class="text-white/70 font-mono whitespace-pre">(  0/0)</span>
           </div>
-          <span id="header-pct" class="text-[#2563eb] font-mono">0%</span>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5">
+              <span id="sync-text" class="text-[8px] font-black uppercase tracking-[0.2em] text-[#22c55e] transition-all duration-300">ONLINE</span>
+              <div id="sync-status" class="w-2 h-2 bg-[#22c55e] rounded-full shadow-[0_0_8px_#22c55e] animate-soft-pulse transition-all duration-300"></div>
+            </div>
+            <span id="header-pct" class="text-[#2563eb] font-mono">0%</span>
+          </div>
         </div>
       </div>
     </header>
 
-    <main id="content" class="flex-1 overflow-y-auto hide-scrollbar px-6 overscroll-y-contain">
+    <main id="content" class="flex-1 overflow-y-auto hide-scrollbar overscroll-y-contain">
       <!-- AREAS PAGE -->
       <section id="page-areas" class="page space-y-8">
         <div id="area-list" class="space-y-6"></div>
@@ -131,7 +133,7 @@
 
 
       <!-- AUTH/SETTINGS PAGE -->
-      <section id="page-settings" class="page hidden" style="padding-bottom: 200px;">
+      <section id="page-settings" class="page hidden" style="padding-bottom: 24px;">
         <div id="settings-content" class="w-full">
           <!-- Dynamic Content (Card 1 or Card 2) -->
         </div>
@@ -139,13 +141,13 @@
 
       <!-- RANKING PAGE (NEW) -->
       <section id="page-ranking" class="page hidden space-y-8">
-        <div id="ranking-list" class="space-y-6" style="padding-bottom: 160px;">
+        <div id="ranking-list" class="space-y-6" style="padding-bottom: 24px;">
           <!-- ランキングカードが動的に挿入されます -->
         </div>
       </section>
 
       <!-- STORAGE REGISTER PAGE -->
-      <section id="page-storage-register" class="page hidden space-y-4" style="padding-bottom: 160px; padding-top: 8px;">
+      <section id="page-storage-register" class="page hidden space-y-4" style="padding-bottom: 24px; padding-top: 8px;">
         <!-- Form Card -->
         <div class="premium-glass p-6 space-y-6" style="padding-top: 20px; padding-bottom: 20px;">
           <div class="flex justify-center">
@@ -226,7 +228,7 @@
       </section>
 
       <!-- STORAGE LIST PAGE -->
-      <section id="page-storage-list" class="page hidden space-y-6" style="padding-bottom: 160px; padding-top: 8px;">
+      <section id="page-storage-list" class="page hidden space-y-6" style="padding-bottom: 24px; padding-top: 8px;">
         <!-- 第1カード: 説明カード -->
         <div id="storage-list-guide-card" class="premium-glass flex flex-col items-center justify-center py-10 px-6 relative overflow-hidden text-center select-none" style="min-height: 240px;">
           <div class="absolute inset-0 bg-gradient-to-b from-white/5 to-white/0 pointer-events-none rounded-[28px]"></div>
@@ -259,7 +261,7 @@
         </div>
       </section>
 
-      <section id="page-bulletin" class="page hidden space-y-4" style="padding-bottom: 160px; padding-top: 8px;">
+      <section id="page-bulletin" class="page hidden space-y-4" style="padding-bottom: 24px; padding-top: 8px;">
         <div id="bulletin-input-card" class="premium-glass p-5 space-y-4">
           <div class="flex items-center justify-between">
             <label class="text-[10px] font-bold text-white/40 tracking-wider">情報交換・メッセージ投稿</label>
@@ -275,8 +277,8 @@
       </section>
     </main>
 
-    <!-- 下ナビ：iOSライクなガラス感に調整 -->
-    <nav id="bottom-nav" style="bottom: calc(env(safe-area-inset-bottom) + 0.5rem); display: none;" class="fixed left-1/2 -translate-x-1/2 w-[90%] max-w-md z-[4000]">
+    <!-- 下ナビ：Flex Dock最下部配置 -->
+    <nav id="bottom-nav" style="display: none;">
       <!-- Dynamically populated by navigation.js -->
     </nav>
   </div>
