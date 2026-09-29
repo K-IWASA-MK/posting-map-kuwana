@@ -887,12 +887,13 @@ runTest("Scenario 19: 同一 LINE User ID の再 registerStaff ➔ 二重登録�
 });
 
 // -----------------------------------------------------------------------------
-// TEST 20: districtId 指定地区以外の名簿を変更しない (地区分離完全性)
+// TEST 20: districtId 指定地区以外の名簿を変更しない (全行Snapshot & deepEqual完全不変)
 // -----------------------------------------------------------------------------
-runTest("Scenario 20: districtId 指定地区以外の名簿を変更しない (地区分離完全性)", () => {
-  const kuwanaCountBefore = kuwanaStaff.rows.length;
-  const okayamaCountBefore = okayamaStaff.rows.length;
-  const idTestCountBefore = idTestStaff.rows.length;
+runTest("Scenario 20: districtId 指定地区以外の名簿を変更しない (全行Snapshot & deepEqual完全不変)", () => {
+  // 実行前の全対象地区名簿の全行Snapshotを取得
+  const kuwanaSnapshot = JSON.parse(JSON.stringify(kuwanaStaff.rows));
+  const okayamaSnapshot = JSON.parse(JSON.stringify(okayamaStaff.rows));
+  const idTestSnapshot = JSON.parse(JSON.stringify(idTestStaff.rows));
 
   // OKAYAMA 地区宛てに新スタッフを登録
   const req = {
@@ -913,16 +914,23 @@ runTest("Scenario 20: districtId 指定地区以外の名簿を変更しない (
   assert.equal(data.message, "new");
 
   // OKAYAMA だけが +1
-  assert.equal(okayamaStaff.rows.length, okayamaCountBefore + 1, "OKAYAMA roster must increment by 1");
-  // 他地区は厳密に不変
-  assert.equal(kuwanaStaff.rows.length, kuwanaCountBefore, "KUWANA roster must remain strictly untouched");
-  assert.equal(idTestStaff.rows.length, idTestCountBefore, "IDENTITY_TEST roster must remain strictly untouched");
+  assert.equal(okayamaStaff.rows.length, okayamaSnapshot.length + 1, "OKAYAMA roster must increment by 1");
+  assert.equal(okayamaStaff.rows[okayamaStaff.rows.length - 1][2], "U_CUSTOM_okayama_user");
+
+  // 他地区はセル値・行数を含め厳格に完全不変 (deepEqual)
+  assert.deepEqual(kuwanaStaff.rows, kuwanaSnapshot, "KUWANA roster must remain strictly unmodified (deepEqual)");
+  assert.deepEqual(idTestStaff.rows, idTestSnapshot, "IDENTITY_TEST roster must remain strictly unmodified (deepEqual)");
 });
 
 // -----------------------------------------------------------------------------
-// TEST 21: districtId 欠落は Fail-Closed (マルチ地区安全防壁)
+// TEST 21: districtId 欠落時は Fail-Closed ＆ 全地区名簿完全不変 (mutation 0)
 // -----------------------------------------------------------------------------
-runTest("Scenario 21: districtId 欠落時は Fail-Closed (マルチ地区安全防壁)", () => {
+runTest("Scenario 21: districtId 欠落時は Fail-Closed ＆ 全地区名簿完全不変 (mutation 0)", () => {
+  // 実行前の全対象地区名簿の全行Snapshotを取得
+  const kuwanaSnapshot = JSON.parse(JSON.stringify(kuwanaStaff.rows));
+  const okayamaSnapshot = JSON.parse(JSON.stringify(okayamaStaff.rows));
+  const idTestSnapshot = JSON.parse(JSON.stringify(idTestStaff.rows));
+
   const req = {
     postData: {
       contents: JSON.stringify({
@@ -936,34 +944,82 @@ runTest("Scenario 21: districtId 欠落時は Fail-Closed (マルチ地区安全
   const res = doPost(req);
   const data = JSON.parse(res.text);
 
+  // MISSING_DISTRICT_ID の検証
   assert.equal(data.success, false, "Missing districtId must fail");
   assert.equal(data.code, "MISSING_DISTRICT_ID", "Must return MISSING_DISTRICT_ID code");
+
+  // 全地区名簿が完全不変（mutation 0）であることを deepEqual で確認
+  assert.deepEqual(kuwanaStaff.rows, kuwanaSnapshot, "KUWANA roster must have ZERO mutations on missing districtId");
+  assert.deepEqual(okayamaStaff.rows, okayamaSnapshot, "OKAYAMA roster must have ZERO mutations on missing districtId");
+  assert.deepEqual(idTestStaff.rows, idTestSnapshot, "IDENTITY_TEST roster must have ZERO mutations on missing districtId");
 });
 
 // -----------------------------------------------------------------------------
-// TEST 22: 翌月は前月 staffId を引き継がず S001 から新規採番 (月次リセット完全性)
+// TEST 22: 翌月は前月 staffId を引き継がず S001 から新規採番 (Productionコード実経路 & 9月不変検証)
 // -----------------------------------------------------------------------------
-runTest("Scenario 22: 翌月は前月 staffId を引き継がず S001 から新規採番 (月次リセット完全性)", () => {
-  // 翌月 2026-10 の新名簿シートを IDENTITY_TEST に作成
+runTest("Scenario 22: 翌月は前月 staffId を引き継がず S001 から新規採番 (Productionコード実経路 & 9月不変検証)", () => {
+  // 1. 翌月 2026-10 の空名簿シートを IDENTITY_TEST に用意
   const octStaff = identityTestSS.addSheet("名簿2026-10");
   octStaff.rows = [
     ["STAFF_ID", "氏名", "LINE_USER_ID", "登録日時"]
   ];
 
-  // 新月 2026-10 の空シートにおいて、9月に S001 だった U_CUSTOM_user_1 が登録されるケース
-  // 空シートに対する採番ロジックの検証: maxIdNum=0 ➔ S001
-  const values = octStaff.rows;
-  let maxIdNum = 0;
-  for (let i = 1; i < values.length; i++) {
-    const valId = String(values[i][0] || "").trim();
-    const match = valId.match(/^([A-Za-z]*)(\d+)$/);
-    if (match) {
-      const idNum = parseInt(match[2], 10);
-      if (idNum > maxIdNum) maxIdNum = idNum;
+  // 9月名簿のSnapshotを取得（実行前の完全状態）
+  const septStaff = identityTestSS.getSheetByName("名簿2026-09");
+  const septSnapshot = JSON.parse(JSON.stringify(septStaff.rows));
+
+  // 2. 時刻モックを 2026-10 に設定
+  const originalDate = global.Date;
+  const mockOctDate = new originalDate("2026-10-05T10:00:00+09:00");
+  class MockDate202610 extends originalDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        super(mockOctDate.getTime());
+      } else {
+        super(...args);
+      }
+    }
+    static now() {
+      return mockOctDate.getTime();
     }
   }
-  const nextId = "S" + String(maxIdNum + 1).padStart(3, '0');
-  assert.equal(nextId, "S001", "A fresh monthly roster sheet MUST start numbering from S001");
+
+  global.Date = MockDate202610;
+
+  try {
+    // 3. 9月に S001 だった同じ LINE User ID (token_custom_user_1 / U_CUSTOM_user_1) を 10月に登録
+    // doPost ➔ processPostAction ➔ StaffService ➔ StaffRepository ➔ MonthlySheetResolver の Production 経路を通過
+    const req = {
+      postData: {
+        contents: JSON.stringify({
+          action: "registerStaff",
+          liffToken: "token_custom_user_1",
+          districtId: "IDENTITY_TEST",
+          lastName: "テスト太郎（10月新任）",
+          firstName: "(LINE)"
+        })
+      }
+    };
+    const res = doPost(req);
+    const data = JSON.parse(res.text);
+
+    // 4. 検証: 10月 = S001, message = new, 10月名簿に1行追加, 9月名簿は完全不変
+    assert.equal(data.success, true, "registerStaff in October must succeed");
+    assert.equal(data.id, "S001", "10月名簿では前月staffIdを引き継がずS001から新規採番されること");
+    assert.equal(data.message, "new", "Must be marked as new registration for October");
+
+    // 10月名簿に 1行追加されていること (ヘッダー1行 + データ1行 = 2行)
+    assert.equal(octStaff.rows.length, 2, "October roster must have exactly 1 new row appended");
+    assert.equal(octStaff.rows[1][0], "S001");
+    assert.equal(octStaff.rows[1][1], "テスト太郎（10月新任）");
+    assert.equal(octStaff.rows[1][2], "U_CUSTOM_user_1");
+
+    // 9月名簿は完全不変であること
+    assert.deepEqual(septStaff.rows, septSnapshot, "September roster must remain strictly unmodified (deepEqual)");
+  } finally {
+    // 5. テスト終了後は時刻モック等を必ず復元
+    global.Date = originalDate;
+  }
 });
 
 console.log('\n================================================================');
