@@ -98,6 +98,16 @@ body {
   box-sizing: border-box;
 }
 
+#app > header {
+  width: 100%;
+  flex: none;
+  margin: 0;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  padding-inline: 0;
+  box-sizing: border-box;
+}
+
 /* Status Bar Inner (375px Baseline Container) */
 .status-inner {
   width: 100%;
