@@ -34,20 +34,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --primary-card-height: 520px;
-      --card-vertical-margin: 32px;
-    }
-
-    /* 第1層MAP 356px 統一レイアウト (A=32px, B=32px, A-B=0px) */
+    /* MAP Flex Fit レイアウト (残余Main領域を100%フル活用) */
     main#content.is-map-view {
       overflow: hidden !important;
       display: flex !important;
       flex-direction: column !important;
-      padding-left: 1.5rem !important;
-      padding-right: 1.5rem !important;
-      padding-top: 16px !important;
-      padding-bottom: calc(env(safe-area-inset-bottom) + 98px + var(--card-vertical-margin)) !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      flex: 1 1 auto !important;
+      min-height: 0 !important;
     }
 
     main#content.is-map-view #page-areas,
@@ -57,17 +52,23 @@
       align-items: center !important;
       justify-content: flex-start !important;
       width: 100% !important;
+      height: 100% !important;
+      flex: 1 1 auto !important;
+      min-height: 0 !important;
       margin: 0 !important;
       padding: 0 !important;
     }
 
     main#content.is-map-view #main-map {
-      flex: none !important;
-      height: var(--primary-card-height) !important;
+      flex: 1 1 auto !important;
+      min-height: 0 !important;
       width: 100% !important;
+      height: 100% !important;
       margin: 0 !important;
-      border-radius: 1.5rem !important;
-      transform: translateY(-12px) !important;
+      border-radius: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      transform: none !important;
     }
   </style>
 
@@ -85,7 +86,7 @@
   </script>
   <script src="../../data/config.js"></script>
   <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <link rel="stylesheet" href="./style.css?v=445">
+  <link rel="stylesheet" href="./style.css?v=446">
 </head>
 <body class="bg-[#000000] text-white font-sans antialiased overflow-hidden select-none transition-colors duration-500">
 
@@ -107,18 +108,14 @@
 
   <!-- 3. MAIN APP -->
   <div id="app" class="fixed top-0 left-0 w-full h-[100dvh] z-[2000] flex flex-col bg-[#000000] opacity-0 transition-opacity duration-300 hidden">
-    <header class="safe-top px-6 pt-8 pb-4 flex items-center justify-center">
-      <div class="floating-status-capsule flex items-center justify-between text-xs font-black tracking-tight w-full">
-        <div class="flex items-center gap-3">
-          <span class="text-white/40">全体エリア</span>
-          <span id="header-count" style="display: inline-block; transform: translateX(0.8em);" class="text-white/70 font-mono whitespace-pre">(  0/0)</span>
-        </div>
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-1.5">
-            <span id="sync-text" class="text-[8px] font-black uppercase tracking-[0.2em] text-[#30D158] transition-all duration-300">ONLINE</span>
-            <div id="sync-status" class="w-2 h-2 bg-[#30D158] rounded-full shadow-[0_0_8px_#30D158] animate-soft-pulse transition-all duration-300"></div>
-          </div>
-          <span id="header-pct" class="text-[#2563eb] font-mono">0%</span>
+    <header class="safe-top px-4 pt-6 pb-2 flex items-center justify-center shrink-0 z-50">
+      <div class="floating-status-capsule">
+        <span class="status-capsule-top">全体エリア</span>
+        <div class="status-capsule-bottom">
+          <span id="header-count" class="status-capsule-count">( 0/ 0)</span>
+          <span id="header-pct" class="status-capsule-pct">0%</span>
+          <div id="sync-status" class="status-capsule-dot"></div>
+          <span id="sync-text" class="status-capsule-status">ONLINE</span>
         </div>
       </div>
     </header>
@@ -275,10 +272,45 @@
       </section>
     </main>
 
-    <!-- 下ナビ：iOSライクなガラス感に調整 -->
-    <nav id="bottom-nav" style="bottom: calc(env(safe-area-inset-bottom) + 0.5rem); display: none;" class="fixed left-1/2 -translate-x-1/2 w-[90%] max-w-md z-[4000]">
+    <!-- 下ナビ：4-tab Floating Bar (Liquid Glass) -->
+    <nav id="bottom-nav" class="tabbar-float-zone" style="display: none;">
       <!-- Dynamically populated by navigation.js -->
     </nav>
+  </div>
+
+  <!-- MORE NAVIGATION HALF SHEET (Liquid Glass) -->
+  <div id="more-sheet-backdrop" class="sheet-backdrop" onclick="closeMoreSheet()"></div>
+  <div id="more-sheet-panel" class="sheet-panel">
+    <div class="sheet-header">
+      <div class="sheet-spacer"></div>
+      <div class="sheet-title">その他メニュー</div>
+      <button class="sheet-close" onclick="closeMoreSheet()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="sheet-list-group">
+        <div class="sheet-list-item" onclick="handleMoreMenuClick('storage-register')">
+          <div class="sheet-list-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>
+          </div>
+          <span class="sheet-list-label">保有枚数を登録</span>
+          <span class="sheet-list-chevron">›</span>
+        </div>
+        <div class="sheet-list-item" onclick="handleMoreMenuClick('bulletin')">
+          <div class="sheet-list-icon">
+            <svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+          </div>
+          <span class="sheet-list-label">掲示板</span>
+          <span class="sheet-list-chevron">›</span>
+        </div>
+        <div class="sheet-list-item" onclick="handleMoreMenuClick('settings')">
+          <div class="sheet-list-icon">
+            <svg viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </div>
+          <span class="sheet-list-label">スタッフID</span>
+          <span class="sheet-list-chevron">›</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 4. CUSTOM NUMPAD MODAL -->
@@ -315,10 +347,10 @@
       <div onclick="closeIdInfoModal(); event.stopPropagation();" class="py-3 px-6 cursor-pointer shrink-0 -mt-3 flex items-center justify-center">
         <div class="w-12 h-1 bg-white/10 rounded-full"></div>
       </div>
-      
+
       <!-- タイトル (上部に固定) -->
       <h4 id="id-info-title" class="font-black text-white text-[12px] uppercase tracking-wider shrink-0 w-full text-left"></h4>
-      
+
       <!-- 本文 (このコンテナ内のみスクロール) -->
       <div id="id-info-body-container" class="w-full text-left overflow-y-auto hide-scrollbar flex-1 pr-1 overscroll-y-contain">
         <p id="id-info-body" class="leading-relaxed text-xs text-white/40"></p>
@@ -326,13 +358,15 @@
     </div>
   </div>
 
-  <!-- 6. DETAIL ACTION MODAL (3層目の詳細操作カード) -->
-  <div id="detail-modal" class="fixed inset-0 z-[4500] bg-black/60 backdrop-blur-sm flex items-end justify-center transition-all duration-300 opacity-0 pointer-events-none" onclick="closeDetailModal()">
-    <div style="padding-bottom: calc(env(safe-area-inset-bottom) + 1.5rem);" class="w-full max-w-md max-h-[80dvh] bg-[#0c0c0e]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/10 px-6 pt-4 pb-0 overflow-hidden transform translate-y-full transition-transform duration-300 flex flex-col space-y-4" onclick="event.stopPropagation()">
-      <div onclick="closeDetailModal(); event.stopPropagation();" class="py-2 px-6 cursor-pointer shrink-0 flex items-center justify-center">
-        <div class="w-12 h-1 bg-white/10 rounded-full"></div>
+  <!-- 6. DETAIL ACTION MODAL (Half Sheet Presentation) -->
+  <div id="detail-modal" class="sheet-backdrop" onclick="closeDetailModal()">
+    <div id="detail-modal-panel" class="sheet-panel" onclick="event.stopPropagation()">
+      <div class="sheet-header">
+        <div class="sheet-spacer"></div>
+        <div class="sheet-title">エリア詳細</div>
+        <button class="sheet-close" onclick="closeDetailModal()">✕</button>
       </div>
-      <div id="detail-modal-content" class="space-y-6 overflow-y-auto hide-scrollbar flex-1 pr-1 pb-6 overscroll-y-contain">
+      <div id="detail-modal-content" class="sheet-body">
         <!-- Dynamically rendered -->
       </div>
     </div>
@@ -344,11 +378,11 @@
   <script defer src="./modules/device.js?v=600"></script>
   <script defer src="./modules/navigation.js?v=600"></script>
   <script defer src="./db.js?v=601"></script>
-  <script defer src="./components/navigation.js?v=601"></script>
-  <script defer src="./components/staff.js?v=601"></script>
-  <script defer src="./components/ranking.js?v=601"></script>
+  <script defer src="./components/navigation.js?v=602"></script>
+  <script defer src="./components/staff.js?v=602"></script>
+  <script defer src="./components/ranking.js?v=602"></script>
   <script defer src="../business/area/address_master_service.js?v=600"></script>
   <script defer src="./app.js?v=604"></script>
-  <script defer src="./render.js?v=625"></script>
+  <script defer src="./render.js?v=626"></script>
 </body>
 </html>
