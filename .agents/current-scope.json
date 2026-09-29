@@ -1,7 +1,6 @@
 [
   ".agents/current-scope.json",
-  "active/api/v2_api.js",
-  "active/business/staff/staff_repository.js",
-  "active/business/staff/staff_service.js",
-  "tests/test_multi_district_routing_auth.mjs"
+  "active/h-app/index.html",
+  "active/h-app/style.css",
+  "active/h-app/components/navigation.js"
 ]
