@@ -1,4 +1,4 @@
 [
   ".agents/current-scope.json",
-  "scripts/verify-gas-deployment.mjs"
+  ".claspignore"
 ]
