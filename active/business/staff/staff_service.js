@@ -30,10 +30,15 @@ if (typeof StaffService === 'undefined') {
       return StaffIdentity.notFound(lineUserId);
     }
 
-    registerStaff(arg1, arg2, arg3) {
+    registerStaff(arg1, arg2, arg3, arg4) {
       let lineUserId = "";
       let displayName = "";
       let pictureUrl = "";
+      let districtId = "";
+
+      if (typeof arg4 === "string") {
+        districtId = String(arg4).trim();
+      }
 
       const isUserId = (val) => typeof val === "string" && val.startsWith("U") && val.length > 25;
 
@@ -55,7 +60,7 @@ if (typeof StaffService === 'undefined') {
       }
 
       if (typeof logTrace === 'function') {
-        logTrace("registerStaff:entry", { displayName, lineUserId, pictureUrl });
+        logTrace("registerStaff:entry", { displayName, lineUserId, pictureUrl, districtId });
       }
 
       const self = this;
@@ -70,29 +75,20 @@ if (typeof StaffService === 'undefined') {
           return { success: false, message: "お名前 (displayName) が必要です。" };
         }
 
-        // 1. C列(LINE_USER_ID)での完全一致重複チェック
-        const existingStaff = self.repository.findByLineUserId(cleanLineUserId);
+        // 1. C列(LINE_USER_ID)での完全一致重複チェック（LINE User ID のみで本人識別・同一月内既存復元）
+        const existingStaff = self.repository.findByLineUserId(cleanLineUserId, districtId);
         if (existingStaff) {
           if (typeof logTrace === 'function') {
-            logTrace("registerStaff:duplicate_line_id", { lineUserId: cleanLineUserId, staffId: existingStaff.id });
+            logTrace("registerStaff:duplicate_line_id", { lineUserId: cleanLineUserId, staffId: existingStaff.id, districtId });
           }
           return { success: true, id: existingStaff.id, name: existingStaff.name, message: "existing" };
         }
 
-        // 2. 既存の同名スタッフチェック
-        const nameMatch = self.repository.findByName(cleanName);
-        if (nameMatch) {
-          if (!nameMatch.staff.lineUserId) {
-            self.repository.updateLineUserIdAtRow(nameMatch.rowIndex, cleanLineUserId);
-          }
-          return { success: true, id: nameMatch.staff.id, name: nameMatch.staff.name, message: "existing" };
-        }
-
-        // 3. 新規登録（Backend側でD列登録日時を自動生成）
+        // 2. 新規登録（LINE User ID 未登録時、当月名簿上で S001 から新規採番）
         const newStaff = self.repository.insertNewStaff(new Staff({
           name: cleanName,
           lineUserId: cleanLineUserId
-        }));
+        }), districtId);
 
         return { success: true, id: newStaff.id, name: newStaff.name, message: "new" };
       };

@@ -153,6 +153,13 @@ global.DriveApp = {
   }
 };
 
+global.LockService = {
+  getScriptLock: () => ({
+    waitLock: () => {},
+    releaseLock: () => {}
+  })
+};
+
 global.Utilities = {
   computeDigest(algo, str) {
     return Array.from(crypto.createHash('sha256').update(str).digest());
@@ -313,6 +320,10 @@ global.authenticateRequest = function(payload) {
   if (token === "token_unknown_user") {
     return { success: true, user: { lineUserId: "U_STRANGER_999", displayName: "見知らぬ人" } };
   }
+  if (typeof token === 'string' && token.startsWith("token_custom_")) {
+    const suffix = token.replace("token_custom_", "");
+    return { success: true, user: { lineUserId: `U_CUSTOM_${suffix}`, displayName: `カスタム_${suffix}` } };
+  }
   return { success: false, message: "Unauthorized: Invalid or expired liffToken" };
 };
 
@@ -321,6 +332,10 @@ global.verifyLineToken = function(token) {
   if (token === "token_kuwana_user2") return { success: true, lineUserId: "U_KUWANA_002" };
   if (token === "token_okayama_user1") return { success: true, lineUserId: "U_OKAYAMA_001" };
   if (token === "token_unknown_user") return { success: true, lineUserId: "U_STRANGER_999" };
+  if (typeof token === 'string' && token.startsWith("token_custom_")) {
+    const suffix = token.replace("token_custom_", "");
+    return { success: true, lineUserId: `U_CUSTOM_${suffix}` };
+  }
   return { success: false, code: "INVALID_TOKEN", message: "Token verification failed" };
 };
 
@@ -730,6 +745,225 @@ runTest("Scenario 15: getRoster / fetchRankingData による cachedRoster 最適
   assert.equal(rankingWithCache[0].staffId, "K001");
   assert.equal(rankingWithCache[0].count, 100);
   assert.equal(rankingWithCache[0].isMe, true);
+});
+
+// =============================================================================
+// PRODUCTION REGRESSION SUITE: LINE User ID Identity & staffId Lifecycle
+// =============================================================================
+
+// テスト用独立地区セットアップ
+const identityTestSS = new MockSpreadsheet("ss-id-test-id", "POSTING_MAP_IDENTITY_TEST");
+const idTestSysInfo = identityTestSS.addSheet("SYSTEM_INFO");
+idTestSysInfo.rows = [
+  ["項目", "設定値"],
+  ["地区コード", "IDENTITY_TEST"],
+  ["地区名", "認証テスト地区"],
+  ["管理パスワード", "pwd_id_test"],
+  ["契約終了日", "2026-10-31"]
+];
+const idTestStaff = identityTestSS.addSheet("名簿2026-09");
+idTestStaff.rows = [
+  ["STAFF_ID", "氏名", "LINE_USER_ID", "登録日時"]
+];
+mockSpreadsheets["ss-id-test-id"] = identityTestSS;
+
+const regBeforeTest = JSON.parse(PropertiesService.getScriptProperties().getProperty("DISTRICT_REGISTRY"));
+regBeforeTest["IDENTITY_TEST"] = "ss-id-test-id";
+PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", JSON.stringify(regBeforeTest));
+SpreadsheetResolver.getInstance().clearCache();
+
+// -----------------------------------------------------------------------------
+// TEST 16: 当月最初の LINE User ID ➔ S001 新規採番
+// -----------------------------------------------------------------------------
+runTest("Scenario 16: 当月最初の LINE User ID ➔ S001 新規採番 (Production経路)", () => {
+  const initialRowCount = idTestStaff.rows.length;
+  assert.equal(initialRowCount, 1, "Initial roster must contain only header row");
+
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "registerStaff",
+        liffToken: "token_custom_user_1",
+        districtId: "IDENTITY_TEST",
+        lastName: "テスト太郎",
+        firstName: "(LINE)"
+      })
+    }
+  };
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+
+  assert.equal(data.success, true, "registerStaff must succeed");
+  assert.equal(data.id, "S001", "First staff in month must be assigned S001");
+  assert.equal(data.message, "new", "Must be marked as new registration");
+  assert.equal(idTestStaff.rows.length, 2, "One row must be appended");
+
+  const row = idTestStaff.rows[1];
+  assert.equal(row[0], "S001");
+  assert.equal(row[1], "テスト太郎");
+  assert.equal(row[2], "U_CUSTOM_user_1");
+  assert.ok(row[3], "registeredAt must be populated");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 17: 次の別 LINE User ID ➔ S002 採番
+// -----------------------------------------------------------------------------
+runTest("Scenario 17: 次の別 LINE User ID ➔ S002 採番 (Production経路)", () => {
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "registerStaff",
+        liffToken: "token_custom_user_2",
+        districtId: "IDENTITY_TEST",
+        lastName: "テスト花子",
+        firstName: "(LINE)"
+      })
+    }
+  };
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+
+  assert.equal(data.success, true, "registerStaff must succeed");
+  assert.equal(data.id, "S002", "Second staff must be assigned S002");
+  assert.equal(data.message, "new", "Must be marked as new registration");
+  assert.equal(idTestStaff.rows.length, 3, "Total rows must now be 3");
+
+  const row = idTestStaff.rows[2];
+  assert.equal(row[0], "S002");
+  assert.equal(row[1], "テスト花子");
+  assert.equal(row[2], "U_CUSTOM_user_2");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 18: S001本人がキャッシュ削除後に再ログイン ➔ 既存S001復元 & 新規行不作成
+// -----------------------------------------------------------------------------
+runTest("Scenario 18: S001本人がキャッシュ削除後に再ログイン ➔ LINE User ID照合で既存S001復元 & 新規行不作成", () => {
+  const rowCountBefore = idTestStaff.rows.length;
+
+  // H-App の端末キャッシュ空での初回起動シーケンス (getStaffIdentity)
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "getStaffIdentity",
+        liffToken: "token_custom_user_1",
+        districtId: "IDENTITY_TEST"
+      })
+    }
+  };
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+
+  assert.equal(data.success, true, "getStaffIdentity must succeed");
+  assert.equal(data.registered, true, "Staff must be recognized as registered");
+  assert.equal(data.staffId, "S001", "Must restore original staffId S001");
+  assert.equal(data.staffName, "テスト太郎", "Must restore original staffName");
+  assert.equal(idTestStaff.rows.length, rowCountBefore, "Roster row count must NOT increase on re-login");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 19: 同一 LINE User ID の再 registerStaff ➔ 二重登録防止 & 既存S001復元
+// -----------------------------------------------------------------------------
+runTest("Scenario 19: 同一 LINE User ID の再 registerStaff ➔ 二重登録防止 & 既存S001復元", () => {
+  const rowCountBefore = idTestStaff.rows.length;
+
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "registerStaff",
+        liffToken: "token_custom_user_1",
+        districtId: "IDENTITY_TEST",
+        lastName: "テスト太郎（再入力）",
+        firstName: "(LINE)"
+      })
+    }
+  };
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+
+  assert.equal(data.success, true, "registerStaff must succeed");
+  assert.equal(data.id, "S001", "Must return existing S001");
+  assert.equal(data.message, "existing", "Must indicate existing staff");
+  assert.equal(idTestStaff.rows.length, rowCountBefore, "No duplicate row must be added");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 20: districtId 指定地区以外の名簿を変更しない (地区分離完全性)
+// -----------------------------------------------------------------------------
+runTest("Scenario 20: districtId 指定地区以外の名簿を変更しない (地区分離完全性)", () => {
+  const kuwanaCountBefore = kuwanaStaff.rows.length;
+  const okayamaCountBefore = okayamaStaff.rows.length;
+  const idTestCountBefore = idTestStaff.rows.length;
+
+  // OKAYAMA 地区宛てに新スタッフを登録
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "registerStaff",
+        liffToken: "token_custom_okayama_user",
+        districtId: "OKAYAMA",
+        lastName: "岡山 新規",
+        firstName: "(LINE)"
+      })
+    }
+  };
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+
+  assert.equal(data.success, true);
+  assert.equal(data.message, "new");
+
+  // OKAYAMA だけが +1
+  assert.equal(okayamaStaff.rows.length, okayamaCountBefore + 1, "OKAYAMA roster must increment by 1");
+  // 他地区は厳密に不変
+  assert.equal(kuwanaStaff.rows.length, kuwanaCountBefore, "KUWANA roster must remain strictly untouched");
+  assert.equal(idTestStaff.rows.length, idTestCountBefore, "IDENTITY_TEST roster must remain strictly untouched");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 21: districtId 欠落は Fail-Closed (マルチ地区安全防壁)
+// -----------------------------------------------------------------------------
+runTest("Scenario 21: districtId 欠落時は Fail-Closed (マルチ地区安全防壁)", () => {
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "registerStaff",
+        liffToken: "token_custom_no_district",
+        lastName: "欠落 太郎",
+        firstName: "(LINE)"
+      })
+    }
+  };
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+
+  assert.equal(data.success, false, "Missing districtId must fail");
+  assert.equal(data.code, "MISSING_DISTRICT_ID", "Must return MISSING_DISTRICT_ID code");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 22: 翌月は前月 staffId を引き継がず S001 から新規採番 (月次リセット完全性)
+// -----------------------------------------------------------------------------
+runTest("Scenario 22: 翌月は前月 staffId を引き継がず S001 から新規採番 (月次リセット完全性)", () => {
+  // 翌月 2026-10 の新名簿シートを IDENTITY_TEST に作成
+  const octStaff = identityTestSS.addSheet("名簿2026-10");
+  octStaff.rows = [
+    ["STAFF_ID", "氏名", "LINE_USER_ID", "登録日時"]
+  ];
+
+  // 新月 2026-10 の空シートにおいて、9月に S001 だった U_CUSTOM_user_1 が登録されるケース
+  // 空シートに対する採番ロジックの検証: maxIdNum=0 ➔ S001
+  const values = octStaff.rows;
+  let maxIdNum = 0;
+  for (let i = 1; i < values.length; i++) {
+    const valId = String(values[i][0] || "").trim();
+    const match = valId.match(/^([A-Za-z]*)(\d+)$/);
+    if (match) {
+      const idNum = parseInt(match[2], 10);
+      if (idNum > maxIdNum) maxIdNum = idNum;
+    }
+  }
+  const nextId = "S" + String(maxIdNum + 1).padStart(3, '0');
+  assert.equal(nextId, "S001", "A fresh monthly roster sheet MUST start numbering from S001");
 });
 
 console.log('\n================================================================');

@@ -1293,7 +1293,7 @@ function processPostAction(action, postData, e, districtId = "") {
           if (pj.firstName) rFirstName = pj.firstName;
         } catch (errPj) {}
       }
-      return StaffService.getInstance().registerStaff(rLastName, rFirstName, rLineUserId);
+      return StaffService.getInstance().registerStaff(rLastName, rFirstName, rLineUserId, districtId);
     case 'requestFlyerTransfer':
       return TransferService.getInstance().requestFlyerTransfer(postData);
     case 'resolveTransferRequest':

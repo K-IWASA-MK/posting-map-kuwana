@@ -74,9 +74,9 @@ if (typeof StaffRepository === 'undefined') {
       return null;
     }
 
-    findByName(name) {
+    findByName(name, districtId = "") {
       if (!name) return null;
-      const sheet = this.getRosterSheet();
+      const sheet = this.getRosterSheet(districtId);
       if (!sheet) return null;
 
       const lastRow = sheet.getLastRow();
@@ -106,19 +106,19 @@ if (typeof StaffRepository === 'undefined') {
       return null;
     }
 
-    findByNameAndApp(name, appName) {
-      return this.findByName(name);
+    findByNameAndApp(name, appName, districtId = "") {
+      return this.findByName(name, districtId);
     }
 
-    updateLineUserIdAtRow(rowIndex, lineUserId) {
-      const sheet = this.getRosterSheet();
+    updateLineUserIdAtRow(rowIndex, lineUserId, districtId = "") {
+      const sheet = this.getRosterSheet(districtId);
       if (!sheet || rowIndex < 2) return false;
       sheet.getRange(rowIndex, 3).setValue(String(lineUserId).trim());
       return true;
     }
 
-    insertNewStaff(staff) {
-      const sheet = this.getRosterSheet();
+    insertNewStaff(staff, districtId = "") {
+      const sheet = this.getRosterSheet(districtId);
       if (!sheet) throw new Error("Roster sheet not found");
 
       const lastRow = sheet.getLastRow();
