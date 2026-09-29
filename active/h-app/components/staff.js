@@ -29,8 +29,8 @@ window.renderStaffCard = function(userInfo, options = {}) {
         
         <!-- 1. 最上部 (🟢AUTHを本当に少しだけ下へ微調整) -->
         <div style="margin-top: 18px;" class="inline-flex items-center gap-2 z-10">
-          <span class="w-2 h-2 bg-[#22c55e] rounded-full shadow-[0_0_8px_#22c55e]"></span>
-          <span class="text-[8px] font-black text-[#22c55e] uppercase tracking-[0.3em]">Authorized Staff</span>
+          <span class="w-2 h-2 bg-[#30D158] rounded-full shadow-[0_0_8px_#30D158]"></span>
+          <span class="text-[8px] font-black text-[#30D158] uppercase tracking-[0.3em]">Authorized Staff</span>
         </div>
         
         <!-- 2. 中央アバターと名前 (絶対配置で縦横完全センター化、元のサイズをキープ) -->
@@ -56,26 +56,26 @@ window.renderStaffCard = function(userInfo, options = {}) {
         </div>
       </div>
 
-      <!-- 第2カード: メッセージカード -->
+      <!-- 第2カード: メッセージカード (MASTER視覚契約: 文章ブロック中央配置 ＆ 本文左揃え) -->
       <div class="w-full max-w-sm gyro-card flex flex-col items-center justify-center py-10 px-6 relative overflow-hidden text-center select-none" style="margin-top: 18px; min-height: 240px; --glow-x: 0px; --glow-y: 0px; --glow-opacity: 0.08; --edge-opacity: 0.08; --edge-angle: 180deg;">
         <div class="absolute inset-0 bg-gradient-to-b from-white/5 to-white/0 pointer-events-none rounded-[28px]"></div>
         <div class="id-ambient-sheen pointer-events-none"></div>
-        <p class="id-message-card-text font-medium text-white/80 z-10 text-left w-full">
-          <br>
-          ポスティングを自由に楽しもう<br>
-          空いてる時間に近い場所から<br><br>
+        <div style="width: 100%; max-width: 17rem; margin: 0 auto;" class="z-10 text-left">
+          <p class="id-message-card-text font-medium text-white/80 leading-relaxed text-sm">
+            ポスティングを自由に楽しもう<br>
+            空いてる時間に近い場所から<br><br>
 
-          マップを見ながら街を歩いて<br>
-          自分のペースで自分らしく<br>
-          気軽に参加しましょう<br><br>
+            マップを見ながら街を歩いて<br>
+            自分のペースで自分らしく<br>
+            気軽に参加しましょう<br><br>
 
-          ポスティングが終わったら<br>
-          配った枚数を入力してね！<br><br>
+            ポスティングが終わったら<br>
+            配った枚数を入力してね！<br><br>
 
-          ランキングもあります<br>
-          ぜひチェックしてみてね！<br>
-          <br>
-        </p>
+            ランキングもあります<br>
+            ぜひチェックしてみてね！
+          </p>
+        </div>
       </div>
     </div>
   `;

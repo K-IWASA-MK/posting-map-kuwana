@@ -1,31 +1,62 @@
 :root {
-  /* Colors */
-  --color-primary: #f4700f;
+  /* Apple OLED True Dark & Architecture Tokens */
+  --apple-bg: #000000;
+
+  /* Solid Dark Surface (Content Layer 専用: 高コントラスト・高可読性・非透過) */
+  --apple-surface: #141722;
+  --apple-surface-elevated: #1B202E;
+  --apple-surface-secondary: #181D2A;
+  --apple-border-solid: rgba(255, 255, 255, 0.08);
+  --apple-border-highlight: rgba(255, 255, 255, 0.16);
+
+  /* Liquid Glass (Navigation & Control Layer 専用: 浮遊体・半透明屈折) */
+  --apple-glass-capsule: rgba(22, 27, 38, 0.78);
+  --apple-glass-heavy: rgba(18, 22, 32, 0.88);
+  --apple-glass-border: rgba(255, 255, 255, 0.15);
+  --apple-glass-highlight: inset 0 1.5px 2px rgba(255, 255, 255, 0.25);
+
+  --apple-blue: #0A84FF;
+  --apple-blue-glow: rgba(10, 132, 255, 0.38);
+  --apple-green: #30D158; /* システム通信状態（ONLINE）専用色 */
+  --apple-green-glow: rgba(48, 209, 88, 0.4);
+
+  /* POSTING MAP Brand Orange 兼 配布済色（SSOT: #EA5F08） */
+  --brand-orange: #EA5F08;
+  --brand-orange-glow: rgba(234, 95, 8, 0.38);
+  --brand-orange-subtle: rgba(234, 95, 8, 0.16);
+
+  /* 業務進行状態色（UIや通信状態への混用厳禁） */
+  --status-undistributed: #22C55E;
+  --status-in-progress: #00B7FF;
+  --status-completed: #EA5F08;
+
+  /* Inset & Layout Contract Tokens (動的セーフエリア計算式) */
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-height: 66px;
+  --tabbar-float-offset: 12px;
+  --content-tab-gap: 16px;
+  --main-bottom-inset: calc(var(--tabbar-height) + var(--tabbar-float-offset) + var(--content-tab-gap) + var(--safe-area-bottom));
+
+  /* Colors (Legacy compatibility) */
+  --color-primary: #EA5F08;
   --color-info: #00B7FF;
   --color-success: #22C55E;
   --color-warning: #F59E0B;
   --color-danger: #EF4444;
   --color-text-main: #FFFFFF;
-  --color-text-muted: rgba(255, 255, 255, 0.4);
+  --color-text-muted: rgba(255, 255, 255, 0.45);
   --color-bg-base: #000000;
-  --color-bg-surface: #111315;
-  --color-bg-card: rgba(28, 28, 30, 0.65);
-
-  /* Spacing */
-  --space-4: 4px;
-  --space-8: 8px;
-  --space-16: 16px;
-  --space-24: 24px;
-  --space-32: 32px;
+  --color-bg-surface: #141722;
+  --color-bg-card: #141722;
 
   /* Corner Radius */
   --radius-card: 24px;
-  --radius-btn: 16px;
+  --radius-btn: 18px;
 
   /* Glassmorphism Configuration */
-  --glass-blur: 20px;
-  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-blur: 24px;
+  --glass-border: 1px solid rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.65);
 }
 
 * {
@@ -98,11 +129,39 @@ body {
 /* Ultimate Apple Native Glass UI Style */
 .premium-glass {
   border-radius: var(--radius-card);
-  background: var(--color-bg-card);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: var(--glass-border);
+  background: var(--apple-surface);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--apple-border-solid);
+}
+
+/* Floating Status Capsule (Header) */
+.floating-status-capsule {
+  background: var(--apple-glass-capsule) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--apple-glass-border) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.2) !important;
+  border-radius: 999px !important;
+  padding: 8px 20px !important;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+/* Floating Navigation Bar (Liquid Glass) */
+.floating-nav-capsule {
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  background: var(--apple-glass-capsule) !important;
+  border: 1px solid var(--apple-glass-border) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), inset 0 1.5px 2px rgba(255, 255, 255, 0.25) !important;
+  border-radius: 36px !important;
+  height: var(--tabbar-height, 66px) !important;
+  padding: 0 12px !important;
+}
+
+/* Main Content dynamic bottom inset (ID・ランキング・在庫・掲示板) */
+main#content:not(.is-map-view) {
+  padding-bottom: var(--main-bottom-inset) !important;
 }
 
 /* Gyro Hologram Glow Card Style (ID Card Edge & Shadow Glow) */
