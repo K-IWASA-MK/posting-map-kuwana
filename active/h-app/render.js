@@ -33,7 +33,7 @@ function renderAreas() {
     let mapEl = document.getElementById("main-map");
     if (!mapEl) {
       const mapHtml = `
-        <div id="main-map" style="width:100%; height:100%; overflow:hidden;"></div>
+        <div id="main-map" style="width:100%; height:var(--primary-card-height, 356px); border-radius:1.5rem; overflow:hidden; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5);"></div>
       `;
       $('area-list').innerHTML = mapHtml;
     }
@@ -183,28 +183,36 @@ function openPointDetailModal(rowId) {
   }
 
   const modal = $('detail-modal');
-  const panel = $('detail-modal-panel') || (modal ? modal.querySelector('.sheet-panel') : null);
 
   if (!modal) {
     console.error("[ERROR] detail-modal not found");
     return;
   }
 
-  modal.classList.add('active');
-  if (panel) {
-    panel.classList.add('active');
+  if (getComputedStyle(modal).display === "none") {
+    modal.style.display = ""; // クラスで定義された 'flex' 等に戻す
+  }
+
+  modal.classList.remove('pointer-events-none', 'opacity-0');
+  if (modal.firstElementChild) {
+    modal.firstElementChild.classList.remove('translate-y-full');
   }
 }
 
 // Close point detail modal
 function closeDetailModal() {
   const modal = $('detail-modal');
-  const panel = $('detail-modal-panel') || (modal ? modal.querySelector('.sheet-panel') : null);
   if (!modal) return;
-  modal.classList.remove('active');
-  if (panel) {
-    panel.classList.remove('active');
+  modal.classList.add('opacity-0', 'pointer-events-none');
+  if (modal.firstElementChild) {
+    modal.firstElementChild.classList.add('translate-y-full');
   }
+  // アニメーション完了後にdisplay: noneにする
+  setTimeout(() => {
+    if (modal.classList.contains('opacity-0')) {
+      modal.style.display = "none";
+    }
+  }, 300);
   window.currentPointDetailRowId = null;
 }
 
@@ -286,25 +294,28 @@ function renderDetailModalContent(p) {
   const turnoutValStr = turnoutData.turnout !== '--' ? `${turnoutData.turnout}%` : '--';
 
   return `
-    <div class="pin-detail-container">
-      <!-- 町丁目名 & 市区町村名 -->
-      <div class="pin-town-name">${escapeHtml(cleanAddr)}</div>
-      <div class="pin-city-name">${escapeHtml(cityName)}${p.rowId ? ` (rowId: ${p.rowId})` : ''}</div>
-      ${p.memo ? `<div class="text-xs text-white/50 bg-white/5 rounded-xl p-3 border border-white/5 select-text w-full text-center mt-1">${escapeHtml(p.memo)}</div>` : ''}
-
-      <!-- 統計3項目（世帯数・人口・自治体投票率: Solid Dark Surface契約） -->
-      <div class="pin-stat-grid">
-        <div class="pin-stat-card">
-          <span class="pin-stat-label">世帯数 (国勢調査)</span>
-          <div class="pin-stat-value">${householdsVal}</div>
+    <div style="display: flex; flex-direction: column; gap: 12px; width: 100%; box-sizing: border-box;">
+      <!-- 1行目: 住所バッジ（中央寄せ） -->
+      <div class="w-full flex flex-col items-center">
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); height: 26px; font-size: 12px; color: rgba(255, 255, 255, 0.9);" class="inline-flex items-center px-3 font-bold rounded-full tracking-wide truncate max-w-full select-text">
+          🏠 ${escapeHtml(cleanAddr)}
         </div>
-        <div class="pin-stat-card">
-          <span class="pin-stat-label">人口 (国勢調査)</span>
-          <div class="pin-stat-value">${populationVal}</div>
+        ${p.memo ? `<div class="text-xs text-white/50 bg-white/5 rounded-xl p-3 border border-white/5 select-text w-full text-center mt-1">${escapeHtml(p.memo)}</div>` : ''}
+      </div>
+
+      <!-- 2行目: 統計3項目（世帯数・人口・自治体投票率: Solid Dark Surface契約） -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%;">
+        <div style="background: var(--apple-surface, #141722); border: 1px solid var(--apple-border-solid, rgba(255, 255, 255, 0.08)); border-radius: 16px; padding: 10px 12px; text-align: center;">
+          <span style="font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.45); display: block; margin-bottom: 2px;">世帯数 (国勢調査)</span>
+          <div style="font-size: 16px; font-weight: 900; font-family: monospace; color: #FFFFFF;">${householdsVal}</div>
+        </div>
+        <div style="background: var(--apple-surface, #141722); border: 1px solid var(--apple-border-solid, rgba(255, 255, 255, 0.08)); border-radius: 16px; padding: 10px 12px; text-align: center;">
+          <span style="font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.45); display: block; margin-bottom: 2px;">人口 (国勢調査)</span>
+          <div style="font-size: 16px; font-weight: 900; font-family: monospace; color: #FFFFFF;">${populationVal}</div>
         </div>
       </div>
 
-      <div class="pin-turnout-card">
+      <div style="background: var(--apple-surface, #141722); border: 1px solid var(--apple-border-solid, rgba(255, 255, 255, 0.08)); border-radius: 16px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; width: 100%; box-sizing: border-box;">
         <div style="display: flex; flex-direction: column; text-align: left;">
           <span style="font-size: 11px; font-weight: 900; color: rgba(255, 255, 255, 0.85);">${escapeHtml(electionNameStr)}</span>
           <span style="font-size: 9px; font-weight: 700; color: rgba(255, 255, 255, 0.45);">自治体 前回投票率</span>
