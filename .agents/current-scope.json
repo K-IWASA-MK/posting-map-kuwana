@@ -1,4 +1,7 @@
 [
   ".agents/current-scope.json",
-  ".claspignore"
+  "active/api/v2_api.js",
+  "active/business/staff/staff_repository.js",
+  "active/business/staff/staff_service.js",
+  "tests/test_multi_district_routing_auth.mjs"
 ]
