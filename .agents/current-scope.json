@@ -1,15 +1,16 @@
 [
   ".agents/current-scope.json",
-  "docs/architecture/01_DESIGN_CONTRACT.md",
-  "docs/architecture/decisions/ADR-022_MULTI_REGION_ARCHITECTURE_SPECIFICATION.md",
-  "docs/architecture/decisions/ADR-010.md",
-  "docs/architecture/UNIVERSAL_PARENT_GAS_ROUTING_DESIGN.md",
-  "docs/architecture/decisions/ADR-003.md",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
-  "docs/architecture/decisions/ADR-013_ACTIVITY_STATE_MACHINE.md",
-  "tests/test_phase21_multiregion_verification.mjs",
-  "tests/test_dashboard_snapshot.mjs",
-  "tests/test_multi_district_routing_auth.mjs",
-  "tests/test_step3_rectification.mjs",
-  "tests/test_sec001_dashboard_auth_fix.mjs"
+  "active/api/v2_api.js",
+  "active/infrastructure/drive/drive_adapter.js",
+  "active/business/gps/gps_service.js",
+  "active/business/gps/gps_repository.js",
+  "active/business/flyer/flyer_service.js",
+  "active/business/flyer/flyer_repository.js",
+  "active/business/transfer/transfer_service.js",
+  "active/business/bulletin/bulletin_service.js",
+  "active/business/area/area_service.js",
+  "active/business/area/area_repository.js",
+  "active/business/distribution/distribution_repository.js",
+  "active/business/pin/pin_status_service.js",
+  "tests/test_multi_district_routing_auth.mjs"
 ]
