@@ -89,12 +89,12 @@ body {
   box-sizing: border-box;
 }
 
-/* MAP ページ（375px Cap 対象外・Main利用可能幅100%全幅使用） */
+/* MAP ページ（Full-bleed MAP: 375px Cap 対象外・Main利用可能領域100%充填） */
 #page-areas {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding-inline: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 

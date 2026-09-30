@@ -39,35 +39,38 @@
       --card-vertical-margin: 32px;
     }
 
-    /* 第1層MAP 356px 統一レイアウト (A=32px, B=32px, A-B=0px) */
+    /* Full-bleed MAP 専用レイアウト (Top Dock と Bottom Dock の間を100%地図で充填) */
     main#content.is-map-view {
       overflow: hidden !important;
       display: flex !important;
       flex-direction: column !important;
-      padding-left: 0 !important;
-      padding-right: 0 !important;
-      padding-top: 16px !important;
-      padding-bottom: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
     }
 
     main#content.is-map-view #page-areas,
     main#content.is-map-view #area-list {
       display: flex !important;
       flex-direction: column !important;
-      align-items: center !important;
-      justify-content: flex-start !important;
+      flex: 1 1 auto !important;
       width: 100% !important;
+      height: 100% !important;
+      min-height: 0 !important;
       margin: 0 !important;
       padding: 0 !important;
     }
 
     main#content.is-map-view #main-map {
-      flex: none !important;
-      height: var(--primary-card-height) !important;
+      flex: 1 1 auto !important;
       width: 100% !important;
+      height: 100% !important;
+      min-height: 0 !important;
       margin: 0 !important;
-      border-radius: 1.5rem !important;
-      transform: translateY(-12px) !important;
+      padding: 0 !important;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      transform: none !important;
     }
   </style>
 
