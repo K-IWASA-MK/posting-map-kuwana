@@ -407,26 +407,8 @@ async function loadData(skipSync = false) {
 
   const tier1Promise = fetchTier1();
 
-  try {
-    if (!skipSync) {
-      setSyncStatus(navigator.onLine ? 'online' : 'offline');
-    }
-
-    logDebug("[loadData] Awaiting fetchSystemSummary in background...");
-    const data = await fetchSystemSummary();
-    logDebug("[loadData] fetchSystemSummary resolved.");
-
-    if (data && data.success) {
-      logDebug("[loadData] System Summary received: total=" + data.total + ", done=" + data.done + ", percent=" + data.percent);
-      updateStats(data);
-      prefetchRanking();
-    } else {
-      throw new Error(data ? data.message : "データが空です");
-    }
-  } catch (err) {
-    console.error("Background Load Error:", err);
-    logDebug(`[loadData] Background ERROR: ${err.message}`);
-    // バックグラウンドロードの失敗は画面をブロッキングしてフリーズさせず、ログ出力のみに留めます。
+  if (!skipSync) {
+    setSyncStatus(navigator.onLine ? 'online' : 'offline');
   }
 
   await tier1Promise;
