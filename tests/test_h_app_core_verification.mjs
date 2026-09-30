@@ -12,6 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { verifyAssetTokens, REQUIRED_LOCAL_CODE_ASSETS } from '../scripts/stamp-h-app-token.mjs';
 
 const rootDir = process.cwd();
 
@@ -279,4 +280,17 @@ test('8. Universal原則: active/h-app/ 配下に地区固有ハードコード�
   }
 });
 
-console.log('✅ ALL 8 PHASE 8 H-APP CORE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+// ----------------------------------------------------------------------------
+// 9. Standalone Release Token ガード (Asset Cache Busting Integrity)
+// ----------------------------------------------------------------------------
+test('9. Release Token: 全必須ローカルコードアセットに単一自動Release Tokenが存在し、かつ完全に同一であること', async (t) => {
+  const verification = verifyAssetTokens(dashboardHtml);
+  assert.equal(verification.valid, true, verification.error || 'Asset token verification failed');
+  assert.ok(verification.token, 'Release Token が取得できること');
+  assert.equal(verification.count, REQUIRED_LOCAL_CODE_ASSETS.length, `全 ${REQUIRED_LOCAL_CODE_ASSETS.length} アセットが検証されていること`);
+
+  // 外部CDNが誤って汚染されていないことの追加防御
+  assert.ok(dashboardHtml.includes('https://static.line-scdn.net/liff/edge/2/sdk.js"></script>'), '外部LINE SDK CDNにはクエリが付与されていないこと');
+});
+
+console.log('✅ ALL PHASE 8 H-APP CORE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

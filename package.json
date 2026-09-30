@@ -14,6 +14,7 @@
     "check:ssot": "node scripts/validate-gas-endpoint-ssot.mjs",
     "verify:gas": "node scripts/verify-gas-deployment.mjs",
     "deploy:gas": "node scripts/safe-deploy.mjs",
+    "stamp:assets": "node scripts/stamp-h-app-token.mjs",
     "audit:gate": "node scripts/check-scope.mjs"
   },
   "keywords": [],
