@@ -245,8 +245,6 @@ async function startApp() {
   try {
     loadGoogleMapsApi();
 
-    fetchSystemSummary();
-
     // 起動時の未送信キュー復旧・送信処理（クラッシュ・オフライン復旧）
     if (typeof processQueue === 'function') {
       processQueue();
@@ -328,7 +326,6 @@ function triggerBackgroundRegistration(profile) {
         last: profile.displayName,
         first: "",
         id: res.id,
-        lineUserId: profile.userId,
         picture: profile.pictureUrl
       };
       localStorage.setItem('user_info', JSON.stringify(registeredInfo));
@@ -1454,8 +1451,8 @@ function updateStats(summaryData = null) {
   }
 
   if (!summaryData) {
-    if (countEl) countEl.textContent = '0/ 0';
-    if (pctEl) pctEl.textContent = '0%';
+    if (countEl) countEl.textContent = '( -- / -- )';
+    if (pctEl) pctEl.textContent = '--%';
     return;
   }
 
@@ -1476,7 +1473,7 @@ function updateStats(summaryData = null) {
     document.title = "POSTING MAP";
   }
 
-  if (countEl) countEl.textContent = `${done}/ ${total}`;
+  if (countEl) countEl.textContent = `( ${done} / ${total} )`;
   if (pctEl) pctEl.textContent = `${percent}%`;
 
   // AddressMasterServiceが未ロードの場合は非同期取得後に自動再反映
@@ -1517,6 +1514,7 @@ async function fetchSystemSummary(forceRefresh = false) {
     } catch (err) {
       console.warn("fetchSystemSummary failed:", err);
     }
+    _systemSummaryPromise = null;
     return null;
   })();
 
@@ -1588,6 +1586,19 @@ async function safeInitApp() {
     throw new Error("LIFF ID missing in client configuration.");
   }
 
+  const existingUserInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+  const hasExistingStaffId = existingUserInfo.id && String(existingUserInfo.id).trim() !== '';
+
+  // 【Optimistic First Paint】既存 user_info.id がある場合は LIFF / Identity API を待たずに即時先行表示！
+  if (hasExistingStaffId) {
+    logDebug("Optimistic First Paint: existing staffId found. Launching main app immediately.");
+    if (typeof renderSettings === 'function') {
+      renderSettings();
+    }
+    updateBottomNavVisibility();
+    showMainApp();
+  }
+
   startApp();
 
   if (typeof liff !== 'undefined') {
@@ -1609,6 +1620,9 @@ async function safeInitApp() {
         logDebug("LOGIN OK");
         sessionStorage.removeItem('liff_initializing');
 
+        // ★ MASTER指示 ①: fetchSystemSummary() は liff.isLoggedIn() 成立直後、await liff.getProfile() より前に非同期発火すること。HeaderをProfile取得に依存させない。
+        fetchSystemSummary();
+
         try {
           logDebug("PROFILE START");
           const profile = await liff.getProfile();
@@ -1622,18 +1636,7 @@ async function safeInitApp() {
             console.warn("Failed to clean OAuth query parameters:", e);
           }
 
-          const existingUserInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-          const hasExistingStaffId = existingUserInfo.id && String(existingUserInfo.id).trim() !== '';
-
-          // 【Optimistic First Paint】既存 user_info.id がある場合は Identity API を待たずに即時先行表示！
-          if (hasExistingStaffId) {
-            logDebug("Optimistic First Paint: existing staffId found. Launching main app immediately.");
-            if (typeof renderSettings === 'function') {
-              renderSettings();
-            }
-            updateBottomNavVisibility();
-            showMainApp();
-          } else {
+          if (!hasExistingStaffId) {
             // 初回・未登録端末: 従来どおり Identity 検証または登録完了までローディングを維持
             setLoadingProgress(50, 'VERIFYING IDENTITY...');
           }
@@ -1642,13 +1645,12 @@ async function safeInitApp() {
           _identitySyncPromise = callApiPost('getStaffIdentity', {})
             .then(identityRes => {
               if (identityRes && identityRes.success && identityRes.registered && identityRes.staffId && String(identityRes.staffId).trim() !== '') {
-                // ① 登録済み: Backend の検証済み Identity を正として localStorage へ同期
+                // ① 登録済み: Backend の検証済み Identity を正として localStorage へ同期（lineUserId は保存しない）
                 logDebug("STAFF IDENTITY VERIFIED (BG): " + identityRes.staffId);
                 const verifiedUserInfo = {
                   last: identityRes.staffName || profile.displayName || '',
                   first: '',
                   id: identityRes.staffId,
-                  lineUserId: profile.userId,
                   picture: profile.pictureUrl || ''
                 };
                 localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
@@ -1674,7 +1676,6 @@ async function safeInitApp() {
                   last: profile.displayName || '',
                   first: '',
                   id: '',
-                  lineUserId: profile.userId,
                   picture: profile.pictureUrl || ''
                 };
                 localStorage.setItem('user_info', JSON.stringify(initialUserInfo));
