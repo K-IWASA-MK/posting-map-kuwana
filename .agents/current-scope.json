@@ -1,5 +1,4 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/index.html",
-  "active/h-app/style.css"
+  "active/h-app/render.js"
 ]
