@@ -1,16 +1,10 @@
 [
   ".agents/current-scope.json",
-  "active/api/v2_api.js",
+  "active/infrastructure/spreadsheet/spreadsheet_adapter.js",
   "active/infrastructure/drive/drive_adapter.js",
-  "active/business/gps/gps_service.js",
-  "active/business/gps/gps_repository.js",
-  "active/business/flyer/flyer_service.js",
-  "active/business/flyer/flyer_repository.js",
-  "active/business/transfer/transfer_service.js",
-  "active/business/bulletin/bulletin_service.js",
-  "active/business/area/area_service.js",
-  "active/business/area/area_repository.js",
-  "active/business/distribution/distribution_repository.js",
-  "active/business/pin/pin_status_service.js",
+  "active/gas/v2_batch.js",
+  "active/business/system/district_provisioner.js",
+  "active/business/system/system_info_service.js",
+  "active/api/v2_api.js",
   "tests/test_multi_district_routing_auth.mjs"
 ]

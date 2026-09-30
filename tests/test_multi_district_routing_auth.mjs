@@ -73,11 +73,17 @@ class MockSheet {
   }
   getRange(row, col, numRows = 1, numCols = 1) {
     const sheet = this;
-    if (typeof row === 'string' && row.includes(':')) {
+    if (typeof row === 'string') {
       return {
         createTextFinder(text) {
           return sheet.createTextFinder(text);
-        }
+        },
+        setBackground() { return this; },
+        setFontColor() { return this; },
+        setFontWeight() { return this; },
+        setValues() { return this; },
+        setValue() { return this; },
+        getValues() { return [[]]; }
       };
     }
     return {
@@ -117,11 +123,52 @@ class MockSheet {
           sheet.rows[rowIdx] = [];
         }
         sheet.rows[rowIdx][colIdx] = val;
-      }
+      },
+      clearContent() {
+        for (let r = 0; r < numRows; r++) {
+          const rowIdx = row - 1 + r;
+          if (sheet.rows[rowIdx]) {
+            for (let c = 0; c < numCols; c++) {
+              const colIdx = col - 1 + c;
+              sheet.rows[rowIdx][colIdx] = "";
+            }
+          }
+        }
+      },
+      setBackground() { return this; },
+      setFontColor() { return this; },
+      setFontWeight() { return this; }
     };
   }
   appendRow(row) {
-    this.rows.push(row);
+    this.rows.push([...row]);
+  }
+  deleteRows(startRow, numRows) {
+    this.rows.splice(startRow - 1, numRows);
+  }
+  getMaxColumns() {
+    return this.rows.length > 0 ? Math.max(...this.rows.map(r => r.length), 17) : 17;
+  }
+  insertColumnsAfter(col, num) {}
+  setFrozenRows() {}
+  clear() {
+    this.rows = [];
+  }
+  setName(name) {
+    if (this.parentSS && this.parentSS.sheets) {
+      delete this.parentSS.sheets[this.name];
+      this.name = name;
+      this.parentSS.sheets[name] = this;
+    } else {
+      this.name = name;
+    }
+  }
+  copyTo(targetSS) {
+    const copy = new MockSheet(this.name + " のコピー");
+    copy.rows = this.rows.map(r => [...r]);
+    copy.parentSS = targetSS;
+    targetSS.sheets[copy.name] = copy;
+    return copy;
   }
 }
 
@@ -145,11 +192,17 @@ class MockSpreadsheet {
   }
   addSheet(name) {
     const sheet = new MockSheet(name);
+    sheet.parentSS = this;
     this.sheets[name] = sheet;
     return sheet;
   }
   insertSheet(name) {
     return this.addSheet(name);
+  }
+  deleteSheet(sheet) {
+    if (sheet && sheet.getName) {
+      delete this.sheets[sheet.getName()];
+    }
   }
 }
 
@@ -183,7 +236,7 @@ global.PropertiesService = {
   getScriptProperties() {
     return {
       getProperty(key) {
-        return mockScriptProperties[key] || null;
+        return (key in mockScriptProperties) ? mockScriptProperties[key] : null;
       },
       setProperty(key, val) {
         mockScriptProperties[key] = String(val);
@@ -197,26 +250,74 @@ global.PropertiesService = {
   }
 };
 
+class MockDriveFile {
+  constructor(id, name, parentFolder) {
+    this.id = id;
+    this.name = name;
+    this.parentFolder = parentFolder;
+    this.trashed = false;
+    this.createdDate = new Date();
+  }
+  getId() { return this.id; }
+  getName() { return this.name; }
+  getUrl() { return `https://drive.google.com/file/d/${this.id}/view`; }
+  getDateCreated() { return this.createdDate; }
+  isTrashed() { return this.trashed; }
+  setTrashed(val) { this.trashed = val; }
+  moveTo(newFolder) {
+    if (this.parentFolder && this.parentFolder.files) {
+      this.parentFolder.files = this.parentFolder.files.filter(f => f !== this);
+    }
+    this.parentFolder = newFolder;
+    newFolder.files.push(this);
+  }
+  setSharing() {}
+}
+
+class MockDriveFolder {
+  constructor(id, name = "") {
+    this.id = id;
+    this.name = name;
+    this.files = [];
+    this.subfolders = {};
+  }
+  getId() { return this.id; }
+  getName() { return this.name; }
+  createFile(blob) {
+    const file = new MockDriveFile(`file_${this.id}_${this.files.length + 1}`, blob && blob.getName ? blob.getName() : "test.jpg", this);
+    this.files.push(file);
+    return file;
+  }
+  createFolder(name) {
+    const sub = new MockDriveFolder(`subfolder_${this.id}_${name}`, name);
+    this.subfolders[name] = sub;
+    return sub;
+  }
+  getFoldersByName(name) {
+    const sub = this.subfolders[name];
+    let items = sub ? [sub] : [];
+    let idx = 0;
+    return {
+      hasNext: () => idx < items.length,
+      next: () => items[idx++]
+    };
+  }
+  getFiles() {
+    const activeFiles = this.files.filter(f => !f.isTrashed());
+    let idx = 0;
+    return {
+      hasNext: () => idx < activeFiles.length,
+      next: () => activeFiles[idx++]
+    };
+  }
+}
+
 const mockDriveFolders = {};
 global.mockDriveFolders = mockDriveFolders;
 global.DriveApp = {
   getFolderById(id) {
     if (!mockDriveFolders[id]) {
-      mockDriveFolders[id] = {
-        id: id,
-        files: [],
-        createFile(blob) {
-          const file = {
-            id: `file_${id}_${this.files.length + 1}`,
-            name: blob && blob.getName ? blob.getName() : "test.jpg",
-            getId() { return this.id; },
-            getUrl() { return `https://drive.google.com/file/d/${this.id}/view`; },
-            setSharing() {}
-          };
-          this.files.push(file);
-          return file;
-        }
-      };
+      mockDriveFolders[id] = new MockDriveFolder(id);
     }
     return mockDriveFolders[id];
   }
@@ -225,7 +326,22 @@ global.DriveApp = {
 global.LockService = {
   getScriptLock: () => ({
     waitLock: () => {},
-    releaseLock: () => {}
+    releaseLock: () => {},
+    tryLock: () => true
+  })
+};
+
+global.ScriptApp = {
+  getProjectTriggers: () => [],
+  deleteTrigger: () => {},
+  newTrigger: () => ({
+    timeBased: () => ({
+      everyDays: () => ({
+        atHour: () => ({
+          create: () => ({})
+        })
+      })
+    })
   })
 };
 
@@ -378,6 +494,8 @@ const transferServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/
 const bulletinServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/bulletin/bulletin_service.js'), 'utf-8');
 const areaRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/area/area_repository.js'), 'utf-8');
 const areaServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/area/area_service.js'), 'utf-8');
+const districtProvisionerCode = fs.readFileSync(path.join(rootDir, 'active/business/system/district_provisioner.js'), 'utf-8');
+const v2BatchCode = fs.readFileSync(path.join(rootDir, 'active/gas/v2_batch.js'), 'utf-8');
 const v2ApiCode = fs.readFileSync(path.join(rootDir, 'active/api/v2_api.js'), 'utf-8');
 
 // 依存モジュールロード
@@ -400,6 +518,8 @@ vm.runInThisContext(transferServiceCode);
 vm.runInThisContext(bulletinServiceCode);
 vm.runInThisContext(areaRepoCode);
 vm.runInThisContext(areaServiceCode);
+vm.runInThisContext(districtProvisionerCode);
+vm.runInThisContext(v2BatchCode);
 
 // LINE 認証検証のモック（テスト用）
 global.authenticateRequest = function(payload) {
@@ -709,19 +829,42 @@ runTest("Scenario 12: bootstrapEnvironment による既存地区の保護と新�
   assert.equal(updatedReg["EXISTING_A"].spreadsheetId, "ss-a-id");
   assert.ok(updatedReg["NEW_DISTRICT_B"], "NEW_DISTRICT_B must be added");
   assert.equal(updatedReg["NEW_DISTRICT_B"].spreadsheetId, "ss-b-id");
-  assert.equal(updatedReg["NEW_DISTRICT_B"].enabled, true);
+  assert.equal(updatedReg["NEW_DISTRICT_B"].enabled, false, "NEW_DISTRICT_B must be enabled: false prior to acceptance");
 
   // TARGET_SPREADSHEET_ID が上書きされていないこと（既存値保護）
   assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id");
 
-  // 後続シナリオ（Scenario 13〜15）のために DISTRICT_REGISTRY に KUWANA, OKAYAMA, NEW_DISTRICT_B を復元設定
+  // 破損Registry下のbootstrap mutation 0検証
   const fullReg = {
     "KUWANA": "ss-kuwana-id",
     "OKAYAMA": "ss-okayama-id",
     "NEW_DISTRICT_B": { spreadsheetId: "ss-b-id", enabled: true }
   };
-  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(fullReg);
-  SpreadsheetResolver.getInstance().clearCache();
+
+  try {
+    mockScriptProperties["DISTRICT_REGISTRY"] = "{corrupted_json";
+    const corruptReq = {
+      postData: {
+        contents: JSON.stringify({
+          action: "bootstrapEnvironment",
+          districtId: "NEW_DISTRICT_B",
+          targetSpreadsheetId: "ss-b-id",
+          storageParentId: "folder-b-id",
+          provisioningToken: validToken
+        })
+      }
+    };
+    const corruptRes = doPost(corruptReq);
+    const corruptData = JSON.parse(corruptRes.text);
+    assert.equal(corruptData.success, false, "bootstrap must fail on corrupted DISTRICT_REGISTRY");
+    assert.equal(corruptData.code, "REGISTRY_CORRUPTED");
+    assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], "{corrupted_json", "DISTRICT_REGISTRY must have ZERO mutation on corruption");
+    assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id", "TARGET_SPREADSHEET_ID must have ZERO mutation");
+  } finally {
+    // 後続シナリオ（Scenario 13〜15）のために DISTRICT_REGISTRY に KUWANA, OKAYAMA, NEW_DISTRICT_B を復元設定
+    mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(fullReg);
+    SpreadsheetResolver.getInstance().clearCache();
+  }
 });
 
 // -----------------------------------------------------------------------------
@@ -1218,11 +1361,11 @@ runTest("Scenario 24: District Context Propagation & Drive Isolation / Fail-Clos
   PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", "{ corrupted json");
   assert.throws(() => getStorageFolderId("KUWANA"), /DISTRICT_REGISTRY is corrupted/, "Corrupted registry must throw (no fallback)");
 
-  // 1-2. districtIdあり + DISTRICT_REGISTRYなし → 旧単一地区互換として STORAGE_PARENT_ID fallback
-  PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", "");
+  // 1-2. districtIdあり + DISTRICT_REGISTRYなし (null) → 旧単一地区互換として STORAGE_PARENT_ID fallback
+  delete mockScriptProperties["DISTRICT_REGISTRY"];
   assert.equal(getStorageFolderId("KUWANA"), "legacy_global_folder_id", "Legacy single district must fallback to STORAGE_PARENT_ID when registry missing");
 
-  // 1-3. districtIdなし → 既存Scheduler互換として STORAGE_PARENT_ID を維持
+  // 1-3. districtIdなし + DISTRICT_REGISTRYなし (null) → 既存Scheduler互換として STORAGE_PARENT_ID を維持
   assert.equal(getStorageFolderId(""), "legacy_global_folder_id", "District-less call must resolve to STORAGE_PARENT_ID");
   assert.equal(getStorageFolderId(null), "legacy_global_folder_id", "Null district call must resolve to STORAGE_PARENT_ID");
 
@@ -1351,6 +1494,333 @@ runTest("Scenario 24: District Context Propagation & Drive Isolation / Fail-Clos
   assert.equal(noFolderDist.rows[1][8], "NO", "photoStatus in sheet must be NO");
 });
 
+// -----------------------------------------------------------------------------
+// TEST 25: Provisioning Blast Radius 固定 ＆ 月次 rollover 全有効地区実行・片肺障害隔離
+// -----------------------------------------------------------------------------
+runTest("Scenario 25: Provisioning Blast Radius 固定 ＆ 月次 rollover 全有効地区実行・片肺障害隔離", () => {
+  // 1. テスト用スプレッドシート & レジストリのセットアップ
+  const pinKuwana = kuwanaSS.addSheet("PinStatus2026-09");
+  pinKuwana.rows = [
+    ["rowId", "status"],
+    ["1", "IN_PROGRESS"],
+    ["2", "IN_PROGRESS"]
+  ];
+
+  const pinOkayama = okayamaSS.addSheet("PinStatus2026-09");
+  pinOkayama.rows = [
+    ["rowId", "status"],
+    ["10", "IN_PROGRESS"],
+    ["20", "IN_PROGRESS"]
+  ];
+
+  const disabledSS = new MockSpreadsheet("ss-disabled-id", "DISABLED_DIST");
+  disabledSS.addSheet("SYSTEM_INFO").rows = [
+    ["項目", "設定値"],
+    ["地区コード", "DISABLED_DIST"],
+    ["地区名", "無効化地区"],
+    ["契約終了日", "2026-10-31"]
+  ];
+  mockSpreadsheets["ss-disabled-id"] = disabledSS;
+
+  const corruptSS = new MockSpreadsheet("ss-corrupt-id", "CORRUPT_DIST");
+  corruptSS.addSheet("SYSTEM_INFO").rows = [
+    ["項目", "設定値"],
+    ["地区コード", "CORRUPT_DIST"],
+    ["地区名", "破損地区"],
+    ["契約終了日", "2026-10-31"]
+  ];
+  // 3/5 だけシートが存在する破損状態
+  corruptSS.addSheet("配布実績2026-09").rows = [["rowId"]];
+  corruptSS.addSheet("名簿2026-09").rows = [["STAFF_ID"]];
+  corruptSS.addSheet("保有チラシ枚数2026-09").rows = [["flyerId"]];
+  mockSpreadsheets["ss-corrupt-id"] = corruptSS;
+
+  const batchReg = {
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true },
+    "OKAYAMA": { spreadsheetId: "ss-okayama-id", storageFolderId: "folder_okayama_id", enabled: true },
+    "DISABLED_DIST": { spreadsheetId: "ss-disabled-id", storageFolderId: "folder_disabled_id", enabled: false }
+  };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(batchReg);
+  SpreadsheetResolver.getInstance().clearCache();
+
+  const validToken = "test_prov_token_25";
+  mockScriptProperties["PROVISIONING_TOKEN_HASH"] = crypto.createHash('sha256').update(validToken).digest('hex').toLowerCase();
+
+  // (1) Provisioning Blast Radius 固定検証:
+  // DISABLED_DIST をプロビジョニングした際、対象地区のみ PinStatus がクリアされ、
+  // 稼働中の KUWANA および OKAYAMA の PinStatus は 1 行も変化しないこと (他地区 Pin mutation 0)
+  const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "町域1" }];
+  const provResult = DistrictProvisioner.getInstance().provisionNewDistrict(
+    sampleAddresses,
+    { provisioningToken: validToken, targetSpreadsheetId: "ss-disabled-id" },
+    "DISABLED_DIST"
+  );
+  assert.equal(provResult.success, true, "Provisioning of DISABLED_DIST must succeed with explicit spreadsheet");
+
+  // KUWANA と OKAYAMA の PinStatus 行数が 1 行も消えていないこと
+  assert.equal(pinKuwana.rows.length, 3, "KUWANA PinStatus must have ZERO mutation on provisioning other district");
+  assert.equal(pinOkayama.rows.length, 3, "OKAYAMA PinStatus must have ZERO mutation on provisioning other district");
+
+  // (2) 月次 rollover 全有効地区実行検証:
+  // 桑名と岡山の原本シートを作成
+  DistrictProvisioner.getInstance().createMasterSheets(kuwanaSS, sampleAddresses);
+  DistrictProvisioner.getInstance().createMasterSheets(okayamaSS, sampleAddresses);
+
+  // 桑名と岡山の当月5種を一旦削除し 0/5 状態にする
+  const types = ['配布実績', '名簿', '保有チラシ枚数', '受渡要請履歴', 'PinStatus'];
+  types.forEach(t => {
+    delete kuwanaSS.sheets[`${t}2026-09`];
+    delete okayamaSS.sheets[`${t}2026-09`];
+  });
+
+  // rolloverMonthlySheetsDailyCheck() 実行
+  rolloverMonthlySheetsDailyCheck();
+
+  // KUWANA と OKAYAMA に当月 5 シートが作成されていること
+  types.forEach(t => {
+    assert.ok(kuwanaSS.sheets[`${t}2026-09`], `KUWANA must have sheet ${t}2026-09 created`);
+    assert.ok(okayamaSS.sheets[`${t}2026-09`], `OKAYAMA must have sheet ${t}2026-09 created`);
+  });
+
+  // DISABLED_DIST には当月 2026-09 シートが作成されていないこと (バッチ mutation 0)
+  // （※プロビジョニング時のみ作成され、バッチの自動 rollover では走査されない）
+  delete disabledSS.sheets["配布実績2026-09"];
+  rolloverMonthlySheetsDailyCheck();
+  assert.equal(disabledSS.sheets["配布実績2026-09"], undefined, "DISABLED_DIST must have ZERO mutation in monthly rollover batch");
+
+  // (3) 片肺障害隔離検証:
+  // CORRUPT_DIST を enabled で追加
+  batchReg["CORRUPT_DIST"] = { spreadsheetId: "ss-corrupt-id", storageFolderId: "folder_corrupt_id", enabled: true };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(batchReg);
+  SpreadsheetResolver.getInstance().clearCache();
+
+  // OKAYAMA の当月シートを 0/5 状態にしておく
+  types.forEach(t => {
+    delete okayamaSS.sheets[`${t}2026-09`];
+  });
+
+  rolloverMonthlySheetsDailyCheck();
+
+  // CORRUPT_DIST は 3/5 破損のため Fail-Closed で即時停止（原本のないシートは作成されない）
+  assert.equal(corruptSS.sheets["受渡要請履歴2026-09"], undefined, "CORRUPT_DIST must halt with Fail-Closed (mutation 0)");
+
+  // 正常な OKAYAMA は他地区の障害に引きずられず、正常に月次処理が完遂していること (他地区越境 mutation 0)
+  assert.ok(okayamaSS.sheets["受渡要請履歴2026-09"], "OKAYAMA must successfully create missing sheet despite CORRUPT_DIST failure");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 26: PinStatus cleanup の全地区 Trigger 実行と地区分離
+// -----------------------------------------------------------------------------
+runTest("Scenario 26: PinStatus cleanup の全地区 Trigger 実行と地区分離", () => {
+  const pinKuwana = kuwanaSS.getSheetByName("PinStatus2026-09");
+  pinKuwana.rows = [
+    ["rowId", "status"],
+    ["1", "IN_PROGRESS"],
+    ["2", "IN_PROGRESS"]
+  ];
+
+  const pinOkayama = okayamaSS.getSheetByName("PinStatus2026-09");
+  pinOkayama.rows = [
+    ["rowId", "status"],
+    ["10", "IN_PROGRESS"]
+  ];
+
+  const disabledSS = mockSpreadsheets["ss-disabled-id"];
+  const pinDisabled = disabledSS.addSheet("PinStatus2026-09");
+  pinDisabled.rows = [
+    ["rowId", "status"],
+    ["99", "IN_PROGRESS"]
+  ];
+
+  const kuwanaDistRowsBefore = kuwanaSS.getSheetByName("配布実績2026-09").rows.length;
+
+  // cleanupPinStatusDaily() 実行
+  cleanupPinStatusDaily();
+
+  // KUWANA と OKAYAMA の PinStatus はデータ行が削除され、ヘッダーのみ残ること
+  assert.equal(pinKuwana.rows.length, 1, "KUWANA PinStatus data rows cleared");
+  assert.deepEqual(pinKuwana.rows[0], ["rowId", "status"], "KUWANA header preserved");
+  assert.equal(pinOkayama.rows.length, 1, "OKAYAMA PinStatus data rows cleared");
+  assert.deepEqual(pinOkayama.rows[0], ["rowId", "status"], "OKAYAMA header preserved");
+
+  // 配布実績等の他シートは一切変更されていないこと (他シート不可侵)
+  assert.equal(kuwanaSS.getSheetByName("配布実績2026-09").rows.length, kuwanaDistRowsBefore, "Distribution sheet rows untouched");
+
+  // DISABLED_DIST の PinStatus は変更されていないこと (disabled 地区 mutation 0)
+  assert.equal(pinDisabled.rows.length, 2, "DISABLED_DIST PinStatus must have ZERO mutation");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 27: Drive cleanup の地区分離と mutation 0 保証
+// -----------------------------------------------------------------------------
+runTest("Scenario 27: Drive cleanup の地区分離と mutation 0 保証", () => {
+  const folderKuwana = new MockDriveFolder("folder_kuwana_id", "KUWANA_FOLDER");
+  const folderOkayama = new MockDriveFolder("folder_okayama_id", "OKAYAMA_FOLDER");
+  const folderDisabled = new MockDriveFolder("folder_disabled_id", "DISABLED_FOLDER");
+
+  mockDriveFolders["folder_kuwana_id"] = folderKuwana;
+  mockDriveFolders["folder_okayama_id"] = folderOkayama;
+  mockDriveFolders["folder_disabled_id"] = folderDisabled;
+
+  // KUWANA: 95日前のファイル (/evidence フォルダ内)
+  const evFolder = folderKuwana.createFolder("evidence");
+  const fileOldK = evFolder.createFile({ getName: () => "photo_old_k.jpg" });
+  fileOldK.createdDate = new Date(Date.now() - 95 * 24 * 60 * 60 * 1000);
+
+  // OKAYAMA: 35日前のファイル (写真専用フォルダ直下)
+  const fileOldO = folderOkayama.createFile({ getName: () => "photo_old_o.jpg" });
+  fileOldO.createdDate = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000);
+
+  // DISABLED_DIST: 35日前のファイル
+  const fileOldD = folderDisabled.createFile({ getName: () => "photo_old_d.jpg" });
+  fileOldD.createdDate = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000);
+
+  // cleanupDrivePhotos() 実行
+  cleanupDrivePhotos();
+  // cleanupOldPhotosBatch() 実行
+  cleanupOldPhotosBatch();
+
+  // KUWANA の 95日前の写真は /archive フォルダへ移動していること
+  const archFolder = folderKuwana.subfolders["archive"];
+  assert.ok(archFolder, "KUWANA /archive folder must be created");
+  assert.equal(archFolder.files.length, 1, "KUWANA photo moved to /archive");
+  assert.equal(evFolder.files.length, 0, "KUWANA photo removed from /evidence");
+
+  // OKAYAMA の 35日前の写真はゴミ箱へ移動していること
+  assert.equal(fileOldO.isTrashed(), true, "OKAYAMA 35-day photo trashed");
+
+  // DISABLED_DIST の写真は移動もゴミ箱もされていないこと (disabled mutation 0)
+  assert.equal(fileOldD.isTrashed(), false, "DISABLED_DIST photo must NOT be trashed (mutation 0)");
+
+  // NO_FOLDER_DIST は例外で安全にスキップされ、他地区に影響を与えないこと
+  assert.doesNotThrow(() => {
+    cleanupDrivePhotosForDistrict("NO_FOLDER_DIST");
+  });
+});
+
+// -----------------------------------------------------------------------------
+// TEST 28: getStorageFolderId() の空 districtId Fail-Closed & 存在判定統一
+// -----------------------------------------------------------------------------
+runTest("Scenario 28: getStorageFolderId() の空 districtId Fail-Closed & 存在判定統一", () => {
+  mockScriptProperties["STORAGE_PARENT_ID"] = "global-fallback-id";
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify({
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true }
+  });
+  SpreadsheetResolver.getInstance().clearCache();
+
+  // 1. DISTRICT_REGISTRY 設定時は空 districtId 呼出で即時例外スロー (global fallback 禁止)
+  assert.throws(
+    () => getStorageFolderId(""),
+    /districtId is required for multi-district drive resolution. No fallback allowed./
+  );
+
+  // 2. 空文字 Registry は configured-corrupt として即時例外スロー
+  mockScriptProperties["DISTRICT_REGISTRY"] = "";
+  assert.throws(
+    () => getStorageFolderId("KUWANA"),
+    /DISTRICT_REGISTRY is configured but empty/
+  );
+
+  // 3. 空白文字列 Registry も configured-corrupt として即時例外スロー
+  mockScriptProperties["DISTRICT_REGISTRY"] = "   ";
+  assert.throws(
+    () => getStorageFolderId("KUWANA"),
+    /DISTRICT_REGISTRY is configured but empty/
+  );
+
+  // 4. DISTRICT_REGISTRY = null (未設定) 時のみ Legacy fallback 許容
+  delete mockScriptProperties["DISTRICT_REGISTRY"];
+  const legacyId = getStorageFolderId("");
+  assert.equal(legacyId, "global-fallback-id", "Must fallback to STORAGE_PARENT_ID only when DISTRICT_REGISTRY is null");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 29: getEnabledDistricts() の厳格状態区分 & Registry 破損時の Fail-Closed
+// -----------------------------------------------------------------------------
+runTest("Scenario 29: getEnabledDistricts() の厳格状態区分 & Registry 破損時の Fail-Closed", () => {
+  const resolver = SpreadsheetResolver.getInstance();
+
+  // 1. 未設定 (null) ➔ null 返却
+  delete mockScriptProperties["DISTRICT_REGISTRY"];
+  assert.equal(resolver.getEnabledDistricts(), null, "Must return null for unconfigured registry");
+
+  // 2. 空文字 ➔ 例外スロー
+  mockScriptProperties["DISTRICT_REGISTRY"] = "";
+  assert.throws(
+    () => resolver.getEnabledDistricts(),
+    /DISTRICT_REGISTRY is configured but empty/
+  );
+
+  // 3. 有効 0 件 (空オブジェクト {}) ➔ [] 返却
+  mockScriptProperties["DISTRICT_REGISTRY"] = "{}";
+  const emptyList = resolver.getEnabledDistricts();
+  assert.deepEqual(emptyList, [], "Must return empty array for configured-empty registry");
+
+  // 4. 全地区 disabled ➔ [] 返却
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify({
+    "DIST_A": { enabled: false, spreadsheetId: "ss-a" },
+    "DIST_B": { enabled: false, spreadsheetId: "ss-b" }
+  });
+  const allDisabledList = resolver.getEnabledDistricts();
+  assert.deepEqual(allDisabledList, [], "Must return empty array when all districts are disabled");
+
+  // 5. JSON 破損 ➔ 即時例外スロー
+  mockScriptProperties["DISTRICT_REGISTRY"] = "{invalid-json";
+  assert.throws(
+    () => resolver.getEnabledDistricts(),
+    /DISTRICT_REGISTRY is corrupted/
+  );
+});
+
+// -----------------------------------------------------------------------------
+// TEST 30: setupRosterSheet(districtId) および v2_api Provisioning 経路の明示的伝播
+// -----------------------------------------------------------------------------
+runTest("Scenario 30: setupRosterSheet(districtId) および v2_api Provisioning 経路の明示的伝播", () => {
+  const validToken = "test_prov_token_30";
+  mockScriptProperties["PROVISIONING_TOKEN_HASH"] = crypto.createHash('sha256').update(validToken).digest('hex').toLowerCase();
+
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify({
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true },
+    "OKAYAMA": { spreadsheetId: "ss-okayama-id", storageFolderId: "folder_okayama_id", enabled: true }
+  });
+  SpreadsheetResolver.getInstance().clearCache();
+
+  // (1) resetRoster アクション (doPost) の districtId 伝播
+  const reqResetPost = {
+    postData: {
+      contents: JSON.stringify({
+        action: "resetRoster",
+        liffToken: "token_okayama_user1",
+        districtId: "OKAYAMA"
+      })
+    }
+  };
+  const resResetPost = doPost(reqResetPost);
+  const dataResetPost = JSON.parse(resResetPost.text);
+  assert.equal(dataResetPost.success, true, "resetRoster via doPost must succeed");
+  assert.ok(okayamaSS.getSheetByName("名簿の原本"), "OKAYAMA master roster must be created via doPost");
+
+  // (2) setupRosterSheet(districtId) 直接呼出しの districtId 伝播
+  const resSetupDirect = setupRosterSheet("KUWANA");
+  assert.ok(resSetupDirect.includes("名簿の原本"), "setupRosterSheet direct call must succeed");
+  assert.ok(kuwanaSS.getSheetByName("名簿の原本"), "KUWANA master roster must be created via setupRosterSheet");
+
+  // (3) doGet early syncSystemInfo の districtId / targetSpreadsheetId 伝播
+  const reqSyncGet = {
+    parameter: {
+      action: "syncSystemInfo",
+      provisioningToken: validToken,
+      districtId: "KUWANA",
+      targetSpreadsheetId: "ss-kuwana-id"
+    }
+  };
+  const resSyncGet = doGet(reqSyncGet);
+  const dataSyncGet = JSON.parse(resSyncGet.text);
+  assert.equal(dataSyncGet.success, true, "syncSystemInfo via doGet early branch must succeed");
+  const kuwanaSys = kuwanaSS.getSheetByName("SYSTEM_INFO");
+  assert.ok(kuwanaSys, "KUWANA SYSTEM_INFO must be synced via doGet early branch");
+});
+
 console.log('\n================================================================');
 console.log(`TEST SUMMARY: Total=${passCount + failCount}, PASS=${passCount}, FAIL=${failCount}`);
 console.log('================================================================\n');
@@ -1360,3 +1830,4 @@ if (failCount > 0) {
 } else {
   process.exit(0);
 }
+

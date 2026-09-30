@@ -26,49 +26,102 @@ class SpreadsheetResolver {
     return SpreadsheetResolver.instance;
   }
 
+  getEnabledDistricts() {
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const registryRaw = props.getProperty("DISTRICT_REGISTRY");
+
+      // 1. null のみ Legacy 未設定
+      if (registryRaw === null) {
+        return null;
+      }
+
+      // 2. 空文字・空白文字列は configured-corrupt (Fail-Closed)
+      if (typeof registryRaw === "string" && registryRaw.trim() === "") {
+        throw new Error("[SpreadsheetResolver] DISTRICT_REGISTRY is configured but empty (corrupted).");
+      }
+
+      // 3. JSON パース & 破損チェック
+      let registry = {};
+      try {
+        registry = JSON.parse(registryRaw);
+      } catch (errP) {
+        console.error("[SpreadsheetResolver] Failed to parse DISTRICT_REGISTRY JSON:", errP);
+        throw new Error("[SpreadsheetResolver] DISTRICT_REGISTRY is corrupted.");
+      }
+
+      if (typeof registry !== "object" || registry === null || Array.isArray(registry)) {
+        throw new Error("[SpreadsheetResolver] DISTRICT_REGISTRY format is invalid.");
+      }
+
+      const enabledDistricts = [];
+      Object.keys(registry).forEach((k) => {
+        const cleanKey = String(k || "").trim().toUpperCase();
+        const entry = registry[k];
+        if (typeof entry === "object" && entry !== null) {
+          if (entry.enabled !== false) {
+            enabledDistricts.push(cleanKey);
+          }
+        } else if (entry) {
+          enabledDistricts.push(cleanKey);
+        }
+      });
+
+      return enabledDistricts;
+    } catch (e) {
+      throw e;
+    }
+  }
+
   getSpreadsheetId(districtId) {
     const cleanDistrictId = String(districtId || "").trim().toUpperCase();
     try {
       const props = PropertiesService.getScriptProperties();
       const registryRaw = props.getProperty("DISTRICT_REGISTRY");
 
-      if (registryRaw) {
-        let registry = {};
-        try {
-          registry = JSON.parse(registryRaw);
-        } catch (errP) {
-          console.error("[SpreadsheetResolver] Failed to parse DISTRICT_REGISTRY JSON:", errP);
-          throw new Error("[SpreadsheetResolver] DISTRICT_REGISTRY is corrupted.");
+      // 1. null のみ Legacy 未設定
+      if (registryRaw === null) {
+        const legacyId = props.getProperty("TARGET_SPREADSHEET_ID") || props.getProperty("SPREADSHEET_ID") || "";
+        if (legacyId) {
+          return legacyId;
         }
+        return "";
+      }
 
-        if (!cleanDistrictId) {
-          throw new Error("[SpreadsheetResolver] districtId is required for multi-district routing. No fallback allowed.");
-        }
+      // 2. 空文字・空白文字列は configured-corrupt (Fail-Closed)
+      if (typeof registryRaw === "string" && registryRaw.trim() === "") {
+        throw new Error("[SpreadsheetResolver] DISTRICT_REGISTRY is configured but empty (corrupted).");
+      }
 
-        const normalizedKey = Object.keys(registry).find(k => k.trim().toUpperCase() === cleanDistrictId);
-        if (normalizedKey && registry[normalizedKey]) {
-          const entry = registry[normalizedKey];
-          if (typeof entry === "object" && entry !== null) {
-            if (entry.enabled === false) {
-              throw new Error(`[SpreadsheetResolver] District "${cleanDistrictId}" not found in DISTRICT_REGISTRY.`);
-            }
-            if (entry.spreadsheetId) {
-              return String(entry.spreadsheetId).trim();
-            }
-          } else {
-            return String(entry).trim();
+      // 3. JSON パース & 破損チェック
+      let registry = {};
+      try {
+        registry = JSON.parse(registryRaw);
+      } catch (errP) {
+        console.error("[SpreadsheetResolver] Failed to parse DISTRICT_REGISTRY JSON:", errP);
+        throw new Error("[SpreadsheetResolver] DISTRICT_REGISTRY is corrupted.");
+      }
+
+      if (!cleanDistrictId) {
+        throw new Error("[SpreadsheetResolver] districtId is required for multi-district routing. No fallback allowed.");
+      }
+
+      const normalizedKey = Object.keys(registry).find(k => k.trim().toUpperCase() === cleanDistrictId);
+      if (normalizedKey && registry[normalizedKey]) {
+        const entry = registry[normalizedKey];
+        if (typeof entry === "object" && entry !== null) {
+          if (entry.enabled === false) {
+            throw new Error(`[SpreadsheetResolver] District "${cleanDistrictId}" not found in DISTRICT_REGISTRY.`);
           }
+          if (entry.spreadsheetId) {
+            return String(entry.spreadsheetId).trim();
+          }
+        } else {
+          return String(entry).trim();
         }
-
-        throw new Error(`[SpreadsheetResolver] District "${cleanDistrictId}" not found in DISTRICT_REGISTRY.`);
       }
 
-      // レジストリ未設定の完全単一旧環境に対する後方互換のみ
-      const legacyId = props.getProperty("TARGET_SPREADSHEET_ID") || props.getProperty("SPREADSHEET_ID") || "";
-      if (legacyId) {
-        return legacyId;
-      }
-      return "";
+      throw new Error(`[SpreadsheetResolver] District "${cleanDistrictId}" not found in DISTRICT_REGISTRY.`);
     } catch (e) {
       throw e;
     }

@@ -287,11 +287,16 @@ function doGet(e) {
     }
     const options = (params && params.options) || {};
     options.provisioningToken = token;
+    const targetDistrictId = String((params && (params.districtId || (params.options && params.options.districtId))) || "").trim();
+    const targetSpreadsheetId = String((params && (params.targetSpreadsheetId || params.spreadsheetId || (params.options && (params.options.targetSpreadsheetId || params.options.spreadsheetId)))) || "").trim();
+    if (targetSpreadsheetId) {
+      options.targetSpreadsheetId = targetSpreadsheetId;
+    }
     let result;
     if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
-      result = SystemInfoService.getInstance().syncSystemInfo(options);
+      result = SystemInfoService.getInstance().syncSystemInfo(options, targetDistrictId);
     } else if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
-      const ss = DistrictProvisioner.getInstance().getSS();
+      const ss = DistrictProvisioner.getInstance().getSS(targetDistrictId);
       result = DistrictProvisioner.getInstance().createOrSyncSystemInfo(ss, options);
     } else {
       result = { success: false, message: 'SystemInfoService not available' };
@@ -492,7 +497,7 @@ function processGetActionLegacy(action, e, districtId = "") {
         break;
       }
       case 'resetRoster':
-        response = { success: true, message: setupRosterSheet() };
+        response = { success: true, message: setupRosterSheet(districtId) };
         break;
       case 'resetDeviceManagement':
         response = { success: false, code: "FORBIDDEN", message: "resetDeviceManagement is disabled on Web App endpoint." };
@@ -702,19 +707,39 @@ function doPost(e) {
 
     // Generation 2: DISTRICT_REGISTRY への追加・更新（既存他地区の完全保護）
     const cleanDistrictId = String(districtId).trim().toUpperCase();
-    const regRaw = props.getProperty("DISTRICT_REGISTRY") || "{}";
+    const regRaw = props.getProperty("DISTRICT_REGISTRY");
     let registry = {};
-    try {
-      registry = JSON.parse(regRaw);
-    } catch (eReg) {
+
+    if (regRaw === null) {
+      // 初回またはLegacy未設定: 新規空Registryで開始
       registry = {};
+    } else if (typeof regRaw === "string" && regRaw.trim() === "") {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "REGISTRY_CORRUPTED",
+        message: "DISTRICT_REGISTRY is configured but empty (corrupted). Halting without mutation."
+      })).setMimeType(ContentService.MimeType.JSON);
+    } else {
+      try {
+        registry = JSON.parse(regRaw);
+        if (typeof registry !== "object" || registry === null || Array.isArray(registry)) {
+          throw new Error("Invalid registry format");
+        }
+      } catch (eReg) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "REGISTRY_CORRUPTED",
+          message: "DISTRICT_REGISTRY JSON is corrupted. Halting without mutation to prevent data loss."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
     }
 
+    // 正式 Provisioning Lifecycle: 新地区初期登録時は Acceptance 前のため enabled: false
     registry[cleanDistrictId] = {
       spreadsheetId: targetSpreadsheetId,
       storageFolderId: storageParentId,
       name: districtId,
-      enabled: true
+      enabled: false
     };
 
     const newProps = {
@@ -769,9 +794,14 @@ function doPost(e) {
       options.skipSystemInfo = postData.skipSystemInfo;
     }
     options.provisioningToken = token;
+    const targetDistrictId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || (params && (params.districtId || (params.options && params.options.districtId))) || "").trim();
+    const targetSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (params && (params.targetSpreadsheetId || params.spreadsheetId)) || (options && (options.targetSpreadsheetId || options.spreadsheetId)) || "").trim();
+    if (targetSpreadsheetId) {
+      options.targetSpreadsheetId = targetSpreadsheetId;
+    }
     let result;
     if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
-      result = DistrictProvisioner.getInstance().provisionNewDistrict(addresses, options);
+      result = DistrictProvisioner.getInstance().provisionNewDistrict(addresses, options, targetDistrictId);
     } else {
       result = { success: false, message: 'DistrictProvisioner not available' };
     }
@@ -830,11 +860,16 @@ function doPost(e) {
     }
     const options = (postData && postData.options) || (params && params.options) || {};
     options.provisioningToken = token;
+    const targetDistrictId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || (params && (params.districtId || (params.options && params.options.districtId))) || "").trim();
+    const targetSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (params && (params.targetSpreadsheetId || params.spreadsheetId)) || (options && (options.targetSpreadsheetId || options.spreadsheetId)) || "").trim();
+    if (targetSpreadsheetId) {
+      options.targetSpreadsheetId = targetSpreadsheetId;
+    }
     let result;
     if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
-      result = SystemInfoService.getInstance().syncSystemInfo(options);
+      result = SystemInfoService.getInstance().syncSystemInfo(options, targetDistrictId);
     } else if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
-      const ss = DistrictProvisioner.getInstance().getSS();
+      const ss = DistrictProvisioner.getInstance().getSS(targetDistrictId);
       result = DistrictProvisioner.getInstance().createOrSyncSystemInfo(ss, options);
     } else {
       result = { success: false, message: 'SystemInfoService not available' };
@@ -1277,7 +1312,7 @@ function processPostAction(action, postData, e, districtId = "") {
       return { success: true, roster: aggregatedRoster };
     }
     case 'resetRoster':
-      return { success: true, message: setupRosterSheet() };
+      return { success: true, message: setupRosterSheet(districtId) };
     case 'resetDeviceManagement':
       return {
         success: false,
@@ -1343,16 +1378,26 @@ function processPostAction(action, postData, e, districtId = "") {
       const pCheck = verifyProvisioningToken(pToken);
       if (!pCheck.success) return pCheck;
       if (postData && postData.options) postData.options.provisioningToken = pToken;
+      const pTargetId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || districtId || "").trim();
+      const pSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (postData && postData.options && (postData.options.targetSpreadsheetId || postData.options.spreadsheetId)) || "").trim();
+      if (pSpreadsheetId && postData && postData.options) {
+        postData.options.targetSpreadsheetId = pSpreadsheetId;
+      }
       return typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance
-        ? DistrictProvisioner.getInstance().provisionNewDistrict(postData && postData.addresses, postData && postData.options)
+        ? DistrictProvisioner.getInstance().provisionNewDistrict(postData && postData.addresses, postData && postData.options, pTargetId)
         : { success: false, message: 'DistrictProvisioner not available' };
     case 'syncSystemInfo':
       const sToken = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)));
       const sCheck = verifyProvisioningToken(sToken);
       if (!sCheck.success) return sCheck;
       if (postData && postData.options) postData.options.provisioningToken = sToken;
+      const sTargetId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || districtId || "").trim();
+      const sSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (postData && postData.options && (postData.options.targetSpreadsheetId || postData.options.spreadsheetId)) || "").trim();
+      if (sSpreadsheetId && postData && postData.options) {
+        postData.options.targetSpreadsheetId = sSpreadsheetId;
+      }
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance
-        ? SystemInfoService.getInstance().syncSystemInfo(postData && postData.options)
+        ? SystemInfoService.getInstance().syncSystemInfo(postData && postData.options, sTargetId)
         : { success: false, message: 'SystemInfoService not available' };
     case 'verifyManagerPassword':
       const postPwd = (postData && postData.password) || (e && e.parameter ? e.parameter.password : "");

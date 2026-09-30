@@ -318,7 +318,7 @@
       }
     }
 
-    syncSystemInfo(options) {
+    syncSystemInfo(options, districtId = "") {
       const opts = options || {};
       const token = opts.provisioningToken;
       const tokenCheck = typeof verifyProvisioningToken === 'function'
@@ -328,16 +328,48 @@
         return tokenCheck;
       }
 
+      const cleanDistrictId = String(districtId || (opts && opts.districtId) || "").trim().toUpperCase();
+
       const lock = LockService.getScriptLock();
       lock.waitLock(30000);
       try {
-        const ss = this.getSS();
+        let ss = null;
+        if (opts && opts.spreadsheet) {
+          ss = opts.spreadsheet;
+        } else {
+          const explicitId = String((opts && (opts.targetSpreadsheetId || opts.spreadsheetId)) || "").trim();
+          if (explicitId && typeof SpreadsheetApp !== 'undefined' && SpreadsheetApp.openById) {
+            ss = SpreadsheetApp.openById(explicitId);
+          } else {
+            ss = this.getSS(cleanDistrictId);
+          }
+        }
+
+        if (!ss) {
+          return {
+            success: false,
+            code: "RESOURCE_NOT_FOUND",
+            message: "Target spreadsheet could not be opened for SYSTEM_INFO sync."
+          };
+        }
+
+        const districtName = ss.getName();
+
+        // Provisioning Integrity Guard
+        const normDistName = districtName.toUpperCase().replace(/^POSTING_MAP_/, "");
+        if (cleanDistrictId && normDistName !== cleanDistrictId && districtName.toUpperCase() !== cleanDistrictId) {
+          return {
+            success: false,
+            code: "DISTRICT_MISMATCH",
+            message: `Requested districtId "${cleanDistrictId}" does not match spreadsheet name "${districtName}".`
+          };
+        }
+
         let sheet = ss.getSheetByName('SYSTEM_INFO');
         if (!sheet) sheet = ss.insertSheet('SYSTEM_INFO');
 
         const liff = this.getLiffConfig(opts, sheet);
         const managerPassword = opts.managerPassword || this.getManagerPassword(sheet);
-        const districtName = ss.getName();
         const subdomain = districtName.toLowerCase();
         const baseUrl = (opts.baseUrl && opts.baseUrl !== 'https://postingmap.jp')
           ? opts.baseUrl
