@@ -601,6 +601,30 @@ window.initMainMap = function() {
 
   const hadExistingMapState = !!window.currentMapState?.center;
 
+  window.__initialFitCompleted = hadExistingMapState;
+  window.__pendingInitialBounds = null;
+  window.__pendingSingleCenter = null;
+
+  window.ensureMainMapInitialFit = function() {
+    if (window.__initialFitCompleted || !window.mainMapInstance) return false;
+    const el = window.mainMapInstance.getDiv();
+    if (!el || el.offsetWidth <= 0 || el.offsetHeight <= 0) return false;
+
+    if (window.__pendingInitialBounds) {
+      window.__initialFitCompleted = true;
+      google.maps.event.trigger(window.mainMapInstance, 'resize');
+      window.mainMapInstance.fitBounds(window.__pendingInitialBounds);
+      return true;
+    } else if (window.__pendingSingleCenter) {
+      window.__initialFitCompleted = true;
+      google.maps.event.trigger(window.mainMapInstance, 'resize');
+      window.mainMapInstance.setCenter(window.__pendingSingleCenter);
+      window.mainMapInstance.setZoom(13);
+      return true;
+    }
+    return false;
+  };
+
   const appleStyle = [
     { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
     { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
@@ -705,10 +729,13 @@ window.initMainMap = function() {
   window.mainMapInstance = map;
 
   map.addListener('idle', () => {
-    window.currentMapState = {
-      center: map.getCenter().toJSON(),
-      zoom: map.getZoom()
-    };
+    // 既存Cameraが元々存在した、または初回fitBoundsが完了した後のみ正規Camera状態として保存
+    if (hadExistingMapState || window.__initialFitCompleted) {
+      window.currentMapState = {
+        center: map.getCenter().toJSON(),
+        zoom: map.getZoom()
+      };
+    }
     if (typeof window.fetchGlobalPinStatus === 'function') {
       window.fetchGlobalPinStatus();
     }
@@ -932,16 +959,18 @@ window.initMainMap = function() {
 
     window.masterPins = pins;
 
-    // 初回表示時（Map生成前にCamera状態が未保存だった場合）、pins のバウンディングボックスまたは先頭ピンで自動フィット
+    // 初回表示時（Map生成前にCamera状態が未保存だった場合）、pins のバウンディングボックスまたは先頭ピンを登録
     if (!hadExistingMapState && pins.length > 0) {
       const validCoords = pins.filter(p => typeof p.latitude === 'number' && typeof p.longitude === 'number' && isFinite(p.latitude) && isFinite(p.longitude));
       if (validCoords.length === 1) {
-        map.setCenter({ lat: validCoords[0].latitude, lng: validCoords[0].longitude });
-        map.setZoom(13);
+        window.__pendingSingleCenter = { lat: validCoords[0].latitude, lng: validCoords[0].longitude };
       } else if (validCoords.length > 1) {
         const bounds = new google.maps.LatLngBounds();
         validCoords.forEach(p => bounds.extend({ lat: p.latitude, lng: p.longitude }));
-        map.fitBounds(bounds);
+        window.__pendingInitialBounds = bounds;
+      }
+      if (typeof window.ensureMainMapInitialFit === 'function') {
+        window.ensureMainMapInitialFit();
       }
     }
 

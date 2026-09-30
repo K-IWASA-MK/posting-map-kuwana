@@ -915,19 +915,22 @@ window.onPageEnter = function(id) {
   if (id === 'storage-list') initStorageListPage();
   if (id === 'bulletin' && typeof fetchBulletinPosts === 'function') fetchBulletinPosts();
 
-  // エリア（MAP）画面表示時: display:none解除に伴うリサイズ同期
+  // エリア（MAP）画面表示時: display:none解除に伴うリサイズ同期 & 初回Visible-fit保証
   if (id === 'areas' && window.mainMapInstance && window.google && window.google.maps) {
-    let center = window.currentMapState?.center;
-    if (!center && Array.isArray(window.masterPins) && window.masterPins.length > 0) {
-      const p = window.masterPins.find(pin => pin && typeof pin.latitude === 'number' && typeof pin.longitude === 'number');
-      if (p) center = { lat: p.latitude, lng: p.longitude };
-    }
-    if (center) {
-      window.mainMapInstance.setCenter(center);
-    }
     google.maps.event.trigger(window.mainMapInstance, 'resize');
-    if (center) {
-      window.mainMapInstance.setCenter(center);
+
+    let initialFitRan = false;
+    if (typeof window.ensureMainMapInitialFit === 'function') {
+      initialFitRan = window.ensureMainMapInitialFit();
+    }
+
+    // 初回fitを実行した場合は、旧center上書きを行わずfit結果のCameraを優先
+    if (!initialFitRan) {
+      // 初回fit完了後の通常再訪時: ユーザーのPan/Zoom状態（currentMapState）を維持復元
+      const center = window.currentMapState?.center;
+      if (center) {
+        window.mainMapInstance.setCenter(center);
+      }
     }
   }
 };
