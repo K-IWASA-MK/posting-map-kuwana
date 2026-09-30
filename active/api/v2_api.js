@@ -971,11 +971,20 @@ function doPost(e) {
  * 実際のPOSTアクション処理のスイッチケース
  */
 function processPostAction(action, postData, e, districtId = "") {
+  // 認証済み操作主体（Server Authority）の保護
+  const authenticatedUser = (postData && postData.user) ? postData.user : null;
+
   if (e && e.parameter && e.parameter.json) {
     try {
       const parsedJson = typeof e.parameter.json === 'string' ? JSON.parse(e.parameter.json) : e.parameter.json;
       postData = { ...(postData || {}), ...parsedJson };
     } catch (errJson) {}
+  }
+
+  // Client 入力（e.parameter.json 等）による操作主体の改ざん・上書きを無力化
+  if (authenticatedUser) {
+    postData = postData || {};
+    postData.user = authenticatedUser;
   }
 
   // Staff依存業務アクションに対する操作主体（LINE User ID）の検証・Identity強制

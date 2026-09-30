@@ -306,6 +306,8 @@ const systemInfoCode = fs.readFileSync(path.join(rootDir, 'active/business/syste
 const systemSummaryCode = fs.readFileSync(path.join(rootDir, 'active/business/system/system_summary_service.js'), 'utf-8');
 const distRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/distribution/distribution_repository.js'), 'utf-8');
 const distServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/distribution/distribution_service.js'), 'utf-8');
+const flyerRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/flyer/flyer_repository.js'), 'utf-8');
+const flyerServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/flyer/flyer_service.js'), 'utf-8');
 const v2ApiCode = fs.readFileSync(path.join(rootDir, 'active/api/v2_api.js'), 'utf-8');
 
 // 依存モジュールロード
@@ -318,6 +320,8 @@ vm.runInThisContext(staffServiceCode);
 vm.runInThisContext(systemSummaryCode);
 vm.runInThisContext(distRepoCode);
 vm.runInThisContext(distServiceCode);
+vm.runInThisContext(flyerRepoCode);
+vm.runInThisContext(flyerServiceCode);
 
 // LINE 認証検証のモック（テスト用）
 global.authenticateRequest = function(payload) {
@@ -1036,6 +1040,85 @@ runTest("Scenario 22: 翌月は前月 staffId を引き継がず S001 から新�
   } finally {
     // 5. テスト終了後は時刻モック等を必ず復元
     global.Date = originalDate;
+  }
+});
+
+// -----------------------------------------------------------------------------
+// TEST 23: Principal Override 防御 (認証A + Client偽装user B ➔ 最終操作主体はAに固定)
+// -----------------------------------------------------------------------------
+runTest("Scenario 23: Principal Override 防御 (認証A + Client偽装user B ➔ 最終操作主体はAに固定)", () => {
+  // updateFlyerStock 向けに IDENTITY_TEST 地区のシートを解決できるようバインド
+  const originalGetStorageSheet = FlyerRepository.prototype.getStorageSheet;
+  FlyerRepository.prototype.getStorageSheet = function(dId) {
+    return MonthlySheetResolver.getInstance().getCurrentSheet("flyer", dId || "IDENTITY_TEST");
+  };
+
+  try {
+    // 1. getStaffIdentity: 認証A (token_custom_user_1 / U_CUSTOM_user_1 / S001 テスト太郎)
+    //    Client入力 parameter.json.user = B (U_CUSTOM_user_2 / S002 テスト花子) を偽装送信
+    const req1 = {
+      parameter: {
+        json: JSON.stringify({
+          user: { lineUserId: "U_CUSTOM_user_2" }
+        })
+      },
+      postData: {
+        contents: JSON.stringify({
+          action: "getStaffIdentity",
+          liffToken: "token_custom_user_1",
+          districtId: "IDENTITY_TEST"
+        })
+      }
+    };
+    const res1 = doPost(req1);
+    const data1 = JSON.parse(res1.text);
+
+    assert.equal(data1.success, true, "getStaffIdentity must succeed");
+    assert.equal(data1.registered, true, "Staff must be recognized as registered");
+    assert.equal(data1.staffId, "S001", "Client偽装 user B が送られても、認証A (S001) の Identity が返されること");
+    assert.equal(data1.staffName, "テスト太郎", "Client偽装 user B が送られても、認証A (テスト太郎) の 名前が返されること");
+
+    // 2. updateFlyerStock: 認証A + parameter.json / contents にて user/staffId/staffName=B 偽装
+    //    MockSheet「保有チラシ枚数2026-09」への永続化結果が A であることを検証
+    const flyerSheet = identityTestSS.addSheet("保有チラシ枚数2026-09");
+    flyerSheet.rows = [
+      ["ID", "配布員ID", "配布員名", "保管場所", "枚数", "更新日時", "LINE_USER_ID"]
+    ];
+
+  const req2 = {
+    parameter: {
+      json: JSON.stringify({
+        user: { lineUserId: "U_CUSTOM_user_2" },
+        staffId: "S002",
+        staffName: "テスト花子"
+      })
+    },
+    postData: {
+      contents: JSON.stringify({
+        action: "updateFlyerStock",
+        liffToken: "token_custom_user_1",
+        districtId: "IDENTITY_TEST",
+        location: "テスト保管所A",
+        count: 500,
+        staffId: "S002",
+        staffName: "テスト花子"
+      })
+    }
+  };
+  const res2 = doPost(req2);
+  const data2 = JSON.parse(res2.text);
+
+  assert.equal(data2.success, true, "updateFlyerStock must succeed");
+  assert.equal(flyerSheet.rows.length, 2, "保有チラシ枚数シートに1行追加されていること");
+
+  const savedRow = flyerSheet.rows[1];
+  assert.equal(savedRow[1], "S001", "永続化された配布員IDは認証A (S001) であること");
+  assert.equal(savedRow[2], "テスト太郎", "永続化された配布員名は認証A (テスト太郎) であること");
+  assert.equal(savedRow[3], "テスト保管所A", "保管場所が一致すること");
+  assert.equal(savedRow[4], 500, "枚数が一致すること");
+  assert.equal(savedRow[6], "U_CUSTOM_user_1", "永続化されたLINE_USER_IDは認証A (U_CUSTOM_user_1) であること");
+  } finally {
+    FlyerRepository.prototype.getStorageSheet = originalGetStorageSheet;
   }
 });
 
