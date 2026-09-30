@@ -453,14 +453,14 @@ function processGetActionLegacy(action, e, districtId = "") {
         }
         break;
       case 'getRanking': {
-        const rankPayload = DistributionService.getInstance().getRankingPayload("");
+        const rankPayload = DistributionService.getInstance().getRankingPayload("", districtId);
         response = { success: true, mySummary: rankPayload.mySummary, ranking: rankPayload.ranking };
         break;
       }
       case 'getLatestDistribution':
         try {
           const records = typeof DistributionRepository !== 'undefined' && DistributionRepository.getInstance
-            ? DistributionRepository.getInstance().fetchLatestRecords(20, "")
+            ? DistributionRepository.getInstance().fetchLatestRecords(20, "", districtId)
             : [];
           response = { success: true, records: records };
         } catch (err) {
@@ -468,12 +468,12 @@ function processGetActionLegacy(action, e, districtId = "") {
         }
         break;
       case 'getRoster': {
-        const rawRoster = StaffService.getInstance().getRoster();
+        const rawRoster = StaffService.getInstance().getRoster(districtId);
         let stocks = [];
         let ranking = [];
         try {
-          stocks = FlyerRepository.getInstance().findAllStocks("");
-          ranking = DistributionRepository.getInstance().fetchRankingData("");
+          stocks = FlyerRepository.getInstance().findAllStocks("", districtId);
+          ranking = DistributionRepository.getInstance().fetchRankingData("", districtId, rawRoster);
         } catch (eAgg) {}
         const aggregatedRoster = rawRoster.map(r => {
           const staffStocks = stocks.filter(st => st.staffId === r.id);
@@ -498,7 +498,7 @@ function processGetActionLegacy(action, e, districtId = "") {
         response = { success: false, code: "FORBIDDEN", message: "resetDeviceManagement is disabled on Web App endpoint." };
         break;
       case 'getAreaDetails':
-        response = AreaService.getInstance().getAreaDetails(e.name);
+        response = AreaService.getInstance().getAreaDetails(e.name, districtId);
         break;
       case 'submitDistribution':
         response = { success: false, message: 'Write operations require POST. Please update the client.' };
@@ -507,15 +507,15 @@ function processGetActionLegacy(action, e, districtId = "") {
         response = { success: false, error: 'Registration requires POST request for security reasons.' };
         break;
       case 'getDeliveryStats':
-        response = DistributionService.getInstance().getDeliveryStats();
+        response = DistributionService.getInstance().getDeliveryStats(districtId);
         break;
       case 'getFlyerStock': {
-        const stockPayload = FlyerService.getInstance().getFlyerStock("");
+        const stockPayload = FlyerService.getInstance().getFlyerStock("", districtId);
         response = { success: true, myStock: stockPayload.myStock, stocks: stockPayload.stocks };
         break;
       }
       case 'getTransferRequests':
-        response = { success: true, requests: TransferService.getInstance().getTransferRequests("") };
+        response = { success: true, requests: TransferService.getInstance().getTransferRequests("", districtId) };
         break;
 
 
@@ -1229,7 +1229,7 @@ function processPostAction(action, postData, e, districtId = "") {
 
     case 'getEvidence':
       try {
-        const rosterSheet = getMonthlySheet('staff');
+        const rosterSheet = getMonthlySheet('staff', districtId);
         const rosterLastRow = rosterSheet ? rosterSheet.getLastRow() : 0;
         return {
           success: true,
@@ -1285,11 +1285,11 @@ function processPostAction(action, postData, e, districtId = "") {
         message: "resetDeviceManagement is disabled on Web App endpoint."
       };
     case 'getAreaDetails':
-      return AreaService.getInstance().getAreaDetails(postData.name || (e && e.parameter ? e.parameter.name : ""));
+      return AreaService.getInstance().getAreaDetails(postData.name || (e && e.parameter ? e.parameter.name : ""), districtId);
     case 'submitDistribution':
       return DistributionService.getInstance().submitDistribution(postData);
     case 'updateRecordWithGPSPhoto':
-      return GPSService.getInstance().updateRecordWithGPSPhoto(postData);
+      return GPSService.getInstance().updateRecordWithGPSPhoto(postData, districtId);
     case 'registerStaff':
       let rLastName = postData.lastName || postData.displayName || (e && e.parameter ? e.parameter.lastName : "");
       let rFirstName = postData.firstName || (e && e.parameter ? e.parameter.firstName : "LINE");
@@ -1304,9 +1304,9 @@ function processPostAction(action, postData, e, districtId = "") {
       }
       return StaffService.getInstance().registerStaff(rLastName, rFirstName, rLineUserId, districtId);
     case 'requestFlyerTransfer':
-      return TransferService.getInstance().requestFlyerTransfer(postData);
+      return TransferService.getInstance().requestFlyerTransfer(postData, districtId);
     case 'resolveTransferRequest':
-      return TransferService.getInstance().resolveTransferRequest(postData);
+      return TransferService.getInstance().resolveTransferRequest(postData, districtId);
     case 'getFlyerStock': {
       const stockPayload = FlyerService.getInstance().getFlyerStock(reqLineUserId, districtId);
       return { success: true, myStock: stockPayload.myStock, stocks: stockPayload.stocks };
@@ -1319,21 +1319,22 @@ function processPostAction(action, postData, e, districtId = "") {
         parseInt(postData.count, 10) || 0,
         postData.staffName,
         postData.staffId,
-        postData.resolvedLineUserId || reqLineUserId
+        postData.resolvedLineUserId || reqLineUserId,
+        districtId
       );
     case 'getGlobalPinStatus':
       return PinStatusService.getInstance().getStatus(districtId);
     case 'getBulletinPosts':
       return typeof BulletinService !== 'undefined' && BulletinService.getInstance
-        ? BulletinService.getInstance().getPosts(reqLineUserId)
+        ? BulletinService.getInstance().getPosts(reqLineUserId, districtId)
         : { success: false, message: 'BulletinService not available' };
     case 'createBulletinPost':
       return typeof BulletinService !== 'undefined' && BulletinService.getInstance
-        ? BulletinService.getInstance().createPost(postData)
+        ? BulletinService.getInstance().createPost(postData, districtId)
         : { success: false, message: 'BulletinService not available' };
     case 'sendBulletinContact':
       return typeof BulletinService !== 'undefined' && BulletinService.getInstance
-        ? BulletinService.getInstance().sendContact(postData)
+        ? BulletinService.getInstance().sendContact(postData, districtId)
         : { success: false, message: 'BulletinService not available' };
     case 'setPinInProgress':
       return PinStatusService.getInstance().setInProgress(postData, districtId);

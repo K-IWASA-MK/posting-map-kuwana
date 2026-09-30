@@ -28,8 +28,8 @@ if (typeof AreaService === 'undefined') {
 
 
 
-    getAreaDetails(areaName) {
-      return this.repository.findAreaPoints(areaName);
+    getAreaDetails(areaName, districtId = "") {
+      return this.repository.findAreaPoints(areaName, districtId);
     }
   };
   AreaService.instance = null;

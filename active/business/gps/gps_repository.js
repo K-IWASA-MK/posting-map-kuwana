@@ -30,12 +30,12 @@ if (typeof GPSRepository === 'undefined') {
       return GPSRepository.instance;
     }
 
-    savePhotoToDrive(data, rowIdNum) {
+    savePhotoToDrive(data, rowIdNum, districtId = "") {
       if (!data.photoData || data.photoData.indexOf("data:image") !== 0) {
         return { success: false };
       }
       try {
-        const folderId = (typeof getStorageFolderId === 'function') ? getStorageFolderId() : null;
+        const folderId = (typeof getStorageFolderId === 'function') ? getStorageFolderId(districtId) : null;
         if (!folderId) return { success: false };
         const folder = DriveApp.getFolderById(folderId);
         const now = new Date();
@@ -58,16 +58,16 @@ if (typeof GPSRepository === 'undefined') {
       }
     }
 
-    getDistributionSheet() {
+    getDistributionSheet(districtId = "") {
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        return MonthlySheetResolver.getInstance().getCurrentSheet("distribution");
+        return MonthlySheetResolver.getInstance().getCurrentSheet("distribution", districtId);
       }
       return null;
     }
 
-    checkExistingStatus(rowIdNum) {
+    checkExistingStatus(rowIdNum, districtId = "") {
       try {
-        const sheet = this.getDistributionSheet();
+        const sheet = this.getDistributionSheet(districtId);
         if (!sheet) return null;
 
         const finder = sheet.getRange("A:A").createTextFinder(String(rowIdNum)).matchEntireCell(true);
@@ -106,7 +106,7 @@ if (typeof GPSRepository === 'undefined') {
       return null;
     }
 
-    updateSheetRecordAndLog(data, rowIdNum, gpsStatus, photoStatus, existing, photoFileId) {
+    updateSheetRecordAndLog(data, rowIdNum, gpsStatus, photoStatus, existing, photoFileId, districtId = "") {
       const isComplete = data.isDone === 'true' || data.isDone === true;
       const timestamp = Date.now();
       const completedAt = Utilities.formatDate(new Date(timestamp), "JST", "yyyy/MM/dd HH:mm:ss");
@@ -151,13 +151,8 @@ if (typeof GPSRepository === 'undefined') {
       let updateSuccess = false;
       let targetRow = existing ? existing.rowNum : null;
 
-      let ss = null;
-      if (typeof getSS === 'function') {
-        ss = getSS();
-      }
-
       try {
-        const sheet = this.getDistributionSheet();
+        const sheet = this.getDistributionSheet(districtId);
         if (sheet) {
           if (!targetRow) {
             const finder = sheet.getRange("A:A").createTextFinder(String(rowIdNum)).matchEntireCell(true);

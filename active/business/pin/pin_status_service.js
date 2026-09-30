@@ -52,7 +52,7 @@
         const rowId = parseInt(data.rowId, 10);
         if (isNaN(rowId)) return { success: false, message: 'Invalid rowId' };
 
-        const targetDistId = (data && data.districtId) ? String(data.districtId).trim() : districtId;
+        const targetDistId = String(districtId || "").trim();
         let pinSheet = this.getMonthlySheet('pin', targetDistId);
         if (!pinSheet) {
           return { success: false, code: "SHEET_NOT_READY", message: "PinStatus sheet unavailable" };

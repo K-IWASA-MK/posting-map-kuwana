@@ -20,9 +20,9 @@ if (typeof AreaRepository === 'undefined') {
       return AreaRepository.instance;
     }
 
-    getSpreadsheetName() {
+    getSpreadsheetName(districtId = "") {
       if (typeof getSS === 'function') {
-        const ss = getSS();
+        const ss = getSS(districtId);
         if (ss) {
           return ss.getName().split(/[ \u3000]/)[0] || "支部";
         }
@@ -41,12 +41,12 @@ if (typeof AreaRepository === 'undefined') {
       return null;
     }
 
-    findAreaPoints(areaName) {
+    findAreaPoints(areaName, districtId = "") {
       if (!areaName) return { success: false, message: "Area name required" };
 
       let distSheet = null;
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        distSheet = MonthlySheetResolver.getInstance().getCurrentSheet("distribution");
+        distSheet = MonthlySheetResolver.getInstance().getCurrentSheet("distribution", districtId);
       }
       if (!distSheet) return { success: false, message: "Distribution sheet not found" };
 

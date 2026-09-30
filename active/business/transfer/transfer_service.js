@@ -130,7 +130,7 @@
       return { success: true, updatedCount: plan.length };
     }
 
-    requestFlyerTransfer(data) {
+    requestFlyerTransfer(data, districtId = "") {
       const requestId = data && data.requestId ? String(data.requestId).trim() : '';
       const requestUserId = data && data.requestUserId ? String(data.requestUserId).trim() : '';
       const holderUserId = data && data.holderUserId ? String(data.holderUserId).trim() : '';
@@ -162,9 +162,9 @@
           }
         }
 
-        const ss = this.getSS();
+        const ss = this.getSS(districtId);
 
-        const rosterSheet = this.getMonthlySheet('staff');
+        const rosterSheet = this.getMonthlySheet('staff', districtId);
 
         let requestUserName = requestUserId;
         let holderName = holderUserId;
@@ -190,7 +190,7 @@
           }
         }
 
-        let s = this.getMonthlySheet('transfer');
+        let s = this.getMonthlySheet('transfer', districtId);
         if (!s) {
           return {
             success: false,
@@ -400,7 +400,7 @@
       });
     }
 
-    resolveTransferRequest(data) {
+    resolveTransferRequest(data, districtId = "") {
       const rowNumber = parseInt(data.rowNumber);
       const status = data.status || "完了";
       if (!rowNumber || rowNumber < 2) return { success: false, message: "Invalid row number" };
@@ -409,7 +409,7 @@
       try { lock.waitLock(10000); } catch(e) { return { success: false, message: "Lock timeout" }; }
 
       try {
-        const s = this.getMonthlySheet('transfer');
+        const s = this.getMonthlySheet('transfer', districtId);
         if (!s) return { success: false, message: "Sheet not found" };
 
         const lastRow = s.getLastRow();

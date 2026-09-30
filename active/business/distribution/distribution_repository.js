@@ -78,7 +78,7 @@ if (typeof DistributionRepository === 'undefined') {
       if (rosterList.length === 0) {
         try {
           if (typeof StaffService !== 'undefined' && StaffService.getInstance) {
-            rosterList = StaffService.getInstance().getRoster() || [];
+            rosterList = StaffService.getInstance().getRoster(districtId) || [];
           }
         } catch (eRoster) {}
       }

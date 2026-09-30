@@ -19,7 +19,7 @@ if (typeof GPSService === 'undefined') {
       return GPSService.instance;
     }
 
-    updateRecordWithGPSPhoto(data) {
+    updateRecordWithGPSPhoto(data, districtId = "") {
       const lock = LockService.getScriptLock();
       try {
         lock.waitLock(15000);
@@ -59,7 +59,7 @@ if (typeof GPSService === 'undefined') {
         }
 
         // 既存行ステータス取得
-        const existing = this.repository.checkExistingStatus(rowIdNum);
+        const existing = this.repository.checkExistingStatus(rowIdNum, districtId);
         let photoStatus = existing ? existing.photoStatus : "NO";
         let gpsStatus = existing ? existing.gpsStatus : "NO";
         const incomingReqId = data.requestId ? String(data.requestId).trim() : "";
@@ -101,7 +101,7 @@ if (typeof GPSService === 'undefined') {
         if (isComplete && data.photoData && photoStatus !== "OK") {
           console.log("[GPSService] Uploading photo to Google Drive...");
           try {
-            const photoRes = this.repository.savePhotoToDrive(data, rowIdNum);
+            const photoRes = this.repository.savePhotoToDrive(data, rowIdNum, districtId);
             if (photoRes && photoRes.success) {
                photoStatus = "OK";
                photoFileId = photoRes.fileId || "";
@@ -112,7 +112,7 @@ if (typeof GPSService === 'undefined') {
         }
 
         console.log("[GPSService] Updating Spreadsheet record...");
-        const result = this.repository.updateSheetRecordAndLog(data, rowIdNum, gpsStatus, photoStatus, existing, photoFileId);
+        const result = this.repository.updateSheetRecordAndLog(data, rowIdNum, gpsStatus, photoStatus, existing, photoFileId, districtId);
 
         return result;
       } catch (e) {

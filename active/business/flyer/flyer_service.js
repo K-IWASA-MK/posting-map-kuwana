@@ -23,8 +23,8 @@ if (typeof FlyerService === 'undefined') {
       return this.repository.findStockPayload(requestLineUserId, districtId);
     }
 
-    updateFlyerStock(location, count, staffName, staffId, lineUserId = "") {
-      return this.repository.updateStock(location, count, staffName, staffId, lineUserId);
+    updateFlyerStock(location, count, staffName, staffId, lineUserId = "", districtId = "") {
+      return this.repository.updateStock(location, count, staffName, staffId, lineUserId, districtId);
     }
   };
   FlyerService.instance = null;

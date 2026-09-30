@@ -19,25 +19,25 @@
       return BulletinService.instance;
     }
 
-    getSS() {
+    getSS(districtId = "") {
       if (typeof getSS === 'function') {
-        return getSS();
+        return getSS(districtId);
       }
       if (typeof SpreadsheetAdapter !== 'undefined') {
-        return SpreadsheetAdapter.getInstance().getActiveSpreadsheet();
+        return SpreadsheetAdapter.getInstance().getSpreadsheet(districtId);
       }
       throw new Error("Active spreadsheet unavailable");
     }
 
-    getMonthlySheet(type) {
+    getMonthlySheet(type, districtId = "") {
       if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-        return MonthlySheetResolver.getInstance().getCurrentSheet(type);
+        return MonthlySheetResolver.getInstance().getCurrentSheet(type, districtId);
       }
       return null;
     }
 
-    getBulletinSheet() {
-      const ss = this.getSS();
+    getBulletinSheet(districtId = "") {
+      const ss = this.getSS(districtId);
       let sheet = ss.getSheetByName("掲示板");
       if (!sheet) {
         sheet = ss.insertSheet("掲示板");
@@ -48,8 +48,8 @@
       return sheet;
     }
 
-    getContactSheet() {
-      const ss = this.getSS();
+    getContactSheet(districtId = "") {
+      const ss = this.getSS(districtId);
       let sheet = ss.getSheetByName("掲示板連絡履歴");
       const expectedHeaders = [["日時", "送信者ID", "送信者名", "相手ID", "連絡方法", "連絡先", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時"]];
       if (!sheet) {
@@ -69,9 +69,9 @@
       return sheet;
     }
 
-    getPosts(requestLineUserId = "") {
+    getPosts(requestLineUserId = "", districtId = "") {
       try {
-        const sheet = this.getBulletinSheet();
+        const sheet = this.getBulletinSheet(districtId);
         const lastRow = sheet.getLastRow();
         if (lastRow < 2) return { success: true, posts: [] };
 
@@ -101,7 +101,7 @@
       }
     }
 
-    createPost(data) {
+    createPost(data, districtId = "") {
       const staffId = data && data.staffId ? String(data.staffId).trim() : '';
       const staffName = data && data.staffName ? String(data.staffName).trim() : '';
       const message = data && data.message ? String(data.message).trim() : '';
@@ -122,7 +122,7 @@
       }
 
       try {
-        const sheet = this.getBulletinSheet();
+        const sheet = this.getBulletinSheet(districtId);
         const now = new Date();
         const formattedDate = Utilities.formatDate(now, "JST", "yyyy/MM/dd HH:mm:ss");
 
@@ -150,7 +150,7 @@
       }
     }
 
-    sendContact(data) {
+    sendContact(data, districtId = "") {
       const requestId = data && data.requestId ? String(data.requestId).trim() : '';
       const requestUserId = data && data.requestUserId ? String(data.requestUserId).trim() : '';
       const targetStaffId = data && data.targetStaffId ? String(data.targetStaffId).trim() : '';
@@ -182,7 +182,7 @@
           }
         }
 
-        const rosterSheet = this.getMonthlySheet('staff');
+        const rosterSheet = this.getMonthlySheet('staff', districtId);
         let requestUserName = requestUserId;
         let targetName = targetStaffId;
         let targetLineUserId = "";
@@ -207,7 +207,7 @@
           }
         }
 
-        const contactSheet = this.getContactSheet();
+        const contactSheet = this.getContactSheet(districtId);
 
         let existingRow = 0;
         let existingStatus = "";

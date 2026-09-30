@@ -81,7 +81,7 @@ if (typeof FlyerRepository === 'undefined') {
       };
     }
 
-    updateStock(location, count, staffName, staffId, lineUserId = "") {
+    updateStock(location, count, staffName, staffId, lineUserId = "", districtId = "") {
       const cleanStaffId = String(staffId || "").trim();
       const cleanStaffName = String(staffName || "").trim();
       const cleanLineUserId = String(lineUserId || "").trim();
@@ -97,7 +97,7 @@ if (typeof FlyerRepository === 'undefined') {
       }
 
       try {
-        const s = this.getStorageSheet();
+        const s = this.getStorageSheet(districtId);
         if (!s) return { success: false, message: "Storage sheet unavailable" };
 
         const lastRow = s.getLastRow();

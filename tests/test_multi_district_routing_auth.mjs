@@ -43,15 +43,47 @@ class MockSheet {
     this.name = name;
     this.rows = [];
   }
+  getName() {
+    return this.name;
+  }
   getLastRow() {
     return this.rows.length;
   }
   getLastColumn() {
     return this.rows.length > 0 ? this.rows[0].length : 0;
   }
-  getRange(row, col, numRows = 1, numCols = 1) {
+  createTextFinder(text) {
     const sheet = this;
     return {
+      matchEntireCell() { return this; },
+      findNext() {
+        const strText = String(text);
+        for (let r = 0; r < sheet.rows.length; r++) {
+          const cellVal = String((sheet.rows[r] && sheet.rows[r][0]) !== undefined ? sheet.rows[r][0] : "");
+          if (cellVal === strText) {
+            return {
+              getRow() { return r + 1; },
+              getColumn() { return 1; }
+            };
+          }
+        }
+        return null;
+      }
+    };
+  }
+  getRange(row, col, numRows = 1, numCols = 1) {
+    const sheet = this;
+    if (typeof row === 'string' && row.includes(':')) {
+      return {
+        createTextFinder(text) {
+          return sheet.createTextFinder(text);
+        }
+      };
+    }
+    return {
+      createTextFinder(text) {
+        return sheet.createTextFinder(text);
+      },
       getValues() {
         const res = [];
         for (let r = 0; r < numRows; r++) {
@@ -108,6 +140,9 @@ class MockSpreadsheet {
   getSheetByName(name) {
     return this.sheets[name] || null;
   }
+  getSheets() {
+    return Object.values(this.sheets);
+  }
   addSheet(name) {
     const sheet = new MockSheet(name);
     this.sheets[name] = sheet;
@@ -162,11 +197,28 @@ global.PropertiesService = {
   }
 };
 
+const mockDriveFolders = {};
+global.mockDriveFolders = mockDriveFolders;
 global.DriveApp = {
   getFolderById(id) {
-    return {
-      getId() { return id; }
-    };
+    if (!mockDriveFolders[id]) {
+      mockDriveFolders[id] = {
+        id: id,
+        files: [],
+        createFile(blob) {
+          const file = {
+            id: `file_${id}_${this.files.length + 1}`,
+            name: blob && blob.getName ? blob.getName() : "test.jpg",
+            getId() { return this.id; },
+            getUrl() { return `https://drive.google.com/file/d/${this.id}/view`; },
+            setSharing() {}
+          };
+          this.files.push(file);
+          return file;
+        }
+      };
+    }
+    return mockDriveFolders[id];
   }
 };
 
@@ -178,6 +230,16 @@ global.LockService = {
 };
 
 global.Utilities = {
+  base64Decode(str) {
+    return Buffer.from(str || "", 'base64');
+  },
+  newBlob(data, contentType, name) {
+    return {
+      getData() { return data; },
+      getContentType() { return contentType; },
+      getName() { return name; }
+    };
+  },
   computeDigest(algo, str) {
     return Array.from(crypto.createHash('sha256').update(str).digest());
   },
@@ -308,6 +370,14 @@ const distRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/distrib
 const distServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/distribution/distribution_service.js'), 'utf-8');
 const flyerRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/flyer/flyer_repository.js'), 'utf-8');
 const flyerServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/flyer/flyer_service.js'), 'utf-8');
+const driveAdapterCode = fs.readFileSync(path.join(rootDir, 'active/infrastructure/drive/drive_adapter.js'), 'utf-8');
+const gpsRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/gps/gps_repository.js'), 'utf-8');
+const gpsServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/gps/gps_service.js'), 'utf-8');
+const pinServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/pin/pin_status_service.js'), 'utf-8');
+const transferServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/transfer/transfer_service.js'), 'utf-8');
+const bulletinServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/bulletin/bulletin_service.js'), 'utf-8');
+const areaRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/area/area_repository.js'), 'utf-8');
+const areaServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/area/area_service.js'), 'utf-8');
 const v2ApiCode = fs.readFileSync(path.join(rootDir, 'active/api/v2_api.js'), 'utf-8');
 
 // 依存モジュールロード
@@ -322,6 +392,14 @@ vm.runInThisContext(distRepoCode);
 vm.runInThisContext(distServiceCode);
 vm.runInThisContext(flyerRepoCode);
 vm.runInThisContext(flyerServiceCode);
+vm.runInThisContext(driveAdapterCode);
+vm.runInThisContext(gpsRepoCode);
+vm.runInThisContext(gpsServiceCode);
+vm.runInThisContext(pinServiceCode);
+vm.runInThisContext(transferServiceCode);
+vm.runInThisContext(bulletinServiceCode);
+vm.runInThisContext(areaRepoCode);
+vm.runInThisContext(areaServiceCode);
 
 // LINE 認証検証のモック（テスト用）
 global.authenticateRequest = function(payload) {
@@ -1047,43 +1125,36 @@ runTest("Scenario 22: 翌月は前月 staffId を引き継がず S001 から新�
 // TEST 23: Principal Override 防御 (認証A + Client偽装user B ➔ 最終操作主体はAに固定)
 // -----------------------------------------------------------------------------
 runTest("Scenario 23: Principal Override 防御 (認証A + Client偽装user B ➔ 最終操作主体はAに固定)", () => {
-  // updateFlyerStock 向けに IDENTITY_TEST 地区のシートを解決できるようバインド
-  const originalGetStorageSheet = FlyerRepository.prototype.getStorageSheet;
-  FlyerRepository.prototype.getStorageSheet = function(dId) {
-    return MonthlySheetResolver.getInstance().getCurrentSheet("flyer", dId || "IDENTITY_TEST");
+  // 1. getStaffIdentity: 認証A (token_custom_user_1 / U_CUSTOM_user_1 / S001 テスト太郎)
+  //    Client入力 parameter.json.user = B (U_CUSTOM_user_2 / S002 テスト花子) を偽装送信
+  const req1 = {
+    parameter: {
+      json: JSON.stringify({
+        user: { lineUserId: "U_CUSTOM_user_2" }
+      })
+    },
+    postData: {
+      contents: JSON.stringify({
+        action: "getStaffIdentity",
+        liffToken: "token_custom_user_1",
+        districtId: "IDENTITY_TEST"
+      })
+    }
   };
+  const res1 = doPost(req1);
+  const data1 = JSON.parse(res1.text);
 
-  try {
-    // 1. getStaffIdentity: 認証A (token_custom_user_1 / U_CUSTOM_user_1 / S001 テスト太郎)
-    //    Client入力 parameter.json.user = B (U_CUSTOM_user_2 / S002 テスト花子) を偽装送信
-    const req1 = {
-      parameter: {
-        json: JSON.stringify({
-          user: { lineUserId: "U_CUSTOM_user_2" }
-        })
-      },
-      postData: {
-        contents: JSON.stringify({
-          action: "getStaffIdentity",
-          liffToken: "token_custom_user_1",
-          districtId: "IDENTITY_TEST"
-        })
-      }
-    };
-    const res1 = doPost(req1);
-    const data1 = JSON.parse(res1.text);
+  assert.equal(data1.success, true, "getStaffIdentity must succeed");
+  assert.equal(data1.registered, true, "Staff must be recognized as registered");
+  assert.equal(data1.staffId, "S001", "Client偽装 user B が送られても、認証A (S001) の Identity が返されること");
+  assert.equal(data1.staffName, "テスト太郎", "Client偽装 user B が送られても、認証A (テスト太郎) の 名前が返されること");
 
-    assert.equal(data1.success, true, "getStaffIdentity must succeed");
-    assert.equal(data1.registered, true, "Staff must be recognized as registered");
-    assert.equal(data1.staffId, "S001", "Client偽装 user B が送られても、認証A (S001) の Identity が返されること");
-    assert.equal(data1.staffName, "テスト太郎", "Client偽装 user B が送られても、認証A (テスト太郎) の 名前が返されること");
-
-    // 2. updateFlyerStock: 認証A + parameter.json / contents にて user/staffId/staffName=B 偽装
-    //    MockSheet「保有チラシ枚数2026-09」への永続化結果が A であることを検証
-    const flyerSheet = identityTestSS.addSheet("保有チラシ枚数2026-09");
-    flyerSheet.rows = [
-      ["ID", "配布員ID", "配布員名", "保管場所", "枚数", "更新日時", "LINE_USER_ID"]
-    ];
+  // 2. updateFlyerStock: 認証A + parameter.json / contents にて user/staffId/staffName=B 偽装
+  //    MockSheet「保有チラシ枚数2026-09」への永続化結果が A であることを検証
+  const flyerSheet = identityTestSS.addSheet("保有チラシ枚数2026-09");
+  flyerSheet.rows = [
+    ["ID", "配布員ID", "配布員名", "保管場所", "枚数", "更新日時", "LINE_USER_ID"]
+  ];
 
   const req2 = {
     parameter: {
@@ -1117,9 +1188,167 @@ runTest("Scenario 23: Principal Override 防御 (認証A + Client偽装user B �
   assert.equal(savedRow[3], "テスト保管所A", "保管場所が一致すること");
   assert.equal(savedRow[4], 500, "枚数が一致すること");
   assert.equal(savedRow[6], "U_CUSTOM_user_1", "永続化されたLINE_USER_IDは認証A (U_CUSTOM_user_1) であること");
-  } finally {
-    FlyerRepository.prototype.getStorageSheet = originalGetStorageSheet;
-  }
+});
+
+// -----------------------------------------------------------------------------
+// TEST 24: District Context Propagation & Drive Isolation / Fail-Closed
+// -----------------------------------------------------------------------------
+runTest("Scenario 24: District Context Propagation & Drive Isolation / Fail-Closed (KUWANA写真→KUWANA folderのみ、OKAYAMA mutation 0、欠損Fail-Closed)", () => {
+  // 1. getStorageFolderId(districtId) 契約の全数検証
+  // 1-1. districtIdあり + DISTRICT_REGISTRYあり → 地区別 storageFolderId を厳格解決
+  PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", JSON.stringify({
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true },
+    "OKAYAMA": { spreadsheetId: "ss-okayama-id", storageFolderId: "folder_okayama_id", enabled: true },
+    "DISABLED_DIST": { spreadsheetId: "ss-disabled-id", storageFolderId: "folder_disabled_id", enabled: false },
+    "NO_FOLDER_DIST": { spreadsheetId: "ss-no-folder-id", storageFolderId: "", enabled: true },
+    "IDENTITY_TEST": { spreadsheetId: "ss-id-test-id", storageFolderId: "folder_id_test_id", enabled: true }
+  }));
+  PropertiesService.getScriptProperties().setProperty("STORAGE_PARENT_ID", "legacy_global_folder_id");
+
+  // 正常解決
+  assert.equal(getStorageFolderId("KUWANA"), "folder_kuwana_id", "KUWANA folder must resolve strictly to folder_kuwana_id");
+  assert.equal(getStorageFolderId("OKAYAMA"), "folder_okayama_id", "OKAYAMA folder must resolve strictly to folder_okayama_id");
+
+  // Fail-Closed 検証 (global fallback 禁止)
+  assert.throws(() => getStorageFolderId("UNKNOWN_DIST"), /not found in DISTRICT_REGISTRY/, "Unknown district must throw (no fallback)");
+  assert.throws(() => getStorageFolderId("DISABLED_DIST"), /disabled in DISTRICT_REGISTRY/, "Disabled district must throw (no fallback)");
+  assert.throws(() => getStorageFolderId("NO_FOLDER_DIST"), /storageFolderId is missing/, "Missing folderId must throw (no fallback)");
+
+  // Registry JSON 破損時の Fail-Closed
+  PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", "{ corrupted json");
+  assert.throws(() => getStorageFolderId("KUWANA"), /DISTRICT_REGISTRY is corrupted/, "Corrupted registry must throw (no fallback)");
+
+  // 1-2. districtIdあり + DISTRICT_REGISTRYなし → 旧単一地区互換として STORAGE_PARENT_ID fallback
+  PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", "");
+  assert.equal(getStorageFolderId("KUWANA"), "legacy_global_folder_id", "Legacy single district must fallback to STORAGE_PARENT_ID when registry missing");
+
+  // 1-3. districtIdなし → 既存Scheduler互換として STORAGE_PARENT_ID を維持
+  assert.equal(getStorageFolderId(""), "legacy_global_folder_id", "District-less call must resolve to STORAGE_PARENT_ID");
+  assert.equal(getStorageFolderId(null), "legacy_global_folder_id", "Null district call must resolve to STORAGE_PARENT_ID");
+
+  // 2. 実経路検証: updateRecordWithGPSPhoto 経由の Drive Isolation & DB Isolation
+  // レジストリを正常状態に再設定
+  PropertiesService.getScriptProperties().setProperty("DISTRICT_REGISTRY", JSON.stringify({
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true },
+    "OKAYAMA": { spreadsheetId: "ss-okayama-id", storageFolderId: "folder_okayama_id", enabled: true },
+    "NO_FOLDER_DIST": { spreadsheetId: "ss-no-folder-id", storageFolderId: "", enabled: true },
+    "IDENTITY_TEST": { spreadsheetId: "ss-id-test-id", storageFolderId: "folder_id_test_id", enabled: true }
+  }));
+  SpreadsheetResolver.getInstance().clearCache();
+
+  // NO_FOLDER_DIST 用のモックスプレッドシート作成
+  const noFolderSS = new MockSpreadsheet("ss-no-folder-id", "POSTING_MAP_NO_FOLDER");
+  const noFolderSysInfo = noFolderSS.addSheet("SYSTEM_INFO");
+  noFolderSysInfo.rows = [
+    ["項目", "設定値"],
+    ["地区コード", "NO_FOLDER_DIST"],
+    ["地区名", "フォルダなし地区"],
+    ["契約終了日", "2026-10-31"]
+  ];
+  const noFolderStaff = noFolderSS.addSheet(distSheetName ? staffSheetName : "名簿2026-09");
+  noFolderStaff.rows = [
+    ["STAFF_ID", "氏名", "LINE_USER_ID", "登録日時"],
+    ["N001", "試験 花子", "U_CUSTOM_nofolder_user", "2026/09/01"]
+  ];
+  const noFolderDist = noFolderSS.addSheet(distSheetName);
+  noFolderDist.rows = [
+    ["rowId", "cityName", "townName", "completedAt", "count", "staffId", "staffName", "", "", "", "", "", "", "", "", "lineUserId"],
+    ["1", "試験市", "町域1", "", 0, "", "", "", "", "", "", "", "", "", "", ""]
+  ];
+  mockSpreadsheets["ss-no-folder-id"] = noFolderSS;
+
+  // 各フォルダのファイル数をリセット
+  mockDriveFolders["folder_kuwana_id"] = { id: "folder_kuwana_id", files: [], createFile(b) { const f = { id: `f_k_${this.files.length+1}`, getId() { return this.id; }, getName() { return "k.jpg"; } }; this.files.push(f); return f; } };
+  mockDriveFolders["folder_okayama_id"] = { id: "folder_okayama_id", files: [], createFile(b) { const f = { id: `f_o_${this.files.length+1}`, getId() { return this.id; }, getName() { return "o.jpg"; } }; this.files.push(f); return f; } };
+  mockDriveFolders["legacy_global_folder_id"] = { id: "legacy_global_folder_id", files: [], createFile(b) { const f = { id: `f_l_${this.files.length+1}`, getId() { return this.id; }, getName() { return "l.jpg"; } }; this.files.push(f); return f; } };
+
+  // 全Snapshot取得
+  const okayamaDistSnapshot = JSON.parse(JSON.stringify(okayamaDist.rows));
+  const okayamaStaffSnapshot = JSON.parse(JSON.stringify(okayamaStaff.rows));
+
+  // 桑名に未完了行 rowId 2 を追加
+  kuwanaDist.rows.push(["2", "桑名市", "中央町2", "", 0, "", "", "", "", "", "", "", "", "", "", ""]);
+
+  // 2-1. KUWANA 写真アップロードの実行
+  const kuwanaGpsReq = {
+    postData: {
+      contents: JSON.stringify({
+        action: "updateRecordWithGPSPhoto",
+        liffToken: "token_kuwana_user1",
+        districtId: "KUWANA",
+        rowId: 2,
+        lat: 35.06,
+        lng: 136.68,
+        gpsStatus: "OK",
+        count: 120,
+        isDone: true,
+        photoData: "data:image/jpeg;base64," + Buffer.from("fake_kuwana_photo_bytes").toString("base64")
+      })
+    }
+  };
+
+  const kuwanaRes = doPost(kuwanaGpsReq);
+  const kuwanaData = JSON.parse(kuwanaRes.text);
+
+  assert.equal(kuwanaData.success, true, "KUWANA updateRecordWithGPSPhoto must succeed");
+  assert.equal(kuwanaData.photoStatus, "OK", "Photo upload must succeed for KUWANA");
+
+  // Drive 隔離検証:
+  assert.equal(mockDriveFolders["folder_kuwana_id"].files.length, 1, "KUWANA folder must receive exactly 1 file");
+  assert.equal(mockDriveFolders["folder_okayama_id"].files.length, 0, "OKAYAMA folder mutation must be ZERO (Drive isolation)");
+  assert.equal(mockDriveFolders["legacy_global_folder_id"].files.length, 0, "Global legacy folder mutation must be ZERO");
+
+  // DB 隔離検証:
+  assert.deepEqual(okayamaDist.rows, okayamaDistSnapshot, "OKAYAMA distribution sheet must have ZERO mutations");
+  assert.deepEqual(okayamaStaff.rows, okayamaStaffSnapshot, "OKAYAMA staff sheet must have ZERO mutations");
+
+  // 桑名の実績行が更新されていること
+  assert.equal(kuwanaDist.rows[2][3], "2026/09/20 12:00:00", "completedAt updated");
+  assert.equal(kuwanaDist.rows[2][4], 120, "count updated to 120");
+  assert.equal(kuwanaDist.rows[2][5], "K001", "staffId is K001");
+  assert.equal(kuwanaDist.rows[2][6], "桑名 太郎", "staffName is 桑名 太郎");
+  assert.equal(kuwanaDist.rows[2][8], "OK", "photoStatus is OK");
+  assert.equal(kuwanaDist.rows[2][15], "U_KUWANA_001", "lineUserId is U_KUWANA_001");
+
+  // 2-2. storageFolderId 欠損地区の写真アップロード (Drive Fail-Closed & 業務継続実証)
+  const noFolderFilesBefore = {
+    kuwana: mockDriveFolders["folder_kuwana_id"].files.length,
+    okayama: mockDriveFolders["folder_okayama_id"].files.length,
+    global: mockDriveFolders["legacy_global_folder_id"].files.length
+  };
+
+  const noFolderReq = {
+    postData: {
+      contents: JSON.stringify({
+        action: "updateRecordWithGPSPhoto",
+        liffToken: "token_custom_nofolder_user",
+        districtId: "NO_FOLDER_DIST",
+        rowId: 1,
+        lat: 35.10,
+        lng: 136.70,
+        gpsStatus: "OK",
+        count: 80,
+        isDone: true,
+        photoData: "data:image/jpeg;base64," + Buffer.from("fake_no_folder_photo").toString("base64")
+      })
+    }
+  };
+
+  const noFolderRes = doPost(noFolderReq);
+  const noFolderData = JSON.parse(noFolderRes.text);
+
+  // 業務継続仕様: 写真保存失敗時もスプレッドシート実績行は保存される
+  assert.equal(noFolderData.success, true, "Spreadsheet update must succeed despite Drive fail-closed (business continuity)");
+  assert.equal(noFolderData.photoStatus, "NO", "photoStatus must be NO when storageFolderId missing (fail-closed)");
+
+  // 全フォルダに対する mutation 0 (wrong-folder write 0)
+  assert.equal(mockDriveFolders["folder_kuwana_id"].files.length, noFolderFilesBefore.kuwana, "KUWANA folder must have ZERO mutation on missing folder");
+  assert.equal(mockDriveFolders["folder_okayama_id"].files.length, noFolderFilesBefore.okayama, "OKAYAMA folder must have ZERO mutation on missing folder");
+  assert.equal(mockDriveFolders["legacy_global_folder_id"].files.length, noFolderFilesBefore.global, "Global folder must have ZERO mutation on missing folder (no fallback)");
+
+  // NO_FOLDER_DIST の実績行は正常に保存されていること
+  assert.equal(noFolderDist.rows[1][4], 80, "count updated to 80");
+  assert.equal(noFolderDist.rows[1][8], "NO", "photoStatus in sheet must be NO");
 });
 
 console.log('\n================================================================');
