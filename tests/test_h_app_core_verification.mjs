@@ -12,6 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { verifyAssetTokens, REQUIRED_LOCAL_CODE_ASSETS } from '../scripts/stamp-h-app-token.mjs';
 
 const rootDir = process.cwd();
@@ -296,21 +297,55 @@ test('9. Release Token: 全必須ローカルコードアセットに単一自�
 // ----------------------------------------------------------------------------
 // 10. ピン統計情報: 世帯数・人口・市前回投票率の動的バインドおよびフォールバック保証
 // ----------------------------------------------------------------------------
-test('10. ピン統計情報: ピンタップ時の世帯数・人口・市前回投票率表示およびフォールバック', async (t) => {
-  // ① render.js 内に fetchElectionData によるSSOTロード処理が存在すること
-  assert.ok(renderJs.includes('fetchElectionData'), 'render.js に fetchElectionData が存在すること');
-  assert.ok(renderJs.includes('../../data/election_history.json'), '選挙SSOTとして election_history.json を参照していること');
+test('10. ピン統計情報: ピンタップ時の世帯数・人口・市前回投票率表示およびフォールバック (Rectification SSOT)', async (t) => {
+  // ① render.js 内に PMS_CLIENT_CONFIG による動的パス解決と no-store が存在すること
+  assert.ok(renderJs.includes('PMS_CLIENT_CONFIG?.staticMaster?.electionHistoryFilename'), 'PMS_CLIENT_CONFIGからファイル名を動的解決していること');
+  assert.ok(renderJs.includes("cache: 'no-store'"), 'fetch で cache: no-store が指定されていること');
 
   // ② 表示項目ラベル（世帯数、人口、市前回投票率）が存在すること
   assert.ok(renderJs.includes('世帯数'), 'バブル内に世帯数ラベルが存在すること');
   assert.ok(renderJs.includes('人口'), 'バブル内に人口ラベルが存在すること');
   assert.ok(renderJs.includes('前回投票率'), 'バブル内に前回投票率ラベルが存在すること');
-
-  // ③ 地区ハードコードなしで動的に市名が解決されていること
   assert.ok(renderJs.includes('${turnoutLabel}'), '市単位であることを明示する turnoutLabel が動的解決されていること');
-
-  // ④ フォールバック記号（—）による安全表示が実装されていること
   assert.ok(renderJs.includes("'—'"), '未取得時・欠損時のフォールバック "—" が定義されていること');
+
+  // ③ 実値ロジック検証: getLatestElection は配列順序に依存せず electionDate 最大の選挙を特定すること
+  // render.js から getLatestElection 関数を抽出して VM コンテキストで直接実行検証
+  const getLatestElectionCode = renderJs.substring(
+    renderJs.indexOf('function getLatestElection'),
+    renderJs.indexOf('window.getLatestElection = getLatestElection;')
+  );
+  const vmSandbox = {};
+  vm.createContext(vmSandbox);
+  vm.runInContext(`${getLatestElectionCode}; this.getLatestElection = getLatestElection;`, vmSandbox);
+
+  const testElectionData = {
+    elections: [
+      { electionId: 'OLD', electionDate: '2018-12-02', turnout: 48.3, municipalities: { '桑名市': 48.3 } },
+      { electionId: 'LATEST', electionDate: '2022-11-20', turnout: 45.08, municipalities: { '桑名市': 45.08 } },
+      { electionId: 'OLDEST', electionDate: '2014-11-16', turnout: 49.0, municipalities: { '桑名市': 49.0 } }
+    ]
+  };
+
+  const resolvedLatest = vmSandbox.getLatestElection(testElectionData);
+  assert.ok(resolvedLatest, 'getLatestElection は有効なオブジェクトを返すこと');
+  assert.equal(resolvedLatest.electionId, 'LATEST', 'elections[0]固定ではなく electionDate最大の選挙が選択されること');
+  assert.equal(resolvedLatest.electionDate, '2022-11-20', '最大の electionDate 2022-11-20 が選ばれること');
+
+  // ④ 実値ロジック検証: municipalities[cityName] が無い自治体は election.turnout へ fallback せず厳格に null/— となること
+  // render.js 内に latestElection.turnout へのフォールバック代入が存在しないことをコード検証
+  const turnoutResolutionSnippet = renderJs.substring(
+    renderJs.indexOf('const latestElection = getLatestElection'),
+    renderJs.indexOf('const turnoutLabel')
+  );
+  assert.ok(
+    !turnoutResolutionSnippet.includes('latestElection.turnout'),
+    'municipalities[row.city_name]が無い場合、election.turnoutへfallbackしてはならない'
+  );
+  assert.ok(
+    turnoutResolutionSnippet.includes('latestElection.municipalities[cityName]'),
+    '指定自治体の投票率のみを厳格に取得すること'
+  );
 });
 
 console.log('✅ ALL PHASE 8 H-APP CORE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

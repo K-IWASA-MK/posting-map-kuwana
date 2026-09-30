@@ -2,14 +2,31 @@
 let cachedElectionData = null;
 let electionDataPromise = null;
 
+function getLatestElection(electionData) {
+  if (!electionData || !Array.isArray(electionData.elections) || electionData.elections.length === 0) {
+    return null;
+  }
+  return electionData.elections.reduce((latest, current) => {
+    if (!latest || !latest.electionDate) return current;
+    if (!current || !current.electionDate) return latest;
+    return String(current.electionDate) > String(latest.electionDate) ? current : latest;
+  }, null);
+}
+window.getLatestElection = getLatestElection;
+
 async function fetchElectionData() {
   if (cachedElectionData) return cachedElectionData;
   if (!electionDataPromise) {
     electionDataPromise = (async () => {
       try {
-        const res = await fetch('../../data/election_history.json');
+        const filename = (typeof window !== 'undefined' && window.PMS_CLIENT_CONFIG?.staticMaster?.electionHistoryFilename)
+          ? window.PMS_CLIENT_CONFIG.staticMaster.electionHistoryFilename
+          : 'election_history.json';
+        const electionHistoryUrl = `../../data/${filename}`;
+
+        const res = await fetch(electionHistoryUrl, { cache: 'no-store' });
         if (!res.ok) {
-          console.warn(`[render] Failed to fetch election_history.json: status ${res.status}`);
+          console.warn(`[render] Failed to fetch ${filename}: status ${res.status}`);
           return null;
         }
         cachedElectionData = await res.json();
@@ -1046,17 +1063,11 @@ window.initMainMap = function() {
           const householdsStr = formatNumber(row.households) !== '—' ? `${formatNumber(row.households)} 世帯` : '—';
           const populationStr = formatNumber(row.population) !== '—' ? `${formatNumber(row.population)} 人` : '—';
 
-          const latestElection = cachedElectionData && Array.isArray(cachedElectionData.elections) && cachedElectionData.elections.length > 0
-            ? cachedElectionData.elections[0]
-            : null;
+          const latestElection = getLatestElection(cachedElectionData);
           const cityName = row.city_name || '';
           let turnoutVal = '—';
-          if (latestElection) {
-            if (latestElection.municipalities && cityName && latestElection.municipalities[cityName] !== undefined) {
-              turnoutVal = `${latestElection.municipalities[cityName]}%`;
-            } else if (latestElection.turnout !== undefined && latestElection.turnout !== null) {
-              turnoutVal = `${latestElection.turnout}%`;
-            }
+          if (latestElection && latestElection.municipalities && cityName && latestElection.municipalities[cityName] !== undefined && latestElection.municipalities[cityName] !== null && latestElection.municipalities[cityName] !== '') {
+            turnoutVal = `${latestElection.municipalities[cityName]}%`;
           }
           const turnoutLabel = `${cityName ? cityName : '市'} 前回投票率`;
 
