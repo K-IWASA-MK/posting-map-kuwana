@@ -20,6 +20,23 @@ console.log('================================================================');
 console.log('🧪 MULTI-DISTRICT DYNAMIC ROUTING & AUTH BOUNDARY VERIFICATION');
 console.log('================================================================\n');
 
+// 決定論的 Fixed Clock: 実カレンダーからテストを切り離し、基準Fixture月 2026-09 を保証
+const baseOriginalDate = global.Date;
+const mockSeptDate = new baseOriginalDate("2026-09-20T12:00:00+09:00");
+class MockDate202609 extends baseOriginalDate {
+  constructor(...args) {
+    if (args.length === 0) {
+      super(mockSeptDate.getTime());
+    } else {
+      super(...args);
+    }
+  }
+  static now() {
+    return mockSeptDate.getTime();
+  }
+}
+global.Date = MockDate202609;
+
 // 1. スプレッドシートモック
 class MockSheet {
   constructor(name) {

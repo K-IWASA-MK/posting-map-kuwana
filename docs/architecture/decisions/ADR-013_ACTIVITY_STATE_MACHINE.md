@@ -158,7 +158,7 @@ POSTING MAP のフィールドワークにおける以下の業務ルールを�
 
 ## 3. Consequences & Compliance (影響と遵守事項)
 
-- **Universal 原則遵守**: 本仕様は単一リポジトリ・単一コードベース（Universal Engine）の全地区共通基底ルールとして機能し、地区固有の条件分岐を一切含まない。
+- **Universal 原則遵守**: 本仕様は共通Runtime（Universal Engine `active/**`）の全地区共通基底ルールとして機能し、地区固有の条件分岐を一切含まない。
 - **データ不可侵**: `data/address_master.csv` および `data/boundaries.geojson` は直前の `7bf64d3` で確定済みであり、本ADRによる変更は一切加えない。
 - **外部接続不可侵**: 旧KUWANAの外部接続切替には一切触れない。
 - **Phase 8〜10 互換性**: 既存の `db.js`、`gps_service.js`、`gps_repository.js`、`distribution_repository.js` の堅牢な設計を100%継承し、回帰障害を発生させない。

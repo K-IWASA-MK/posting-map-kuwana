@@ -3,7 +3,7 @@
  * 
  * マスタープラン Phase 21 最終合格条件：
  * 地域A用コード、地域B用コードを作らず、
- * 「同一アプリ・同一repo・同一domain・同一共通コード ＋ 異なる地域データ」
+ * 「1地区 = 1完成アプリ = 1単独フォルダー = 1単独リポジトリ = 1単独ドメイン（共通Runtime同一維持・地区差データ吸収）」
  * で成立すること。
  * 
  * 5大検証ゲート：
@@ -352,7 +352,7 @@ const designContractContent = fs.readFileSync(designContractPath, 'utf8');
 
 assert.ok(designContractContent.includes('Phase 21 — Generic / Multi-region Validation'), 'Design contract must specify Phase 21 validation');
 assert.ok(designContractContent.includes('地域が変わってもコードを複製・改変せず動作する'), 'Design contract must mandate generic engine without code duplication');
-assert.ok(designContractContent.includes('単独アプリ') && designContractContent.includes('単独リポジトリ') && designContractContent.includes('単独ドメイン'), 'Design contract must mandate single app, repo, and domain');
+assert.ok(designContractContent.includes('1地区 = 1完成アプリ = 1単独フォルダー = 1単独リポジトリ = 1単独ドメイン'), 'Design contract must mandate "1地区 = 1完成アプリ = 1単独フォルダー = 1単独リポジトリ = 1単独ドメイン"');
 
 // 2. 新地区標準運用手順書 (SSOT) におけるプロビジョニング契約の確認
 const provisioningRunbookPath = path.join(REPO_ROOT, 'docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md');
