@@ -1,4 +1,7 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/render.js"
+  "active/h-app/index.html",
+  "package.json",
+  "scripts/stamp-h-app-token.mjs",
+  "tests/test_h_app_core_verification.mjs"
 ]
