@@ -599,6 +599,8 @@ window.initMainMap = function() {
     return;
   }
 
+  const hadExistingMapState = !!window.currentMapState?.center;
+
   const appleStyle = [
     { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
     { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
@@ -930,8 +932,8 @@ window.initMainMap = function() {
 
     window.masterPins = pins;
 
-    // 初回表示時かつ currentMapState が未確定の場合、pins のバウンディングボックスまたは先頭ピンで自動フィット
-    if (!window.currentMapState && pins.length > 0) {
+    // 初回表示時（Map生成前にCamera状態が未保存だった場合）、pins のバウンディングボックスまたは先頭ピンで自動フィット
+    if (!hadExistingMapState && pins.length > 0) {
       const validCoords = pins.filter(p => typeof p.latitude === 'number' && typeof p.longitude === 'number' && isFinite(p.latitude) && isFinite(p.longitude));
       if (validCoords.length === 1) {
         map.setCenter({ lat: validCoords[0].latitude, lng: validCoords[0].longitude });
