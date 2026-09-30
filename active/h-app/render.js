@@ -1,3 +1,29 @@
+// Election Master SSOT Loader & Memory Cache
+let cachedElectionData = null;
+let electionDataPromise = null;
+
+async function fetchElectionData() {
+  if (cachedElectionData) return cachedElectionData;
+  if (!electionDataPromise) {
+    electionDataPromise = (async () => {
+      try {
+        const res = await fetch('../../data/election_history.json');
+        if (!res.ok) {
+          console.warn(`[render] Failed to fetch election_history.json: status ${res.status}`);
+          return null;
+        }
+        cachedElectionData = await res.json();
+        return cachedElectionData;
+      } catch (err) {
+        console.warn('[render] Error loading election_history.json:', err);
+        return null;
+      }
+    })();
+  }
+  return electionDataPromise;
+}
+window.fetchElectionData = fetchElectionData;
+
 function renderAreas() {
   const contentEl = $('content');
 
@@ -594,6 +620,11 @@ window.initMainMap = function() {
   const mapEl = document.getElementById("main-map");
   if (!mapEl || !window.google || !window.google.maps) return;
 
+  // 選挙マスターデータをバックグラウンド先行キャッシュ
+  if (typeof fetchElectionData === 'function') {
+    fetchElectionData();
+  }
+
   // 既存Mapインスタンスが同一DOM要素にバインド済みの場合はMap生成・Marker生成・Listener登録のすべてをスキップ
   if (window.mainMapInstance && window.mainMapInstance.getDiv() === mapEl) {
     return;
@@ -924,6 +955,7 @@ window.initMainMap = function() {
           <div style="font-size: 20px; font-weight: 900; line-height: 1.2; text-align: center; margin-bottom: 12px;">
             ${activeOverlay.townName || ''}
           </div>
+          ${activeOverlay.statsBlockHtml || ''}
           <div style="background: rgba(234, 95, 8, 0.2); border: 1px solid rgba(234, 95, 8, 0.5); border-radius: 4px; padding: 4px 8px; text-align: center; color: #EA5F08; font-weight: bold; font-size: 13px;">
             配布済み 🔒
           </div>
@@ -991,10 +1023,61 @@ window.initMainMap = function() {
         });
         marker.rowId = row.rowId;
 
-        marker.addListener('click', () => {
+        marker.addListener('click', async () => {
+          // 先頭ガード：既にPopupが開いていれば他ピンの新規タップを完全に無視
+          if (activeOverlay || activeMarker) {
+            return;
+          }
+
+          if (!cachedElectionData && typeof fetchElectionData === 'function') {
+            await fetchElectionData();
+          }
+
           const cleanTown = (row.town_name || '').replace(/^大字/, '');
           const mapQuery = encodeURIComponent(`${row.city_name} ${cleanTown}`);
           const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
+
+          const formatNumber = (val) => {
+            if (val === null || val === undefined || val === '') return '—';
+            const num = Number(val);
+            return isNaN(num) ? '—' : num.toLocaleString();
+          };
+
+          const householdsStr = formatNumber(row.households) !== '—' ? `${formatNumber(row.households)} 世帯` : '—';
+          const populationStr = formatNumber(row.population) !== '—' ? `${formatNumber(row.population)} 人` : '—';
+
+          const latestElection = cachedElectionData && Array.isArray(cachedElectionData.elections) && cachedElectionData.elections.length > 0
+            ? cachedElectionData.elections[0]
+            : null;
+          const cityName = row.city_name || '';
+          let turnoutVal = '—';
+          if (latestElection) {
+            if (latestElection.municipalities && cityName && latestElection.municipalities[cityName] !== undefined) {
+              turnoutVal = `${latestElection.municipalities[cityName]}%`;
+            } else if (latestElection.turnout !== undefined && latestElection.turnout !== null) {
+              turnoutVal = `${latestElection.turnout}%`;
+            }
+          }
+          const turnoutLabel = `${cityName ? cityName : '市'} 前回投票率`;
+
+          const statsBlockHtml = `
+            <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 8px 10px; margin-bottom: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div style="flex: 1; text-align: center; border-right: 1px solid rgba(255, 255, 255, 0.08);">
+                  <div style="font-size: 10px; color: rgba(255, 255, 255, 0.5); font-weight: 600;">世帯数</div>
+                  <div style="font-size: 13px; font-weight: 800; color: #ffffff; margin-top: 1px;">${householdsStr}</div>
+                </div>
+                <div style="flex: 1; text-align: center;">
+                  <div style="font-size: 10px; color: rgba(255, 255, 255, 0.5); font-weight: 600;">人口</div>
+                  <div style="font-size: 13px; font-weight: 800; color: #ffffff; margin-top: 1px;">${populationStr}</div>
+                </div>
+              </div>
+              <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 5px; display: flex; justify-content: space-between; align-items: center; padding-left: 4px; padding-right: 4px;">
+                <span style="font-size: 10px; color: rgba(255, 255, 255, 0.5); font-weight: 600;">${turnoutLabel}</span>
+                <span style="font-size: 12px; font-weight: 800; color: #38bdf8;">${turnoutVal}</span>
+              </div>
+            </div>
+          `;
 
           const createContent = (isCompleted, isRemoteInProgress) => {
             let bottomUI = '';
@@ -1047,6 +1130,7 @@ window.initMainMap = function() {
                 <div style="font-size: 20px; font-weight: 900; line-height: 1.2; text-align: center; margin-bottom: 12px;">
                   ${cleanTown}
                 </div>
+                ${statsBlockHtml}
                 ${bottomUI}
               </div>
             `;
@@ -1114,6 +1198,7 @@ window.initMainMap = function() {
               activeOverlay.rowId = row.rowId;
               activeOverlay.cityName = row.city_name;
               activeOverlay.townName = cleanTown;
+              activeOverlay.statsBlockHtml = statsBlockHtml;
             };
 
             // スクリュー移動が必要かどうかの判定（すでに中心付近にある場合は即表示）

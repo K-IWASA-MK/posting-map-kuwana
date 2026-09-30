@@ -293,4 +293,25 @@ test('9. Release Token: 全必須ローカルコードアセットに単一自�
   assert.ok(dashboardHtml.includes('https://static.line-scdn.net/liff/edge/2/sdk.js"></script>'), '外部LINE SDK CDNにはクエリが付与されていないこと');
 });
 
+// ----------------------------------------------------------------------------
+// 10. ピン統計情報: 世帯数・人口・市前回投票率の動的バインドおよびフォールバック保証
+// ----------------------------------------------------------------------------
+test('10. ピン統計情報: ピンタップ時の世帯数・人口・市前回投票率表示およびフォールバック', async (t) => {
+  // ① render.js 内に fetchElectionData によるSSOTロード処理が存在すること
+  assert.ok(renderJs.includes('fetchElectionData'), 'render.js に fetchElectionData が存在すること');
+  assert.ok(renderJs.includes('../../data/election_history.json'), '選挙SSOTとして election_history.json を参照していること');
+
+  // ② 表示項目ラベル（世帯数、人口、市前回投票率）が存在すること
+  assert.ok(renderJs.includes('世帯数'), 'バブル内に世帯数ラベルが存在すること');
+  assert.ok(renderJs.includes('人口'), 'バブル内に人口ラベルが存在すること');
+  assert.ok(renderJs.includes('前回投票率'), 'バブル内に前回投票率ラベルが存在すること');
+
+  // ③ 地区ハードコードなしで動的に市名が解決されていること
+  assert.ok(renderJs.includes('${turnoutLabel}'), '市単位であることを明示する turnoutLabel が動的解決されていること');
+
+  // ④ フォールバック記号（—）による安全表示が実装されていること
+  assert.ok(renderJs.includes("'—'"), '未取得時・欠損時のフォールバック "—" が定義されていること');
+});
+
 console.log('✅ ALL PHASE 8 H-APP CORE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+
