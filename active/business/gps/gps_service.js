@@ -38,6 +38,13 @@ if (typeof GPSService === 'undefined') {
         }
 
         const isComplete = data.isDone === 'true' || data.isDone === true;
+        if (!isComplete) {
+          return {
+            success: false,
+            code: "INVALID_OPERATION",
+            message: "完了実績の取消は許可されていません。"
+          };
+        }
 
         // Step 1: timestamp月判定（有限の正数のみ月判定、それ以外はLegacy扱いでスキップ）
         const tsNum = Number(data.timestamp);

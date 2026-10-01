@@ -108,6 +108,9 @@ if (typeof GPSRepository === 'undefined') {
 
     updateSheetRecordAndLog(data, rowIdNum, gpsStatus, photoStatus, existing, photoFileId, districtId = "") {
       const isComplete = data.isDone === 'true' || data.isDone === true;
+      if (!isComplete) {
+        return { success: false, message: "完了実績の取消は許可されていません。" };
+      }
       const timestamp = Date.now();
       const completedAt = Utilities.formatDate(new Date(timestamp), "JST", "yyyy/MM/dd HH:mm:ss");
 
@@ -179,10 +182,8 @@ if (typeof GPSRepository === 'undefined') {
                 cleanLineUserId,
                 cleanRequestId
               ]]);
-            } else {
-              sheet.getRange(targetRow, 4, 1, 13).setValues([["", "", "", "", "", "", "", "", "", "", "", "", ""]]); // Revert D to P
+              updateSuccess = true;
             }
-            updateSuccess = true;
           }
         }
       } catch(e) {
