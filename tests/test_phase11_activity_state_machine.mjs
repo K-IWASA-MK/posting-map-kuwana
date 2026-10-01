@@ -613,7 +613,7 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜11 & キャン
   const cancelMatch = renderJs.match(/window\.cancelMissionComplete\s*=\s*function[\s\S]*?^};/m);
   assert.ok(cancelMatch && cancelMatch[0].includes('setPinInProgress'), 'cancelMissionComplete 内に setPinInProgress が維持されていること (キャンセル契約保護)');
 
-  // --- 動的ロジックシミュレーション: Case 1 〜 10 の網羅的判定 ---
+  // --- 動的ロジックシミュレーション: Case 1 〜 11 の網羅的判定 ---
   function createTestHarness() {
     let removeCallCount = 0;
     const removedRowIds = [];
