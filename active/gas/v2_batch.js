@@ -25,20 +25,19 @@ function deleteTriggers(name) {
 // =============================================
 
 /**
- * 1地区を対象としたDrive写真の自動整理
- * @param {string} districtId
+ * Googleドライブの証拠写真を自動整理する（単一地区用コア処理）。
+ * @param {string} [districtId=""] - 対象地区コード
  */
-function cleanupDrivePhotosForDistrict(districtId) {
-  let parentFolderId;
+function cleanupDrivePhotosForDistrict(districtId = "") {
+  let parentFolderId = null;
   try {
     parentFolderId = getStorageFolderId(districtId);
-  } catch (eFolder) {
-    console.warn(`cleanupDrivePhotosForDistrict: Storage folder resolution failed for district "${districtId}":`, eFolder);
+  } catch (eId) {
+    console.error(`cleanupDrivePhotos: getStorageFolderId failed for district "${districtId}":`, eId);
     return;
   }
-
   if (!parentFolderId) {
-    console.warn(`cleanupDrivePhotosForDistrict: Storage folder not found for district "${districtId}".`);
+    console.error(`cleanupDrivePhotos: parent folder ID not found for district "${districtId}".`);
     return;
   }
 
@@ -46,7 +45,7 @@ function cleanupDrivePhotosForDistrict(districtId) {
   try {
     parentFolder = DriveApp.getFolderById(parentFolderId);
   } catch (e) {
-    console.error(`cleanupDrivePhotosForDistrict: parent folder not found for district "${districtId}":`, e);
+    console.error(`cleanupDrivePhotos: parent folder not found for district "${districtId}":`, e);
     return;
   }
 
@@ -80,7 +79,7 @@ function cleanupDrivePhotosForDistrict(districtId) {
       }
     }
     if (movedCount > 0) {
-      console.log(`cleanupDrivePhotosForDistrict [${districtId}]: ${movedCount} files moved to /archive`);
+      console.log(`cleanupDrivePhotos [${districtId || "DEFAULT"}]: ${movedCount} files moved to /archive`);
     }
   }
 
@@ -101,15 +100,15 @@ function cleanupDrivePhotosForDistrict(districtId) {
       }
     }
     if (deletedCount > 0) {
-      console.log(`cleanupDrivePhotosForDistrict [${districtId}]: ${deletedCount} files trashed from /archive`);
+      console.log(`cleanupDrivePhotos [${districtId || "DEFAULT"}]: ${deletedCount} files trashed from /archive`);
     }
   }
 }
 
 /**
- * Googleドライブの証拠写真を自動整理する時間主導型トリガー実行エントリ。
+ * Googleドライブの証拠写真を自動整理する（Trigger Entry Point）。
  * setupCleanupTrigger() で毎日深夜2時に自動実行される。
- * 有効な全地区を列挙し、地区ごとに完全隔離して実行する。
+ * DISTRICT_REGISTRY に登録された全有効地区を走査し、他地区への越境 mutation 0 を保証する。
  */
 function cleanupDrivePhotos() {
   const enabledDistricts = (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance)
@@ -122,19 +121,15 @@ function cleanupDrivePhotos() {
     return;
   }
 
-  if (enabledDistricts.length === 0) {
-    // configured-empty または全地区 disabled: 実行 0 件（Fail-Closed、global fallback 禁止）
-    console.log("cleanupDrivePhotos: No enabled districts found in DISTRICT_REGISTRY. Halting.");
-    return;
+  if (Array.isArray(enabledDistricts) && enabledDistricts.length > 0) {
+    enabledDistricts.forEach(dist => {
+      try {
+        cleanupDrivePhotosForDistrict(dist);
+      } catch (e) {
+        console.error(`cleanupDrivePhotos failed for district "${dist}":`, e);
+      }
+    });
   }
-
-  enabledDistricts.forEach((d) => {
-    try {
-      cleanupDrivePhotosForDistrict(d);
-    } catch (errDist) {
-      console.error(`cleanupDrivePhotos failed for district "${d}":`, errDist);
-    }
-  });
 }
 
 /**
@@ -153,20 +148,19 @@ function setupCleanupTrigger() {
 }
 
 /**
- * 1地区を対象とした30日経過写真の自動削除
- * @param {string} districtId
+ * 30日経過写真の自動削除バッチ（単一地区用コア処理）。
+ * @param {string} [districtId=""] - 対象地区コード
  */
-function cleanupOldPhotosForDistrict(districtId) {
-  let folderId;
+function cleanupOldPhotosForDistrict(districtId = "") {
+  let folderId = null;
   try {
     folderId = (typeof getStorageFolderId === 'function') ? getStorageFolderId(districtId) : null;
-  } catch (eFolder) {
-    console.warn(`cleanupOldPhotosForDistrict: Storage folder resolution failed for district "${districtId}":`, eFolder);
+  } catch (eId) {
+    console.error(`cleanupOldPhotosBatch: getStorageFolderId failed for district "${districtId}":`, eId);
     return;
   }
-
   if (!folderId) {
-    console.warn(`cleanupOldPhotosForDistrict: Storage folder not found for district "${districtId}".`);
+    console.error(`cleanupOldPhotosBatch: Storage folder not found for district "${districtId}".`);
     return;
   }
 
@@ -187,15 +181,16 @@ function cleanupOldPhotosForDistrict(districtId) {
       }
     }
 
-    console.log(`cleanupOldPhotosForDistrict [${districtId}]: ${trashedCount} old photos moved to trash.`);
+    console.log(`cleanupOldPhotosBatch [${districtId || "DEFAULT"}]: ${trashedCount} old photos moved to trash.`);
   } catch(e) {
-    console.error(`cleanupOldPhotosForDistrict [${districtId}] error:`, e);
+    console.error(`cleanupOldPhotosBatch error for district "${districtId}":`, e);
   }
 }
 
 /**
  * C-5 Field Result Sync Foundation
- * 30日経過写真の自動削除バッチ時間主導型トリガー実行エントリ。
+ * 30日経過写真の自動削除バッチ（Trigger Entry Point）。
+ * DISTRICT_REGISTRY に登録された全有効地区を走査し、他地区への越境 mutation 0 を保証する。
  */
 function cleanupOldPhotosBatch() {
   const enabledDistricts = (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance)
@@ -208,24 +203,22 @@ function cleanupOldPhotosBatch() {
     return;
   }
 
-  if (enabledDistricts.length === 0) {
-    console.log("cleanupOldPhotosBatch: No enabled districts found in DISTRICT_REGISTRY. Halting.");
-    return;
+  if (Array.isArray(enabledDistricts) && enabledDistricts.length > 0) {
+    enabledDistricts.forEach(dist => {
+      try {
+        cleanupOldPhotosForDistrict(dist);
+      } catch (e) {
+        console.error(`cleanupOldPhotosBatch failed for district "${dist}":`, e);
+      }
+    });
   }
-
-  enabledDistricts.forEach((d) => {
-    try {
-      cleanupOldPhotosForDistrict(d);
-    } catch (errDist) {
-      console.error(`cleanupOldPhotosBatch failed for district "${d}":`, errDist);
-    }
-  });
 }
 
 /**
  * 30日削除バッチの時間主導型トリガーを設定する
  */
 function setupPhotoCleanupTrigger() {
+  // 既存の同名トリガーがあれば削除（二重作成防止）
   deleteTriggers("cleanupOldPhotosBatch");
   ScriptApp.newTrigger("cleanupOldPhotosBatch")
     .timeBased()
@@ -240,25 +233,25 @@ function setupPhotoCleanupTrigger() {
 // =============================================
 
 /**
- * 1地区を対象とした PinStatus クリーンアップ（1地区用 Core）
- * 対象地区の当月 PinStatus シートに残存した IN_PROGRESS データをクリアする。
- * 配布実績シートを含む他シートおよび他地区のシートには一切アクセス・変更しない。
- * @param {string} districtId
+ * PinStatus 日次クリーンアップ（単一地区用コア処理）。
+ * 指定地区の当月 PinStatus シートに残存した IN_PROGRESS データを全件クリアする。
+ * 配布実績シートを含む他シートには一切アクセス・変更しない。
+ * @param {string} [districtId=""] - 対象地区コード
  */
-function cleanupPinStatusForDistrict(districtId) {
+function cleanupPinStatusForDistrict(districtId = "") {
   try {
     let pinSheet = null;
     if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
       pinSheet = MonthlySheetResolver.getInstance().getCurrentSheet("pin", districtId);
     }
     if (!pinSheet) {
-      console.log(`cleanupPinStatusForDistrict [${districtId}]: PinStatus sheet does not exist. Nothing to clear.`);
+      console.log(`cleanupPinStatusDaily [${districtId || "DEFAULT"}]: PinStatus sheet does not exist. Nothing to clear.`);
       return;
     }
 
     const lr = pinSheet.getLastRow();
     if (lr <= 1) {
-      console.log(`cleanupPinStatusForDistrict [${districtId}]: PinStatus sheet has no data rows. Nothing to clear.`);
+      console.log(`cleanupPinStatusDaily [${districtId || "DEFAULT"}]: PinStatus sheet has no data rows. Nothing to clear.`);
       return;
     }
 
@@ -267,22 +260,22 @@ function cleanupPinStatusForDistrict(districtId) {
       try {
         pinSheet.deleteRows(2, lr - 1);
         SpreadsheetApp.flush();
-        console.log(`cleanupPinStatusForDistrict [${districtId}]: PinStatus cleared successfully (${lr - 1} rows cleared, header preserved).`);
+        console.log(`cleanupPinStatusDaily [${districtId || "DEFAULT"}]: PinStatus cleared successfully (${lr - 1} rows cleared, header preserved).`);
       } finally {
         lock.releaseLock();
       }
     } else {
-      console.warn(`cleanupPinStatusForDistrict [${districtId}]: Could not obtain lock.`);
+      console.warn(`cleanupPinStatusDaily [${districtId || "DEFAULT"}]: Could not obtain lock.`);
     }
   } catch (e) {
-    console.error(`cleanupPinStatusForDistrict [${districtId}] error: ` + e.toString());
+    console.error(`cleanupPinStatusDaily error for district "${districtId}": ` + e.toString());
   }
 }
 
 /**
- * PinStatus 日次クリーンアップ時間主導型トリガー実行エントリ。
+ * PinStatus 日次クリーンアップ（Trigger Entry Point）。
  * 毎日0:00頃の時間主導型トリガーから実行。
- * 有効な全地区を列挙し、地区ごとに cleanupPinStatusForDistrict を呼出す。
+ * DISTRICT_REGISTRY に登録された全有効地区を走査し、各地区の当月 PinStatus のみクリアする。
  */
 function cleanupPinStatusDaily() {
   const enabledDistricts = (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance)
@@ -295,18 +288,15 @@ function cleanupPinStatusDaily() {
     return;
   }
 
-  if (enabledDistricts.length === 0) {
-    console.log("cleanupPinStatusDaily: No enabled districts found in DISTRICT_REGISTRY. Halting.");
-    return;
+  if (Array.isArray(enabledDistricts) && enabledDistricts.length > 0) {
+    enabledDistricts.forEach(dist => {
+      try {
+        cleanupPinStatusForDistrict(dist);
+      } catch (e) {
+        console.error(`cleanupPinStatusDaily failed for district "${dist}":`, e);
+      }
+    });
   }
-
-  enabledDistricts.forEach((d) => {
-    try {
-      cleanupPinStatusForDistrict(d);
-    } catch (errDist) {
-      console.error(`cleanupPinStatusDaily failed for district "${d}":`, errDist);
-    }
-  });
 }
 
 /**
@@ -327,13 +317,14 @@ function setupPinStatusCleanupTrigger() {
 /**
  * 名簿および名簿の原本シートを初期化・再構築
  * (M-01: v2_ui.js から移設)
- * @param {string} [districtId=""]
+ * @param {string} [districtId=""] - 対象地区コード
  */
 function setupRosterSheet(districtId = "") {
-  const ss = (typeof getSS === 'function') ? getSS(districtId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  const cleanDistrictId = String(districtId || "").trim().toUpperCase();
+  const ss = (typeof getSS === 'function') ? getSS(cleanDistrictId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
   if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
     DistrictProvisioner.getInstance().createStaffMaster(ss);
-    DistrictProvisioner.getInstance().rolloverMonthlySheets(null, {}, districtId);
+    DistrictProvisioner.getInstance().rolloverMonthlySheets(null, {}, cleanDistrictId);
     return "名簿の原本および当月名簿を4列新SSOT構造で再構築しました。";
   }
   return "DistrictProvisioner not available";
@@ -342,32 +333,30 @@ function setupRosterSheet(districtId = "") {
 /**
  * 日次トリガーから実行される月次判定・自動生成関数
  * (M-02: v2_ui.js から移設)
+ * DISTRICT_REGISTRY に登録された全有効地区を走査し、各地区の DB に対し月次ロールオーバーを実行する。
  */
 function rolloverMonthlySheetsDailyCheck() {
+  if (typeof DistrictProvisioner === 'undefined' || !DistrictProvisioner.getInstance) {
+    return;
+  }
+
   const enabledDistricts = (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance)
     ? SpreadsheetResolver.getInstance().getEnabledDistricts()
     : null;
 
   if (enabledDistricts === null) {
     // Legacy 未設定環境
-    if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
-      DistrictProvisioner.getInstance().rolloverMonthlySheets(null, {}, "");
-    }
+    DistrictProvisioner.getInstance().rolloverMonthlySheets(null, {}, "");
     return;
   }
 
-  if (enabledDistricts.length === 0) {
-    console.log("rolloverMonthlySheetsDailyCheck: No enabled districts found in DISTRICT_REGISTRY. Halting.");
-    return;
-  }
-
-  enabledDistricts.forEach((d) => {
-    try {
-      if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
-        DistrictProvisioner.getInstance().rolloverMonthlySheets(null, {}, d);
+  if (Array.isArray(enabledDistricts) && enabledDistricts.length > 0) {
+    enabledDistricts.forEach(dist => {
+      try {
+        DistrictProvisioner.getInstance().rolloverMonthlySheets(null, {}, dist);
+      } catch (e) {
+        console.error(`rolloverMonthlySheetsDailyCheck failed for district "${dist}":`, e);
       }
-    } catch (errDist) {
-      console.error(`rolloverMonthlySheetsDailyCheck failed for district "${d}":`, errDist);
-    }
-  });
+    });
+  }
 }

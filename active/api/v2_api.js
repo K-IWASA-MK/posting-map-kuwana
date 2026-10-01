@@ -286,11 +286,14 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     const options = (params && params.options) || {};
+    if (options && options.spreadsheet) {
+      delete options.spreadsheet;
+    }
     options.provisioningToken = token;
-    const targetDistrictId = String((params && (params.districtId || (params.options && params.options.districtId))) || "").trim();
-    const targetSpreadsheetId = String((params && (params.targetSpreadsheetId || params.spreadsheetId || (params.options && (params.options.targetSpreadsheetId || params.options.spreadsheetId)))) || "").trim();
-    if (targetSpreadsheetId) {
-      options.targetSpreadsheetId = targetSpreadsheetId;
+    const targetDistrictId = String((params && (params.districtId || (params.options && params.options.districtId))) || "").trim().toUpperCase();
+    const explicitSsId = String((params && (params.targetSpreadsheetId || params.spreadsheetId || (params.options && (params.options.targetSpreadsheetId || params.options.spreadsheetId)))) || "").trim();
+    if (explicitSsId) {
+      options.targetSpreadsheetId = explicitSsId;
     }
     let result;
     if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
@@ -711,35 +714,31 @@ function doPost(e) {
     let registry = {};
 
     if (regRaw === null) {
-      // 初回またはLegacy未設定: 新規空Registryで開始
-      registry = {};
-    } else if (typeof regRaw === "string" && regRaw.trim() === "") {
-      return ContentService.createTextOutput(JSON.stringify({
-        success: false,
-        code: "REGISTRY_CORRUPTED",
-        message: "DISTRICT_REGISTRY is configured but empty (corrupted). Halting without mutation."
-      })).setMimeType(ContentService.MimeType.JSON);
+      registry = {}; // 初回・Legacy 未設定環境
     } else {
+      if (typeof regRaw === "string" && regRaw.trim() === "") {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          code: "CORRUPTED_REGISTRY",
+          message: "DISTRICT_REGISTRY is configured but empty (corrupted)."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
       try {
         registry = JSON.parse(regRaw);
-        if (typeof registry !== "object" || registry === null || Array.isArray(registry)) {
-          throw new Error("Invalid registry format");
-        }
       } catch (eReg) {
         return ContentService.createTextOutput(JSON.stringify({
           success: false,
-          code: "REGISTRY_CORRUPTED",
-          message: "DISTRICT_REGISTRY JSON is corrupted. Halting without mutation to prevent data loss."
+          code: "CORRUPTED_REGISTRY",
+          message: "DISTRICT_REGISTRY JSON is corrupted."
         })).setMimeType(ContentService.MimeType.JSON);
       }
     }
 
-    // 正式 Provisioning Lifecycle: 新地区初期登録時は Acceptance 前のため enabled: false
     registry[cleanDistrictId] = {
       spreadsheetId: targetSpreadsheetId,
       storageFolderId: storageParentId,
       name: districtId,
-      enabled: false
+      enabled: false // Acceptance 前は disabled
     };
 
     const newProps = {
@@ -790,14 +789,17 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
     const options = (postData && postData.options) || (params && params.options) || {};
+    if (options && options.spreadsheet) {
+      delete options.spreadsheet;
+    }
     if (postData && postData.skipSystemInfo !== undefined && options.skipSystemInfo === undefined) {
       options.skipSystemInfo = postData.skipSystemInfo;
     }
     options.provisioningToken = token;
-    const targetDistrictId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || (params && (params.districtId || (params.options && params.options.districtId))) || "").trim();
-    const targetSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (params && (params.targetSpreadsheetId || params.spreadsheetId)) || (options && (options.targetSpreadsheetId || options.spreadsheetId)) || "").trim();
-    if (targetSpreadsheetId) {
-      options.targetSpreadsheetId = targetSpreadsheetId;
+    const targetDistrictId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || (params && (params.districtId || (params.options && params.options.districtId))) || "").trim().toUpperCase();
+    const explicitSsId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (params && (params.targetSpreadsheetId || params.spreadsheetId)) || (options && (options.targetSpreadsheetId || options.spreadsheetId)) || "").trim();
+    if (explicitSsId) {
+      options.targetSpreadsheetId = explicitSsId;
     }
     let result;
     if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
@@ -859,11 +861,14 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     const options = (postData && postData.options) || (params && params.options) || {};
+    if (options && options.spreadsheet) {
+      delete options.spreadsheet;
+    }
     options.provisioningToken = token;
-    const targetDistrictId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || (params && (params.districtId || (params.options && params.options.districtId))) || "").trim();
-    const targetSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (params && (params.targetSpreadsheetId || params.spreadsheetId)) || (options && (options.targetSpreadsheetId || options.spreadsheetId)) || "").trim();
-    if (targetSpreadsheetId) {
-      options.targetSpreadsheetId = targetSpreadsheetId;
+    const targetDistrictId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || (params && (params.districtId || (params.options && params.options.districtId))) || "").trim().toUpperCase();
+    const explicitSsId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (params && (params.targetSpreadsheetId || params.spreadsheetId)) || (options && (options.targetSpreadsheetId || options.spreadsheetId)) || "").trim();
+    if (explicitSsId) {
+      options.targetSpreadsheetId = explicitSsId;
     }
     let result;
     if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
@@ -1377,27 +1382,29 @@ function processPostAction(action, postData, e, districtId = "") {
       const pToken = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)));
       const pCheck = verifyProvisioningToken(pToken);
       if (!pCheck.success) return pCheck;
-      if (postData && postData.options) postData.options.provisioningToken = pToken;
-      const pTargetId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || districtId || "").trim();
-      const pSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (postData && postData.options && (postData.options.targetSpreadsheetId || postData.options.spreadsheetId)) || "").trim();
-      if (pSpreadsheetId && postData && postData.options) {
-        postData.options.targetSpreadsheetId = pSpreadsheetId;
+      if (postData && postData.options) {
+        if (postData.options.spreadsheet) delete postData.options.spreadsheet;
+        postData.options.provisioningToken = pToken;
       }
+      const pDistId = String(districtId || (postData && (postData.districtId || (postData.options && postData.options.districtId))) || "").trim().toUpperCase();
+      const pSsId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId || (postData.options && (postData.options.targetSpreadsheetId || postData.options.spreadsheetId)))) || "").trim();
+      if (pSsId && postData && postData.options) postData.options.targetSpreadsheetId = pSsId;
       return typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance
-        ? DistrictProvisioner.getInstance().provisionNewDistrict(postData && postData.addresses, postData && postData.options, pTargetId)
+        ? DistrictProvisioner.getInstance().provisionNewDistrict(postData && postData.addresses, postData && postData.options, pDistId)
         : { success: false, message: 'DistrictProvisioner not available' };
     case 'syncSystemInfo':
       const sToken = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)));
       const sCheck = verifyProvisioningToken(sToken);
       if (!sCheck.success) return sCheck;
-      if (postData && postData.options) postData.options.provisioningToken = sToken;
-      const sTargetId = String((postData && (postData.districtId || (postData.options && postData.options.districtId))) || districtId || "").trim();
-      const sSpreadsheetId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) || (postData && postData.options && (postData.options.targetSpreadsheetId || postData.options.spreadsheetId)) || "").trim();
-      if (sSpreadsheetId && postData && postData.options) {
-        postData.options.targetSpreadsheetId = sSpreadsheetId;
+      if (postData && postData.options) {
+        if (postData.options.spreadsheet) delete postData.options.spreadsheet;
+        postData.options.provisioningToken = sToken;
       }
+      const sDistId = String(districtId || (postData && (postData.districtId || (postData.options && postData.options.districtId))) || "").trim().toUpperCase();
+      const sSsId = String((postData && (postData.targetSpreadsheetId || postData.spreadsheetId || (postData.options && (postData.options.targetSpreadsheetId || postData.options.spreadsheetId)))) || "").trim();
+      if (sSsId && postData && postData.options) postData.options.targetSpreadsheetId = sSsId;
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance
-        ? SystemInfoService.getInstance().syncSystemInfo(postData && postData.options, sTargetId)
+        ? SystemInfoService.getInstance().syncSystemInfo(postData && postData.options, sDistId)
         : { success: false, message: 'SystemInfoService not available' };
     case 'verifyManagerPassword':
       const postPwd = (postData && postData.password) || (e && e.parameter ? e.parameter.password : "");

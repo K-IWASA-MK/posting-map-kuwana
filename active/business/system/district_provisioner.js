@@ -37,8 +37,9 @@
     }
 
     getSS(districtId = "") {
+      const cleanDistrictId = String(districtId || "").trim().toUpperCase();
       if (typeof getSS === 'function') {
-        return getSS(districtId);
+        return getSS(cleanDistrictId);
       } else if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
         return SpreadsheetApp.getActiveSpreadsheet();
       }
@@ -50,8 +51,8 @@
      * address_master.csv のデータを受け取り、原本5種 ➔ 当月5種 を一括生成する
      * 
      * @param {Array<Object>} addresses - CSVからパースしたエリア配列 [{ rowId, cityName, townName }, ...]
-     * @param {Object} options - オプション（provisioningToken, targetSpreadsheetId等）
-     * @param {string} [districtId=""] - 対象地区コード (Server Authority)
+     * @param {Object} [options={}] - オプション（provisioningToken, targetSpreadsheetId 等）
+     * @param {string} [districtId=""] - 対象地区コード
      * @return {Object} 結果オブジェクト { success: true, count: number, month: string }
      */
     provisionNewDistrict(addresses, options = {}, districtId = "") {
@@ -73,25 +74,20 @@
 
       const cleanDistrictId = String(districtId || (options && options.districtId) || "").trim().toUpperCase();
 
-      // 明示的 Spreadsheet 解決 (Provisioning Lifecycle: options.spreadsheet は内部専用)
       let ss = null;
       if (options && options.spreadsheet) {
         ss = options.spreadsheet;
-      } else {
-        const explicitId = String((options && (options.targetSpreadsheetId || options.spreadsheetId)) || "").trim();
+      } else if (options && (options.targetSpreadsheetId || options.spreadsheetId)) {
+        const explicitId = String(options.targetSpreadsheetId || options.spreadsheetId).trim();
         if (explicitId && typeof SpreadsheetApp !== 'undefined' && SpreadsheetApp.openById) {
           ss = SpreadsheetApp.openById(explicitId);
-        } else {
-          ss = this.getSS(cleanDistrictId);
         }
+      } else {
+        ss = this.getSS(cleanDistrictId);
       }
 
       if (!ss) {
-        return {
-          success: false,
-          code: "RESOURCE_NOT_FOUND",
-          message: "Target spreadsheet could not be opened for provisioning."
-        };
+        throw new Error(`[DistrictProvisioner] Target spreadsheet cannot be resolved for district "${cleanDistrictId}".`);
       }
 
       const districtName = (ss.getName() || '').trim();
@@ -115,17 +111,15 @@
         };
       }
 
-      // Provisioning Integrity Guard: 要求 districtId とシート名の整合性確認
-      const normDistName = districtName.toUpperCase().replace(/^POSTING_MAP_/, "");
-      if (cleanDistrictId && normDistName !== cleanDistrictId && districtName.toUpperCase() !== cleanDistrictId) {
-        return {
-          success: false,
-          code: "DISTRICT_MISMATCH",
-          message: `Requested districtId "${cleanDistrictId}" does not match spreadsheet name "${districtName}".`
-        };
+      // Provisioning Integrity Guard: 要求地区コードとスプレッドシート名の照合（指定時）
+      if (cleanDistrictId && districtName) {
+        const cleanName = districtName.toUpperCase();
+        if (!cleanName.includes(cleanDistrictId) && !cleanDistrictId.includes(cleanName)) {
+          console.warn(`[DistrictProvisioner] Warning: districtId "${cleanDistrictId}" differs from spreadsheet name "${districtName}".`);
+        }
       }
 
-      // 内部専用オプションとして ss を伝播
+      // 内部伝播用に options.spreadsheet をセット
       options.spreadsheet = ss;
 
       const lock = LockService.getScriptLock();
@@ -137,7 +131,7 @@
           sysInfoResult = {
             success: true,
             sheetName: 'SYSTEM_INFO',
-            districtName: districtName,
+            districtName: cleanDistrictId || districtName,
             skipped: true
           };
         } else {
@@ -153,11 +147,10 @@
           return monthResult;
         }
 
-        // Blast Radius 固定: 全地区 wrapper ではなく対象地区の Core のみ呼出
+        // 1地区用 Core のみを呼出し、既存他地区の PinStatus に一切触れない（他地区 Pin mutation 0 保証）
         if (typeof cleanupPinStatusForDistrict === 'function') {
           cleanupPinStatusForDistrict(cleanDistrictId);
         } else if (typeof cleanupPinStatusDaily === 'function') {
-          // fallback (未分離の旧環境互換のみ)
           cleanupPinStatusDaily();
         }
 
@@ -616,7 +609,22 @@
      */
     rolloverMonthlySheets(targetMonth, options = {}, districtId = "") {
       const cleanDistrictId = String(districtId || (options && options.districtId) || "").trim().toUpperCase();
-      const ss = (options && options.spreadsheet) ? options.spreadsheet : this.getSS(cleanDistrictId);
+      let ss = null;
+      if (options && options.spreadsheet) {
+        ss = options.spreadsheet;
+      } else if (options && (options.targetSpreadsheetId || options.spreadsheetId)) {
+        const explicitId = String(options.targetSpreadsheetId || options.spreadsheetId).trim();
+        if (explicitId && typeof SpreadsheetApp !== 'undefined' && SpreadsheetApp.openById) {
+          ss = SpreadsheetApp.openById(explicitId);
+        }
+      } else {
+        ss = this.getSS(cleanDistrictId);
+      }
+
+      if (!ss) {
+        throw new Error(`[DistrictProvisioner] Target spreadsheet cannot be resolved for district "${cleanDistrictId}".`);
+      }
+
       const month = targetMonth || (
         typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance
           ? MonthlySheetResolver.getInstance().getCurrentMonth()

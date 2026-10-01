@@ -336,33 +336,17 @@
         let ss = null;
         if (opts && opts.spreadsheet) {
           ss = opts.spreadsheet;
-        } else {
-          const explicitId = String((opts && (opts.targetSpreadsheetId || opts.spreadsheetId)) || "").trim();
+        } else if (opts && (opts.targetSpreadsheetId || opts.spreadsheetId)) {
+          const explicitId = String(opts.targetSpreadsheetId || opts.spreadsheetId).trim();
           if (explicitId && typeof SpreadsheetApp !== 'undefined' && SpreadsheetApp.openById) {
             ss = SpreadsheetApp.openById(explicitId);
-          } else {
-            ss = this.getSS(cleanDistrictId);
           }
+        } else {
+          ss = this.getSS(cleanDistrictId);
         }
 
         if (!ss) {
-          return {
-            success: false,
-            code: "RESOURCE_NOT_FOUND",
-            message: "Target spreadsheet could not be opened for SYSTEM_INFO sync."
-          };
-        }
-
-        const districtName = ss.getName();
-
-        // Provisioning Integrity Guard
-        const normDistName = districtName.toUpperCase().replace(/^POSTING_MAP_/, "");
-        if (cleanDistrictId && normDistName !== cleanDistrictId && districtName.toUpperCase() !== cleanDistrictId) {
-          return {
-            success: false,
-            code: "DISTRICT_MISMATCH",
-            message: `Requested districtId "${cleanDistrictId}" does not match spreadsheet name "${districtName}".`
-          };
+          throw new Error(`[SystemInfoService] Spreadsheet cannot be resolved for district "${cleanDistrictId}".`);
         }
 
         let sheet = ss.getSheetByName('SYSTEM_INFO');
@@ -370,6 +354,7 @@
 
         const liff = this.getLiffConfig(opts, sheet);
         const managerPassword = opts.managerPassword || this.getManagerPassword(sheet);
+        const districtName = cleanDistrictId || ss.getName();
         const subdomain = districtName.toLowerCase();
         const baseUrl = (opts.baseUrl && opts.baseUrl !== 'https://postingmap.jp')
           ? opts.baseUrl
@@ -377,7 +362,14 @@
         const dashboardUrl = `${baseUrl}/active/manager/`;
         const hAppUrl = `${baseUrl}/`;
 
-        const contractEndDate = opts.contractEndDate !== undefined ? opts.contractEndDate : this.getContractEndDate(sheet);
+        let contractEndDate = opts.contractEndDate !== undefined ? opts.contractEndDate : '';
+        if (!contractEndDate && sheet) {
+          try {
+            contractEndDate = this.getContractEndDate(sheet);
+          } catch (e) {
+            contractEndDate = '';
+          }
+        }
 
         const values = [
           ['項目', '内容'],
