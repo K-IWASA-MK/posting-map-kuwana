@@ -786,8 +786,8 @@ async function submitMissionComplete(areaName, rowId) {
         return;
       }
 
-      // 3. オンライン時：最大3秒間の待機（while(true)無限待機を撤廃しタイムアウト上限を設定）
-      const maxWaitMs = 3000;
+      // 3. オンライン時：最大15秒間の待機（while(true)無限待機を撤廃しタイムアウト上限を設定）
+      const maxWaitMs = 15000;
       const startTime = Date.now();
       let isPersisted = false;
 
@@ -843,7 +843,7 @@ async function submitMissionComplete(areaName, rowId) {
       if (isPersisted) {
         alert("✓ 提出致しました");
       } else {
-        // 3秒経過後もバックグラウンドで継続中：通常操作へ復帰
+        // 15秒経過後もバックグラウンドで継続中：通常操作へ復帰
         p.syncStatus = 'pending';
         p.isDone = false;
         alert("送信処理中です。バックグラウンドで送信を継続します。");

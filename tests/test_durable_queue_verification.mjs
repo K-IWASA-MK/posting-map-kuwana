@@ -7,7 +7,7 @@
  * 1. PostingMapDB v2 の維持（v2維持、既存レコード互換性、drop/recreate禁止）
  * 2. rowId重複防止の単一readwriteトランザクション境界（非同期境界なし、競合窓ゼロの実証）
  * 3. オフライン提出時の即時画面解放（while(true)撤廃、モーダル即時クローズ、UIフリーズ完全解消）
- * 4. オンライン時タイムアウト（最大3秒待機）とバックグラウンド継続（画面解放）
+ * 4. オンライン時タイムアウト（最大15秒待機）とバックグラウンド継続（画面解放）
  * 5. 不変操作識別子 (requestId) の発番 → Queue永続化 → API Payload 一貫性実動検証
  * 6. 強制終了復旧 (Crash Recovery: SYNCING救済) と指数バックオフ実動検証
  * 7. getSyncQueueRowIds() による起動時待機ピン復元実動検証
@@ -174,23 +174,23 @@ test('3. オフライン提出: while(true)無限待機が撤廃され、オフ�
 });
 
 // ----------------------------------------------------------------------------
-// 4. オンライン時タイムアウト（最大3秒待機）とバックグラウンド継続
+// 4. オンライン時タイムアウト（最大15秒待機）とバックグラウンド継続
 // ----------------------------------------------------------------------------
-test('4. オンライン提出: 最大3秒待機タイムアウトが存在し、タイムアウト時も画面解放してバックグラウンド継続すること', () => {
+test('4. オンライン提出: 最大15秒待機タイムアウトが存在し、タイムアウト時も画面解放してバックグラウンド継続すること', () => {
   const submitIndex = appJs.indexOf('async function submitMissionComplete(areaName, rowId)');
   const submitBody = appJs.substring(submitIndex, submitIndex + 6000);
 
-  // タイムアウト設定確認 (maxWaitMs = 3000)
-  assert.ok(submitBody.includes('const maxWaitMs = 3000;'), '3000ms の最大待機時間が定義されていること');
+  // タイムアウト設定確認 (maxWaitMs = 15000)
+  assert.ok(submitBody.includes('const maxWaitMs = 15000;'), '15000ms の最大待機時間が定義されていること');
   assert.ok(submitBody.includes('while (Date.now() - startTime < maxWaitMs)'), 'タイムアウト上限付きループであること');
 
-  // 実動シミュレーション: 3秒タイムアウト時の画面解放
+  // 実動シミュレーション: 15秒タイムアウト時の画面解放
   let modalClosed = false;
   let unblocked = false;
   const pin = { rowId: 502, isDone: false, isReadyToSubmit: true, syncStatus: 'submitting' };
 
   // タイムアウト発生シミュレーション
-  const isPersisted = false; // 3秒以内に完了しなかった場合
+  const isPersisted = false; // 15秒以内に完了しなかった場合
   if (!isPersisted) {
     pin.syncStatus = 'pending';
     pin.isDone = false;
