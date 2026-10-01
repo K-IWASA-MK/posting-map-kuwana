@@ -1,6 +1,11 @@
 [
   ".agents/current-scope.json",
   "active/h-app/app.js",
+  "active/h-app/db.js",
   "active/h-app/index.html",
+  "active/h-app/modules/navigation.js",
+  "active/h-app/render.js",
+  "docs/api/API_CONTRACT.md",
+  "docs/architecture/decisions/ADR-012_DURABLE_QUEUE_SPECIFICATION.md",
   "tests/test_phase11_activity_state_machine.mjs"
 ]
