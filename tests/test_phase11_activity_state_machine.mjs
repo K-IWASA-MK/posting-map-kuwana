@@ -585,5 +585,226 @@ test('9. P1 #3: isDone=false 取消経路の完全閉鎖（Fail-Closed & Mutatio
   });
 });
 
-console.log('✅ ALL 9 PHASE 11 ACTIVITY STATE MACHINE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+// ----------------------------------------------------------------------------
+// 10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャンセル契約維持)
+// ----------------------------------------------------------------------------
+test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャンセル契約維持)', async () => {
+  // --- 静的構造検証: 冗長呼出の完全排除と正規配置 ---
+  // appJs: triggerUISyncRefresh 内から setPinInProgress が排除されていること
+  const triggerRefreshMatch = appJs.match(/window\.triggerUISyncRefresh\s*=\s*async\s*function[\s\S]*?^};/m);
+  assert.ok(triggerRefreshMatch, 'triggerUISyncRefresh が存在すること');
+  assert.ok(!triggerRefreshMatch[0].includes('setPinInProgress'), 'triggerUISyncRefresh 内に setPinInProgress の呼出が存在しないこと');
+
+  // appJs: submitMissionComplete のポーリングループ成功ブロック内から setPinInProgress が排除されていること
+  const submitCompleteMatch = appJs.match(/async\s*function\s*submitMissionComplete[\s\S]*?^}/m);
+  assert.ok(submitCompleteMatch, 'submitMissionComplete が存在すること');
+  // p.isDone === true 成功判定の直近ブロックに setPinInProgress がないこと
+  const pollingSuccessBlock = submitCompleteMatch[0].match(/if\s*\(p\.isDone\s*===\s*true\)[\s\S]*?isPersisted\s*=\s*true;/);
+  assert.ok(pollingSuccessBlock, 'submitMissionComplete 内に p.isDone === true 判定ブロックが存在すること');
+  assert.ok(!pollingSuccessBlock[0].includes('setPinInProgress'), 'submitMissionComplete の正常完了判定内に setPinInProgress が存在しないこと');
+
+  // dbJs: setPinInProgress が dequeueSync 完了後の共通ブロック（表示エリア条件の外）に存在すること
+  assert.ok(dbJs.includes('await dequeueSync(item.id);'), 'dequeueSync が存在すること');
+  assert.ok(dbJs.includes('window.setPinInProgress(item.rowId, "remove");'), 'db.js に正規 setPinInProgress が存在すること');
+
+  // キャンセル契約維持: renderJs の cancelMissionComplete 内に setPinInProgress が維持されていること
+  assert.ok(renderJs.includes('cancelMissionComplete'), 'render.js に cancelMissionComplete が存在すること');
+  const cancelMatch = renderJs.match(/window\.cancelMissionComplete\s*=\s*function[\s\S]*?^};/m);
+  assert.ok(cancelMatch && cancelMatch[0].includes('setPinInProgress'), 'cancelMissionComplete 内に setPinInProgress が維持されていること (キャンセル契約保護)');
+
+  // --- 動的ロジックシミュレーション: Case 1 〜 10 の網羅的判定 ---
+  function createTestHarness() {
+    let removeCallCount = 0;
+    const removedRowIds = [];
+
+    const mockWindow = {
+      currentCityDetailAreaName: "桑名市中央",
+      globalPinStatus: {
+        completed: [],
+        inProgress: [101]
+      },
+      setPinInProgress: (rowId, action) => {
+        if (action === "remove") {
+          removeCallCount++;
+          removedRowIds.push(Number(rowId));
+          mockWindow.globalPinStatus.inProgress = mockWindow.globalPinStatus.inProgress.filter(id => id !== Number(rowId));
+        }
+      },
+      lockActivePinAndBubble: () => {},
+      triggerUISyncRefresh: null
+    };
+
+    // db.js の dequeue 後処理ロジックの抽出シミュレータ
+    async function simulateDbPostAcceptance(item, res, areaNameCondition) {
+      if (res && res.success) {
+        if (res.accepted === false) {
+          // STALE_MONTH: 非受諾終端 (remove は呼ばれない)
+          return;
+        }
+
+        // 正規発火点 (表示エリア非依存)
+        if (typeof mockWindow.setPinInProgress === 'function') {
+          mockWindow.setPinInProgress(item.rowId, "remove");
+        }
+        if (mockWindow.globalPinStatus && Array.isArray(mockWindow.globalPinStatus.completed)) {
+          const numericRowId = Number(item.rowId);
+          if (!isNaN(numericRowId) && !mockWindow.globalPinStatus.completed.includes(numericRowId)) {
+            mockWindow.globalPinStatus.completed.push(numericRowId);
+          }
+        }
+
+        // 表示エリア依存のUI処理
+        if (areaNameCondition === item.areaName) {
+          if (typeof mockWindow.lockActivePinAndBubble === 'function') {
+            mockWindow.lockActivePinAndBubble(item.rowId);
+          }
+        }
+      }
+    }
+
+    // app.js の triggerUISyncRefresh 改訂後シミュレータ (setPinInProgress なし)
+    function simulateTriggerUISyncRefresh(point) {
+      if (point.isDone === true) {
+        delete point.isReadyToSubmit;
+        delete point.tempPhotoUrl;
+        delete point.syncStatus;
+        if (mockWindow.globalPinStatus) {
+          if (!mockWindow.globalPinStatus.completed.includes(point.rowId)) {
+            mockWindow.globalPinStatus.completed.push(point.rowId);
+          }
+          mockWindow.globalPinStatus.inProgress = mockWindow.globalPinStatus.inProgress.filter(id => id !== point.rowId);
+        }
+        if (typeof mockWindow.lockActivePinAndBubble === 'function') {
+          mockWindow.lockActivePinAndBubble(point.rowId);
+        }
+      }
+    }
+
+    // app.js の submitMissionComplete 改訂後ポーリング検知シミュレータ (setPinInProgress なし)
+    function simulateSubmitPollingDetect(point) {
+      if (point.isDone === true) {
+        point.syncStatus = 'synced';
+        if (mockWindow.globalPinStatus) {
+          if (!mockWindow.globalPinStatus.completed.includes(point.rowId)) {
+            mockWindow.globalPinStatus.completed.push(point.rowId);
+          }
+          mockWindow.globalPinStatus.inProgress = mockWindow.globalPinStatus.inProgress.filter(id => id !== point.rowId);
+        }
+        if (typeof mockWindow.lockActivePinAndBubble === 'function') {
+          mockWindow.lockActivePinAndBubble(point.rowId);
+        }
+        return true;
+      }
+      return false;
+    }
+
+    return {
+      mockWindow,
+      getRemoveCount: () => removeCallCount,
+      simulateDbPostAcceptance,
+      simulateTriggerUISyncRefresh,
+      simulateSubmitPollingDetect
+    };
+  }
+
+  // Case 1: 正常即時成功 → remove API 論理発火 = 1
+  {
+    const h = createTestHarness();
+    const item = { id: 1, rowId: 101, areaName: "桑名市中央" };
+    const res = { success: true, accepted: true };
+    await h.simulateDbPostAcceptance(item, res, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 1, 'Case 1: 正常即時成功で remove 発火が厳格に 1 回であること');
+  }
+
+  // Case 2: triggerUISyncRefresh を成功後に複数回実行 → additional remove = 0
+  {
+    const h = createTestHarness();
+    const item = { id: 1, rowId: 101, areaName: "桑名市中央" };
+    await h.simulateDbPostAcceptance(item, { success: true, accepted: true }, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 1);
+
+    const pt = { rowId: 101, isDone: true };
+    h.simulateTriggerUISyncRefresh(pt);
+    h.simulateTriggerUISyncRefresh(pt);
+    h.simulateTriggerUISyncRefresh(pt);
+    assert.equal(h.getRemoveCount(), 1, 'Case 2: triggerUISyncRefresh 複数回実行でも追加発火が 0 であること (通算1)');
+  }
+
+  // Case 3: submitMissionComplete が成功を検知 → additional remove = 0
+  {
+    const h = createTestHarness();
+    const item = { id: 1, rowId: 101, areaName: "桑名市中央" };
+    await h.simulateDbPostAcceptance(item, { success: true, accepted: true }, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 1);
+
+    const pt = { rowId: 101, isDone: true };
+    const detected = h.simulateSubmitPollingDetect(pt);
+    assert.equal(detected, true);
+    assert.equal(h.getRemoveCount(), 1, 'Case 3: submitMissionComplete 成功検知でも追加発火が 0 であること (通算1)');
+  }
+
+  // Case 4: currentCityDetailAreaName !== item.areaName → db.js 正規 remove は発火 = 1
+  {
+    const h = createTestHarness();
+    const item = { id: 1, rowId: 101, areaName: "桑名市中央" };
+    // 表示中エリアが別エリア（"桑名市東部"）
+    await h.simulateDbPostAcceptance(item, { success: true, accepted: true }, "桑名市東部");
+    assert.equal(h.getRemoveCount(), 1, 'Case 4: 別画面遷移時でも正規発火点から remove が 1 回発火すること');
+  }
+
+  // Case 5: offline Queue 復旧後の成功 → remove = 1
+  {
+    const h = createTestHarness();
+    const offlineItem = { id: 2, rowId: 102, areaName: "桑名市中央", syncStatus: "PENDING" };
+    await h.simulateDbPostAcceptance(offlineItem, { success: true, accepted: true }, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 1, 'Case 5: オフライン復旧後の送信成功で remove が 1 回発火すること');
+  }
+
+  // Case 6: Backend duplicate:true → accepted success として Queue 終端 → remove = 1
+  {
+    const h = createTestHarness();
+    const item = { id: 3, rowId: 103, areaName: "桑名市中央" };
+    const res = { success: true, accepted: true, duplicate: true };
+    await h.simulateDbPostAcceptance(item, res, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 1, 'Case 6: duplicate:true 受諾時に remove が 1 回発火すること');
+  }
+
+  // Case 7: alreadyCompleted:true → accepted success として Queue 終端 → remove = 1
+  {
+    const h = createTestHarness();
+    const item = { id: 4, rowId: 104, areaName: "桑名市中央" };
+    const res = { success: true, accepted: true, alreadyCompleted: true };
+    await h.simulateDbPostAcceptance(item, res, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 1, 'Case 7: alreadyCompleted:true 受諾時に remove が 1 回発火すること');
+  }
+
+  // Case 8: STALE_MONTH accepted:false → remove = 0
+  {
+    const h = createTestHarness();
+    const item = { id: 5, rowId: 105, areaName: "桑名市中央" };
+    const res = { success: true, accepted: false, code: "STALE_MONTH" };
+    await h.simulateDbPostAcceptance(item, res, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 0, 'Case 8: STALE_MONTH 非受諾終端では remove が 0 であること');
+  }
+
+  // Case 9: Backend failure / RETRY → remove = 0
+  {
+    const h = createTestHarness();
+    const item = { id: 6, rowId: 106, areaName: "桑名市中央" };
+    const res = { success: false, message: "Server temporary error" };
+    await h.simulateDbPostAcceptance(item, res, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 0, 'Case 9: Backend failure では remove が 0 であること');
+  }
+
+  // Case 10: FAILED_PERMANENT → remove = 0
+  {
+    const h = createTestHarness();
+    const item = { id: 7, rowId: 107, areaName: "桑名市中央" };
+    // 永続エラー時 (res なし / catch 節で scheduleRetry され remove は呼ばれない)
+    await h.simulateDbPostAcceptance(item, null, "桑名市中央");
+    assert.equal(h.getRemoveCount(), 0, 'Case 10: FAILED_PERMANENT では remove が 0 であること');
+  }
+});
+
+console.log('✅ ALL 10 PHASE 11 ACTIVITY STATE MACHINE VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
 

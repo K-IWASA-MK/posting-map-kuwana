@@ -527,9 +527,6 @@ window.triggerUISyncRefresh = async function() {
           delete p.isReadyToSubmit;
           delete p.tempPhotoUrl;
           delete p.syncStatus;
-          if (typeof window.setPinInProgress === 'function') {
-            window.setPinInProgress(p.rowId, "remove");
-          }
           if (window.globalPinStatus) {
             if (!window.globalPinStatus.completed.includes(p.rowId)) {
               window.globalPinStatus.completed.push(p.rowId);
@@ -820,9 +817,6 @@ async function submitMissionComplete(areaName, rowId) {
             p.isDone = true;
             delete p.isReadyToSubmit;
             p.syncStatus = 'synced';
-            if (typeof window.setPinInProgress === 'function') {
-              window.setPinInProgress(rowId, "remove");
-            }
             if (window.globalPinStatus) {
               if (!window.globalPinStatus.completed.includes(rowId)) {
                 window.globalPinStatus.completed.push(rowId);

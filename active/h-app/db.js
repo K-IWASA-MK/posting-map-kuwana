@@ -322,7 +322,20 @@ async function processQueue() {
           // 2. dequeueSync()
           await dequeueSync(item.id);
 
-          // 3. COMPLETED 確定 & 4. p.isDone = true
+          // 3. 正規発火点: Backend受諾確認後に PinStatus remove を単一発火 (表示条件非依存)
+          if (typeof window.setPinInProgress === 'function') {
+            window.setPinInProgress(item.rowId, "remove");
+          }
+
+          // 4. ローカル completed 状態反映 (表示条件非依存)
+          if (window.globalPinStatus && Array.isArray(window.globalPinStatus.completed)) {
+            const numericRowId = Number(item.rowId);
+            if (!isNaN(numericRowId) && !window.globalPinStatus.completed.includes(numericRowId)) {
+              window.globalPinStatus.completed.push(numericRowId);
+            }
+          }
+
+          // 5. COMPLETED 確定 & p.isDone = true
           // メモリキャッシュ（一括保存用）の同期更新
           if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
             const cachedPoints = window.cityAreaCache[item.areaName];
@@ -353,16 +366,7 @@ async function processQueue() {
               delete p.isReadyToSubmit;
             }
 
-            // 5. 完了ピン・ロック
-            if (typeof window.setPinInProgress === 'function') {
-              window.setPinInProgress(item.rowId, "remove");
-            }
-            if (window.globalPinStatus) {
-              if (!window.globalPinStatus.completed.includes(item.rowId)) {
-                window.globalPinStatus.completed.push(item.rowId);
-              }
-              window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== item.rowId);
-            }
+            // 完了ピン・ロック (UI描画)
             if (typeof window.lockActivePinAndBubble === 'function') {
               window.lockActivePinAndBubble(item.rowId);
             }
