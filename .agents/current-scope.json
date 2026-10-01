@@ -1,4 +1,5 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/index.html"
+  "scripts/serve.mjs",
+  "tests/test_phase15_security_verification.mjs"
 ]
