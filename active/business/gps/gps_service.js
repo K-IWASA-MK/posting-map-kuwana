@@ -46,6 +46,19 @@ if (typeof GPSService === 'undefined') {
           };
         }
 
+        // count strict validation (integer 0 <= count <= 10000)
+        const countRaw = data ? data.count : undefined;
+        const countStr = (countRaw !== undefined && countRaw !== null) ? String(countRaw).trim() : "";
+        const countNum = Number(countRaw);
+        if (countStr === "" || !Number.isInteger(countNum) || countNum < 0 || countNum > 10000) {
+          return {
+            success: false,
+            code: "INVALID_COUNT",
+            message: "配布枚数が不正です (0〜10,000の整数を指定してください)"
+          };
+        }
+        data.count = countNum;
+
         // Step 1: timestamp月判定（有限の正数のみ月判定、それ以外はLegacy扱いでスキップ）
         const tsNum = Number(data.timestamp);
         if (Number.isFinite(tsNum) && tsNum > 0) {

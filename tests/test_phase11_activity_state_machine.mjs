@@ -450,6 +450,138 @@ test('9. P1 #3: isDone=false 取消経路の完全閉鎖（Fail-Closed & Mutatio
     assert.equal(res7.accepted, true);
     assert.equal(res7.alreadyCompleted, true, 'alreadyCompleted フラグが true であること');
     assert.equal(mockSheet.mutationCount, 1, '完了済み別 requestId の操作では既存実績が保護され書込が発生しないこと');
+
+    // --- 必須確認 8: count 入力検証 (Fail-Closed & 境界値) ---
+    const mutBeforeCount = mockSheet.mutationCount;
+
+    // 拒否ケース (INVALID_COUNT / mutation 0)
+    const invalidCountCases = [-100, 1.5, "abc", "Infinity", Infinity, 10001, "", null, undefined];
+    for (const badCount of invalidCountCases) {
+      const resBad = service.updateRecordWithGPSPhoto({
+        rowId: 3, // Legacy未完了または未完了行への操作試行
+        isDone: true,
+        count: badCount,
+        staffId: "S001",
+        resolvedLineUserId: "U_USER_A",
+        requestId: `req_bad_count_${String(badCount)}`
+      });
+      assert.equal(resBad.success, false, `異常 count (${badCount}) は失敗すること`);
+      assert.equal(resBad.code, "INVALID_COUNT", `異常 count (${badCount}) の code は INVALID_COUNT であること`);
+    }
+    assert.equal(mockSheet.mutationCount, mutBeforeCount, '異常 count ではスプレッドシートへの書込 (mutation) が 0 であること');
+
+    // 許容ケース (0, 100, 10000, "100")
+    // rowId 5 を追加して検証
+    mockSheet.data.push(["5", "桑名市", "町丁5", "", 0, "", "", "", "", "", "", "", "", "", "", "", ""]);
+    const resCount0 = service.updateRecordWithGPSPhoto({
+      rowId: 5,
+      isDone: true,
+      count: 0,
+      staffId: "S001",
+      staffName: "配布員A",
+      latitude: 35.0,
+      longitude: 136.6,
+      resolvedLineUserId: "U_USER_A",
+      requestId: "req_count_0"
+    });
+    assert.equal(resCount0.success, true, 'count=0 は正常受理されること');
+    assert.equal(resCount0.count, 0);
+    assert.equal(mockSheet.data[4][4], 0, 'E列に 0 が記録されること');
+
+    mockSheet.data.push(["6", "桑名市", "町丁6", "", 0, "", "", "", "", "", "", "", "", "", "", "", ""]);
+    const resCount10000 = service.updateRecordWithGPSPhoto({
+      rowId: 6,
+      isDone: true,
+      count: 10000,
+      staffId: "S001",
+      staffName: "配布員A",
+      latitude: 35.0,
+      longitude: 136.6,
+      resolvedLineUserId: "U_USER_A",
+      requestId: "req_count_10000"
+    });
+    assert.equal(resCount10000.success, true, 'count=10000 は正常受理されること');
+    assert.equal(resCount10000.count, 10000);
+    assert.equal(mockSheet.data[5][4], 10000, 'E列に 10000 が記録されること');
+
+    mockSheet.data.push(["7", "桑名市", "町丁7", "", 0, "", "", "", "", "", "", "", "", "", "", "", ""]);
+    const resCountStr = service.updateRecordWithGPSPhoto({
+      rowId: 7,
+      isDone: true,
+      count: "100",
+      staffId: "S001",
+      staffName: "配布員A",
+      latitude: 35.0,
+      longitude: 136.6,
+      resolvedLineUserId: "U_USER_A",
+      requestId: "req_count_str"
+    });
+    assert.equal(resCountStr.success, true, 'count="100" は数値100として正常受理されること');
+    assert.equal(resCountStr.count, 100);
+    assert.equal(mockSheet.data[6][4], 100, 'E列に 100 が記録されること');
+
+    // --- 必須確認 9: GPS 空間境界検証 (日本国内測地系 20.0-46.0 / 122.0-154.0) ---
+    // 正常 OK ケース
+    const validGpsCases = [
+      { lat: 35.0, lng: 136.6, desc: "桑名市中心" },
+      { lat: 20.0, lng: 122.0, desc: "南西端境界" },
+      { lat: 46.0, lng: 154.0, desc: "北東端境界" }
+    ];
+    let nextRow = 8;
+    for (const g of validGpsCases) {
+      mockSheet.data.push([String(nextRow), "桑名市", `町丁${nextRow}`, "", 0, "", "", "", "", "", "", "", "", "", "", "", ""]);
+      const resG = service.updateRecordWithGPSPhoto({
+        rowId: nextRow,
+        isDone: true,
+        count: 50,
+        staffId: "S001",
+        staffName: "配布員A",
+        latitude: g.lat,
+        longitude: g.lng,
+        resolvedLineUserId: "U_USER_A",
+        requestId: `req_valid_gps_${nextRow}`
+      });
+      assert.equal(resG.success, true, `GPS ${g.desc} は成功すること`);
+      assert.equal(resG.gpsStatus, "OK", `GPS ${g.desc} の gpsStatus は OK であること`);
+      const rowData = mockSheet.data[nextRow - 1];
+      assert.equal(rowData[7], "OK", `H列は OK であること (${g.desc})`);
+      assert.equal(rowData[9], g.lat, `J列に正しい緯度が記録されること (${g.desc})`);
+      assert.equal(rowData[10], g.lng, `K列に正しい経度が記録されること (${g.desc})`);
+      nextRow++;
+    }
+
+    // 範囲外 NO フォールバック ケース (リクエスト成功、gpsStatus: "NO"、J/K列空欄)
+    const invalidGpsCases = [
+      { lat: 19.999, lng: 136.6, desc: "緯度下限未満" },
+      { lat: 46.001, lng: 136.6, desc: "緯度上限超過" },
+      { lat: 35.0, lng: 121.999, desc: "経度下限未満" },
+      { lat: 35.0, lng: 154.001, desc: "経度上限超過" },
+      { lat: 91, lng: 181, desc: "世界範囲外" },
+      { lat: 999, lng: 999, desc: "異常巨大値" },
+      { lat: 0, lng: 0, desc: "原点0,0" },
+      { lat: NaN, lng: Infinity, desc: "NaN/Infinity" }
+    ];
+    for (const g of invalidGpsCases) {
+      mockSheet.data.push([String(nextRow), "桑名市", `町丁${nextRow}`, "", 0, "", "", "", "", "", "", "", "", "", "", "", ""]);
+      const resG = service.updateRecordWithGPSPhoto({
+        rowId: nextRow,
+        isDone: true,
+        count: 50,
+        staffId: "S001",
+        staffName: "配布員A",
+        latitude: g.lat,
+        longitude: g.lng,
+        resolvedLineUserId: "U_USER_A",
+        requestId: `req_invalid_gps_${nextRow}`
+      });
+      assert.equal(resG.success, true, `異常GPS (${g.desc}) でもリクエスト自体は成功すること`);
+      assert.equal(resG.gpsStatus, "NO", `異常GPS (${g.desc}) の gpsStatus は NO であること`);
+      const rowData = mockSheet.data[nextRow - 1];
+      assert.equal(rowData[7], "NO", `H列は NO であること (${g.desc})`);
+      assert.equal(rowData[9], "", `J列は空欄であること (${g.desc})`);
+      assert.equal(rowData[10], "", `K列は空欄であること (${g.desc})`);
+      nextRow++;
+    }
   });
 });
 

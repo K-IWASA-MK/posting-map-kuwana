@@ -8,7 +8,7 @@
  * 1. ユーザー入力文字列（氏名、掲示板本文、連絡先、保管場所）の先頭記号（=, +, -, @, \t, \r）が
  *    Spreadsheet書き込み時に必ずシングルクォート（'）でエスケープされ、数式実行が無効化されることの実証。
  * 2. 正常な日本語入力（「山田 太郎」「事務所」等）に不要なエスケープが付加されずそのまま保存されることの確認。
- * 3. GPS座標（負数 -34.123 等）がエスケープされず、純粋な数値型（Number）として保持されることの実証。
+ * 3. GPS座標（数値文字列 "35.123" 等）がエスケープされず、純粋な数値型（Number）として保持されることの実証。
  * 4. 悪意ある数式文字列がGPS座標に渡された場合にバリデーションで拒絶されることの実証。
  */
 
@@ -278,19 +278,19 @@ assert.strictEqual(storedTransferContact, "'+819011112222", "transfer contactVal
 console.log(`  PASS: requestFlyerTransfer -> contactValue escaped: ${JSON.stringify(storedTransferContact)}`);
 
 // -------------------------------------------------------------
-// TEST 5: gps_repository - 負数GPSのNumber型保持 & 不正数式の拒絶
+// TEST 5: gps_repository - 正常GPSのNumber型保持 & 不正数式の拒絶
 // -------------------------------------------------------------
 console.log('\n--- TEST 5: gps_repository updateSheetRecordAndLog ---');
 const gpsRepo = GPSRepository.getInstance();
 
-// 5-1: 負数GPS（例: 南緯 -34.123456, 西経 -135.654321）の正常保持
+// 5-1: 日本国内の正常な数値文字列GPSはSpreadsheetへ純粋なNumberとして保存される
 mockSheets['配布実績2026-09'].appendRow([
   "100", "テスト市", "テスト町", "", "", "", "", "NO", "NO", "", "", "", "", "", "", ""
 ]);
 
 const resValidGps = gpsRepo.updateSheetRecordAndLog({
-  latitude: "-34.123456",
-  longitude: "-135.654321",
+  latitude: "35.123456",
+  longitude: "136.654321",
   count: 50,
   isDone: true,
   staffId: "S001",
@@ -301,6 +301,7 @@ assert.strictEqual(resValidGps.success, true, "updateSheetRecordAndLog must succ
 
 const targetDistRow = mockSheets['配布実績2026-09'].data[mockSheets['配布実績2026-09'].data.length - 1];
 const storedStaffName = targetDistRow[6];
+const storedGpsStatus = targetDistRow[7];
 const storedLat = targetDistRow[9];
 const storedLng = targetDistRow[10];
 
@@ -308,12 +309,15 @@ const storedLng = targetDistRow[10];
 assert.strictEqual(storedStaffName, "'=INJECTED_STAFF", "staffName in distribution row must be escaped");
 console.log(`  PASS: staffName in GPS record escaped -> ${JSON.stringify(storedStaffName)}`);
 
-// 負数GPSは文字列エスケープされず、純粋な Number 型として保持されること
+// GPS Status が OK であること
+assert.strictEqual(storedGpsStatus, "OK", "storedGpsStatus must be OK for valid Japanese coordinates");
+
+// 日本国内正常GPSは文字列エスケープされず、純粋な Number 型として保持されること
 assert.strictEqual(typeof storedLat, 'number', "storedLat must be a pure Number");
-assert.strictEqual(storedLat, -34.123456, "storedLat value must equal -34.123456");
+assert.strictEqual(storedLat, 35.123456, "storedLat value must equal 35.123456");
 assert.strictEqual(typeof storedLng, 'number', "storedLng must be a pure Number");
-assert.strictEqual(storedLng, -135.654321, "storedLng value must equal -135.654321");
-console.log(`  PASS: Negative GPS preserved as pure Number: lat=${storedLat} (${typeof storedLat}), lng=${storedLng} (${typeof storedLng})`);
+assert.strictEqual(storedLng, 136.654321, "storedLng value must equal 136.654321");
+console.log(`  PASS: Valid Japanese GPS preserved as pure Number: lat=${storedLat} (${typeof storedLat}), lng=${storedLng} (${typeof storedLng}), gpsStatus=${storedGpsStatus}`);
 
 // 5-2: 悪意ある数式文字列が latitude に渡された場合、Number化でNaNとなりGPSとして拒絶されること
 mockSheets['配布実績2026-09'].appendRow([

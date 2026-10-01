@@ -129,8 +129,9 @@ if (typeof GPSRepository === 'undefined') {
          const lngTemp = Number(data.longitude);
          const isValidGps = typeof data.latitude !== "undefined" && data.latitude !== null && data.latitude !== "" &&
                             typeof data.longitude !== "undefined" && data.longitude !== null && data.longitude !== "" &&
-                            !Number.isNaN(latTemp) && Number.isFinite(latTemp) && latTemp !== 0 &&
-                            !Number.isNaN(lngTemp) && Number.isFinite(lngTemp) && lngTemp !== 0;
+                            Number.isFinite(latTemp) && Number.isFinite(lngTemp) &&
+                            latTemp >= 20.0 && latTemp <= 46.0 &&
+                            lngTemp >= 122.0 && lngTemp <= 154.0;
 
          if (isValidGps) {
            finalGpsStatus = "OK";

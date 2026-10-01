@@ -2,5 +2,6 @@
   ".agents/current-scope.json",
   "active/business/gps/gps_service.js",
   "active/business/gps/gps_repository.js",
-  "tests/test_phase11_activity_state_machine.mjs"
+  "tests/test_phase11_activity_state_machine.mjs",
+  "tests/test_sec002_formula_injection.mjs"
 ]
