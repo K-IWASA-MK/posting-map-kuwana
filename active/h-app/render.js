@@ -235,7 +235,7 @@ window.cancelMissionComplete = function(rowId) {
 
 // Render single point detail modal contents
 function renderDetailModalContent(p) {
-  const areaName = window.currentCityDetailAreaName || '';
+  const areaName = p.townName || '';
 
   // 「大字」除去 + 余分な空白整理
   const cleanAddr = (p.address || '').replace(/大字/g, '').replace(/\s+/g, ' ').trim();

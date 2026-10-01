@@ -493,9 +493,6 @@ window.triggerUISyncRefresh = async function() {
   if (!allPoints || allPoints.length === 0) return; // let変数は window に付かないため直接参照
   if (typeof getQueue !== 'function') return;
 
-  const currentAreaName = window.currentCityDetailAreaName;
-  if (!currentAreaName) return;
-
   try {
     const queue = await getQueue();
     const nowTs = Date.now();
@@ -507,7 +504,7 @@ window.triggerUISyncRefresh = async function() {
       if (p.syncStatus === 'submitting') return;
 
       const found = queue.find(q => {
-        if (q.rowId !== p.rowId || q.areaName !== currentAreaName) return false;
+        if (Number(q.rowId) !== Number(p.rowId)) return false;
         const qTs = Number(q.timestamp) || nowTs;
         const qD = new Date(qTs + (9 * 60 * 60 * 1000));
         const qM = `${qD.getUTCFullYear()}-${String(qD.getUTCMonth() + 1).padStart(2, '0')}`;

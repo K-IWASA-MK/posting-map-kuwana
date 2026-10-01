@@ -290,17 +290,9 @@ async function processQueue() {
           if (res.accepted === false) {
             console.warn(`[Queue] Item rejected without retry: id=${item.id}, code=${res.code}`);
 
-            // 対象pointの syncStatus = 'REJECTED'（app.js 側で非完了認識用）
-            if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
-              const p = window.cityAreaCache[item.areaName].find(pt => pt.rowId === item.rowId);
-              if (p) {
-                p.syncStatus = 'REJECTED';
-                delete p.tempPhotoUrl;
-                delete p.isReadyToSubmit;
-              }
-            }
-            if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
-              const p = allPoints.find(pt => pt.rowId === item.rowId);
+            // 対象pointの syncStatus = 'REJECTED'（app.js 側で非完了認識用、rowId基準で特定）
+            if (typeof allPoints !== 'undefined' && allPoints) {
+              const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
               if (p) {
                 p.syncStatus = 'REJECTED';
                 delete p.tempPhotoUrl;
@@ -331,26 +323,9 @@ async function processQueue() {
             }
           }
 
-          // 5. COMPLETED 確定 & p.isDone = true
-          // メモリキャッシュ（一括保存用）の同期更新
-          if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
-            const cachedPoints = window.cityAreaCache[item.areaName];
-            const p = cachedPoints.find(pt => pt.rowId === item.rowId);
-            if (p) {
-              p.photoUrl = res.photoUrl || '';
-              if (item.latitude && item.longitude) {
-                p.gps = `${item.latitude},${item.longitude}`;
-              }
-              p.syncStatus = undefined;
-              p.isDone = true;
-              delete p.tempPhotoUrl;
-              delete p.isReadyToSubmit;
-            }
-          }
-
-          // 現在開いているモーダル(L3)のallPointsを同期
-          if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
-            const p = allPoints.find(pt => pt.rowId === item.rowId);
+          // 5. COMPLETED 確定 & p.isDone = true (rowId基準で直接同期)
+          if (typeof allPoints !== 'undefined' && allPoints) {
+            const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
             if (p) {
               p.photoUrl = res.photoUrl || '';
               if (item.latitude && item.longitude) {
@@ -370,7 +345,7 @@ async function processQueue() {
             if (window.currentPointDetailRowId === item.rowId) {
               const mc = document.getElementById('detail-modal-content');
               if (mc && typeof renderDetailModalContent === 'function') {
-                const updatedPoint = allPoints.find(pt => pt.rowId === item.rowId);
+                const updatedPoint = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
                 if (updatedPoint) mc.innerHTML = renderDetailModalContent(updatedPoint);
               }
             }
@@ -386,17 +361,9 @@ async function processQueue() {
         console.error(`[Queue] Failed: id=${item.id}`, err.message);
         const finalStatus = await scheduleRetry(item);
 
-        // 1. メモリキャッシュのステータス更新
-        if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
-          const cachedPoints = window.cityAreaCache[item.areaName];
-          const p = cachedPoints.find(pt => pt.rowId === item.rowId);
-          if (p) {
-            p.syncStatus = finalStatus;
-          }
-        }
-        // 2. モーダル表示中の points も同期
-        if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
-          const p = allPoints.find(pt => pt.rowId === item.rowId);
+        // points の syncStatus を rowId 基準で同期
+        if (typeof allPoints !== 'undefined' && allPoints) {
+          const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
           if (p) {
             p.syncStatus = finalStatus;
           }
@@ -465,14 +432,9 @@ async function manualRetrySync(rowId) {
     nextRetryAt: 0
   });
 
-  // メモリキャッシュ・allPointsの同期
-  if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
-    const cachedPoints = window.cityAreaCache[item.areaName];
-    const p = cachedPoints.find(pt => pt.rowId === item.rowId);
-    if (p) p.syncStatus = 'PENDING';
-  }
-  if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
-    const p = allPoints.find(pt => pt.rowId === item.rowId);
+  // allPoints の同期 (rowId 基準)
+  if (typeof allPoints !== 'undefined' && allPoints) {
+    const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
     if (p) p.syncStatus = 'PENDING';
   }
 

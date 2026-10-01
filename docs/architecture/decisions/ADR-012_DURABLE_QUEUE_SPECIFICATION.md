@@ -61,9 +61,9 @@ Phase 10 では、この因果関係を支えるクライアント側の送信�
 - **オフライン提出**:
   `enqueueSync` 成功後、オフライン時は待機せず即座にモーダルを閉じて画面を解放する（UIフリーズの完全防止）。
 - **オンライン提出**:
-  最大3秒間の上限待機時間を設け、タイムアウト時もバックグラウンド送信に引き継いでモーダルを解放し、通常操作へ即座に復帰可能とする。
-- **完了昇格の責務分離 (`triggerUISyncRefresh`)**:
-  バックグラウンドでキューが消化（`dequeueSync`）された後、`triggerUISyncRefresh()` が当月キュー消滅を検知して完了昇格を実行する。ただし、非受諾（`p.syncStatus === 'REJECTED'`）の場合は完了昇格を行わず、安全に未完了状態へ復帰させる。
+  最大15秒間の上限待機時間を設け、タイムアウト時もバックグラウンド送信に引き継いでモーダルを解放し、通常操作へ即座に復帰可能とする。
+- **完了AuthorityとUI状態同期の責務分離 (`triggerUISyncRefresh`)**:
+  Queue消滅単独では COMPLETED に昇格しない（Queue消滅だけを根拠にした完了推測は禁止）。Backend accepted（`p.isDone = true` または `globalPinStatus.completed` への反映）のみを完了Authorityとする。`triggerUISyncRefresh()` はバックグラウンド送信状態（SYNCING / RETRY / FAILED_PERMANENT）の UI 状態同期のみを担当する。非受諾（`p.syncStatus === 'REJECTED'`）の場合は安全に未完了状態へ復帰させる。
 
 ## 影響・遵守事項 (Consequences & Compliance)
 - Universal 原則を遵守し、地区名や専用ロジックを一切含まない。

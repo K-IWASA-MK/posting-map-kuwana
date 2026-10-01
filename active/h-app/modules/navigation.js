@@ -84,20 +84,8 @@ async function switchPage(id, force = false) {
     navContainer.innerHTML = renderNavFn(id);
   }
 
-  if (id === 'areas' && window.currentCityDetailAreaName) {
-    setTimeout(() => {
-      const cardEl = document.getElementById(`area-card-${window.currentCityDetailAreaName}`);
-      if (cardEl) {
-        cardEl.scrollIntoView({ block: 'center', behavior: 'auto' });
-      } else {
-        const scrollContent = document.getElementById('content');
-        if (scrollContent) scrollContent.scrollTo(0, scrollPositions[id] || 0);
-      }
-    }, 50);
-  } else {
-    const scrollContent = document.getElementById('content');
-    if (scrollContent) scrollContent.scrollTo(0, scrollPositions[id] || 0);
-  }
+  const scrollContent = document.getElementById('content');
+  if (scrollContent) scrollContent.scrollTo(0, scrollPositions[id] || 0);
 }
 
 function toggleNavTier(tier) {

@@ -586,9 +586,9 @@ test('9. P1 #3: isDone=false 取消経路の完全閉鎖（Fail-Closed & Mutatio
 });
 
 // ----------------------------------------------------------------------------
-// 10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャンセル契約維持)
+// 10. P1: PinStatus remove Single-Fire Verification (Case 1〜11 & キャンセル契約維持)
 // ----------------------------------------------------------------------------
-test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャンセル契約維持)', async () => {
+test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜11 & キャンセル契約維持)', async () => {
   // --- 静的構造検証: 冗長呼出の完全排除と正規配置 ---
   // appJs: triggerUISyncRefresh 内から setPinInProgress が排除されていること
   const triggerRefreshMatch = appJs.match(/window\.triggerUISyncRefresh\s*=\s*async\s*function[\s\S]*?^};/m);
@@ -635,11 +635,14 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャン
       triggerUISyncRefresh: null
     };
 
-    // db.js の dequeue 後処理ロジックの抽出シミュレータ
-    async function simulateDbPostAcceptance(item, res, areaNameCondition) {
+    // db.js の dequeue 後処理ロジックの抽出シミュレータ (rowId基準統一)
+    async function simulateDbPostAcceptance(item, res, pointOrAreaCondition) {
       if (res && res.success) {
         if (res.accepted === false) {
           // STALE_MONTH: 非受諾終端 (remove は呼ばれない)
+          if (pointOrAreaCondition && typeof pointOrAreaCondition === 'object') {
+            pointOrAreaCondition.syncStatus = 'REJECTED';
+          }
           return;
         }
 
@@ -654,11 +657,20 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャン
           }
         }
 
-        // 表示エリア依存のUI処理
-        if (areaNameCondition === item.areaName) {
-          if (typeof mockWindow.lockActivePinAndBubble === 'function') {
-            mockWindow.lockActivePinAndBubble(item.rowId);
-          }
+        // db.js の rowId 基準による同期 (新契約)
+        if (pointOrAreaCondition && typeof pointOrAreaCondition === 'object' && Number(pointOrAreaCondition.rowId) === Number(item.rowId)) {
+          pointOrAreaCondition.isDone = true;
+          delete pointOrAreaCondition.tempPhotoUrl;
+          delete pointOrAreaCondition.isReadyToSubmit;
+        }
+
+        // UI処理
+        if (typeof mockWindow.lockActivePinAndBubble === 'function') {
+          mockWindow.lockActivePinAndBubble(item.rowId);
+        }
+      } else {
+        if (pointOrAreaCondition && typeof pointOrAreaCondition === 'object' && Number(pointOrAreaCondition.rowId) === Number(item.rowId)) {
+          pointOrAreaCondition.syncStatus = res ? 'RETRY' : 'FAILED_PERMANENT';
         }
       }
     }
@@ -815,25 +827,24 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャン
     assert.equal(h.getRemoveCount(), 0, 'Case 10: FAILED_PERMANENT では remove が 0 であること');
   }
 
-  // Case 11: 実機バグ Regression (currentCityDetailAreaName undefined + areaName '' ➔ globalPinStatus.completed 連携による正常成功検知)
+  // Case 11: 新Contract (currentCityDetailAreaNameなし / areaName非依存 ➔ db.js rowId同期で p.isDone=true ➔ Handshake成功 ➔ remove追加発火なし)
   {
     const h = createTestHarness();
-    // 1. MAP直接動線を再現: currentCityDetailAreaName は undefined、item.areaName は ''
+    // 1. MAP直接動線を再現: currentCityDetailAreaName は不在、areaName は空文字または townName
     h.mockWindow.currentCityDetailAreaName = undefined;
     const item = { id: 8, rowId: 332, areaName: "" };
     const pt = { rowId: 332, isDone: false, syncStatus: 'submitting' };
 
-    // 2. Backend accepted 受領シミュレーション (db.js)
-    // currentCityDetailAreaName (undefined) !== item.areaName ("") のため、db.js の allPoints 更新はスキップされ pt.isDone は false のまま
-    // しかし表示非依存で mockWindow.globalPinStatus.completed に 332 が push される
-    await h.simulateDbPostAcceptance(item, { success: true, accepted: true }, undefined);
-    assert.equal(pt.isDone, false, 'db.js の表示依存ガードにより pt.isDone は false のまま（バグ前提条件）');
-    assert.ok(h.mockWindow.globalPinStatus.completed.includes(332), 'db.js の表示非依存処理により globalPinStatus.completed には 332 が記録されること');
+    // 2. Backend accepted 受領 (db.js 新契約: areaName に依存せず rowId 一致で pt.isDone = true が同期確定)
+    await h.simulateDbPostAcceptance(item, { success: true, accepted: true }, pt);
+    assert.equal(pt.isDone, true, '新契約: db.js が rowId 一致で pt.isDone = true を直接同期すること');
+    assert.ok(h.mockWindow.globalPinStatus.completed.includes(332), 'globalPinStatus.completed に 332 が記録されること');
+    assert.equal(h.getRemoveCount(), 1, 'db.js の正規 remove が厳格に 1 回発火すること');
 
-    // 3. app.js のポーリング検知: isCompletedInPinStatus により p.isDone = true が同期され、正常検知されること
+    // 3. app.js のポーリング検知: Handshake 成功 (p.isDone === true または isCompletedInPinStatus) ➔ 正常完了
     const detected = h.simulateSubmitPollingDetect(pt, 332);
-    assert.equal(detected, true, 'isCompletedInPinStatus により正常完了が検知されること');
-    assert.equal(pt.isDone, true, 'pt.isDone が true に同期確定されること');
+    assert.equal(detected, true, 'Handshake が成立し正常完了が検知されること');
+    assert.equal(pt.isDone, true, 'pt.isDone が true を維持すること');
     assert.equal(pt.syncStatus, 'synced', 'pt.syncStatus が synced に更新されること');
     assert.equal(h.getRemoveCount(), 1, 'Single-Fire 維持: app.js からの追加 remove はなく通算 1 回であること');
 
@@ -845,22 +856,25 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜10 & キャン
     // 5. 反例確認: REJECTED (STALE_MONTH) では completed に入らず誤成功しないこと
     const rejectItem = { id: 9, rowId: 333, areaName: "" };
     const rejectPt = { rowId: 333, isDone: false, syncStatus: 'submitting' };
-    await h.simulateDbPostAcceptance(rejectItem, { success: true, accepted: false, code: "STALE_MONTH" }, undefined);
+    await h.simulateDbPostAcceptance(rejectItem, { success: true, accepted: false, code: "STALE_MONTH" }, rejectPt);
     assert.ok(!h.mockWindow.globalPinStatus.completed.includes(333), 'REJECTED では completed に追加されないこと');
+    assert.equal(rejectPt.isDone, false, 'REJECTED では isDone が true にならないこと');
     assert.equal(h.simulateSubmitPollingDetect(rejectPt, 333), false, 'REJECTED では成功検知しないこと');
 
     // 6. 反例確認: RETRY では completed に入らず誤成功しないこと
     const retryItem = { id: 10, rowId: 334, areaName: "" };
     const retryPt = { rowId: 334, isDone: false, syncStatus: 'submitting' };
-    await h.simulateDbPostAcceptance(retryItem, { success: false, message: "Network Error" }, undefined);
+    await h.simulateDbPostAcceptance(retryItem, { success: false, message: "Network Error" }, retryPt);
     assert.ok(!h.mockWindow.globalPinStatus.completed.includes(334), 'RETRY では completed に追加されないこと');
+    assert.equal(retryPt.isDone, false, 'RETRY では isDone が true にならないこと');
     assert.equal(h.simulateSubmitPollingDetect(retryPt, 334), false, 'RETRY では成功検知しないこと');
 
     // 7. 反例確認: FAILED_PERMANENT では completed に入らず誤成功しないこと
     const failItem = { id: 11, rowId: 335, areaName: "" };
     const failPt = { rowId: 335, isDone: false, syncStatus: 'submitting' };
-    await h.simulateDbPostAcceptance(failItem, null, undefined);
+    await h.simulateDbPostAcceptance(failItem, null, failPt);
     assert.ok(!h.mockWindow.globalPinStatus.completed.includes(335), 'FAILED_PERMANENT では completed に追加されないこと');
+    assert.equal(failPt.isDone, false, 'FAILED_PERMANENT では isDone が true にならないこと');
     assert.equal(h.simulateSubmitPollingDetect(failPt, 335), false, 'FAILED_PERMANENT では成功検知しないこと');
   }
 });

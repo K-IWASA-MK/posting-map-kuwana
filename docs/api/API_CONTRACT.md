@@ -651,7 +651,7 @@ Step 7: 完了確定 (COMPLETED) ────► サーバー success: true か�
 
 | データ種別 | SSOT の所在 | キャッシュ / 一時情報の所在 | 採用ルール |
 |---|---|---|---|
-| **配布実績 (DistributionRecord)** | **Spreadsheet (`配布実績YYYY-MM`)** | Hアプリ `cityAreaCache`, IndexedDB | **Database が絶対SSOT**。「LocalStorageにあるから正しい」という設計を完全排除。 |
+| **配布実績 (DistributionRecord)** | **Spreadsheet (`配布実績YYYY-MM`)** | Hアプリ `in-memory state / IndexedDB` | **Database が絶対SSOT**。「LocalStorageにあるから正しい」という設計を完全排除。 |
 | **配布員名簿 (StaffIdentity)** | **Spreadsheet (`名簿の原本`)** | Hアプリ `localStorage.user_info` | **Database が絶対SSOT**。端末キャッシュは先行表示用の一時情報に過ぎない。 |
 | **活動対象地域 (TargetRegion)** | **CSV (`data/address_master.csv`)** | Hアプリ `pinsCache` | **リポジトリ内マスターデータが絶対SSOT**。 |
 | **個人ランキング (RankingSummary)**| **Backend 動的集計エンジン** | Hアプリ `window._myRankingSummary` | **Backend が絶対SSOT**。配布実績の最新合計から随時計算。 |
