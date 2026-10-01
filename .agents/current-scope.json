@@ -1,4 +1,5 @@
 [
   ".agents/current-scope.json",
-  "tests/test_phase11_activity_state_machine.mjs"
+  "active/h-app/render.js",
+  "active/h-app/index.html"
 ]
