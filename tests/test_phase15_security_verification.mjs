@@ -179,4 +179,102 @@ test('10. Audit Logging: 操作者staffId、JSTタイムスタンプ、不可逆
   assert.ok(apiContract.includes('requestId'), 'API_CONTRACT must mandate requestId audit tracking');
 });
 
-console.log('✅ ALL 10 PHASE 15 SECURITY VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+// ─── 11. Development Server Boundary 検証 (P1 #6) ───────────────────
+test('11. Development Server Boundary: Localhost固定、URL decode例外防護、パストラバーサル遮断、active/data限定、realpath containment', async () => {
+  const servePath = path.join(rootDir, 'scripts/serve.mjs');
+  const serveSrc = fs.readFileSync(servePath, 'utf8');
+
+  // 静的ソース契約検証
+  assert.ok(!serveSrc.includes('0.0.0.0'), 'serve.mjs must not listen on 0.0.0.0');
+  assert.ok(serveSrc.includes('127.0.0.1'), 'serve.mjs must listen on 127.0.0.1');
+  assert.ok(serveSrc.includes('decodeURIComponent'), 'serve.mjs must decode URI path');
+  assert.ok(serveSrc.includes('400 Bad Request'), 'serve.mjs must fail-closed with 400 on malformed URI');
+  assert.ok(serveSrc.includes('realpathSync'), 'serve.mjs must enforce realpath containment');
+  assert.ok(serveSrc.includes('active') && serveSrc.includes('data'), 'serve.mjs must restrict scope to active and data');
+
+  // handleRequest をインポートしてインメモリ検証 (秘密ファイルの内容は一切読み取らない)
+  const { handleRequest } = await import(path.resolve(servePath));
+
+  function simulateRequest(url) {
+    return new Promise(resolve => {
+      let statusCode = 200;
+      let headers = {};
+      let body = '';
+      const res = {
+        writeHead(code, h = {}) {
+          statusCode = code;
+          headers = h;
+        },
+        end(data) {
+          if (data) body = data.toString();
+          resolve({ statusCode, headers, body });
+        }
+      };
+      handleRequest({ url }, res);
+    });
+  }
+
+  // S1: ALLOW
+  const s1 = await simulateRequest('/active/h-app/index.html');
+  assert.equal(s1.statusCode, 200, 'S1: /active/h-app/index.html must be ALLOW (200)');
+
+  // S2: ALLOW
+  const s2 = await simulateRequest('/active/manager/index.html');
+  assert.equal(s2.statusCode, 200, 'S2: /active/manager/index.html must be ALLOW (200)');
+
+  // S3: ALLOW
+  const s3 = await simulateRequest('/data/config.js');
+  assert.equal(s3.statusCode, 200, 'S3: /data/config.js must be ALLOW (200)');
+
+  // S4: DENY
+  const s4 = await simulateRequest('/.secrets/test.json');
+  assert.equal(s4.statusCode, 403, 'S4: /.secrets/test.json must be DENY (403)');
+
+  // S5: DENY
+  const s5 = await simulateRequest('/.git/config');
+  assert.equal(s5.statusCode, 403, 'S5: /.git/config must be DENY (403)');
+
+  // S6: DENY
+  const s6 = await simulateRequest('/AGENTS.md');
+  assert.equal(s6.statusCode, 403, 'S6: /AGENTS.md must be DENY (403)');
+
+  // S7: DENY
+  const s7 = await simulateRequest('/package.json');
+  assert.equal(s7.statusCode, 403, 'S7: /package.json must be DENY (403)');
+
+  // S8: DENY
+  const s8 = await simulateRequest('/../package.json');
+  assert.equal(s8.statusCode, 403, 'S8: /../package.json must be DENY (403)');
+
+  // S9: DENY
+  const s9 = await simulateRequest('/../../outside.txt');
+  assert.equal(s9.statusCode, 403, 'S9: /../../outside.txt must be DENY (403)');
+
+  // S10: DENY
+  const s10 = await simulateRequest('/active/../../../outside.txt');
+  assert.equal(s10.statusCode, 403, 'S10: /active/../../../outside.txt must be DENY (403)');
+
+  // S11: DENY
+  const s11 = await simulateRequest('/%2e%2e/package.json');
+  assert.equal(s11.statusCode, 403, 'S11: /%2e%2e/package.json must be DENY (403)');
+
+  // S12: 400 (Malformed percent encoding & NUL byte)
+  const s12a = await simulateRequest('/%ff/malformed');
+  assert.equal(s12a.statusCode, 400, 'S12a: malformed percent encoding must be 400');
+  const s12b = await simulateRequest('/data/%00/test.js');
+  assert.equal(s12b.statusCode, 400, 'S12b: NUL byte in URI must be 400');
+
+  // S13: ALLOW rewrite (/manager/ -> /active/manager/index.html)
+  const s13 = await simulateRequest('/manager/');
+  assert.equal(s13.statusCode, 200, 'S13: /manager/ must be ALLOW rewrite (200)');
+
+  // S14: ALLOW rewrite (/app/ -> /active/h-app/index.html)
+  const s14 = await simulateRequest('/app/');
+  assert.equal(s14.statusCode, 200, 'S14: /app/ must be ALLOW rewrite (200)');
+
+  // S15: ALLOW rewrite (/business/area/address_master_service.js)
+  const s15 = await simulateRequest('/business/area/address_master_service.js');
+  assert.equal(s15.statusCode, 200, 'S15: /business/area/address_master_service.js must be ALLOW rewrite (200)');
+});
+
+console.log('✅ ALL 11 PHASE 15 SECURITY VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
