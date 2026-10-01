@@ -1,6 +1,4 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/db.js",
-  "active/h-app/render.js",
-  "tests/test_durable_queue_verification.mjs"
+  "active/h-app/index.html"
 ]
