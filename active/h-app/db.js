@@ -285,10 +285,6 @@ async function processQueue() {
         // 写真データはURL長制限を超えるためPOSTで送信
         const res = await callApiPost('updateRecordWithGPSPhoto', payload);
 
-        if (res && res._debug) {
-          console.log('[DRIVE DEBUG]', JSON.stringify(res._debug));
-        }
-
         if (res && res.success) {
           // ── STALE_MONTH 等の非受諾終端処理 ──────────────────────
           if (res.accepted === false) {
