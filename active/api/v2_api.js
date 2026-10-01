@@ -221,6 +221,14 @@ function doGet(e) {
 
   const action = params.action || "";
 
+  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration') {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      code: "METHOD_NOT_ALLOWED",
+      message: `${action} requires POST request.`
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   const isPublicAction = [
     'getMapsApiKey',
     'getTier1',
@@ -560,6 +568,7 @@ function doPost(e) {
     'createEmptyTemplate',
     'createDistrictDatabase',
     'syncSystemInfo',
+    'healSchemaHeaders',
     'runIdentityMigration',
     'registerOrValidateDevice',
     'resetDeviceManagement',
@@ -881,6 +890,46 @@ function doPost(e) {
     }
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'healSchemaHeaders') {
+    const token = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)))
+               || (params && (params.provisioningToken || (params.options && params.options.provisioningToken)));
+    const tokenCheck = verifyProvisioningToken(token);
+    if (!tokenCheck.success) {
+      return ContentService.createTextOutput(JSON.stringify(tokenCheck))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const targetDistrictId = String((postData && postData.districtId) || districtId || (params && params.districtId) || "").trim();
+    if (!targetDistrictId) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "MISSING_DISTRICT_ID",
+        message: "districtId is required for healSchemaHeaders."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const targetMonth = String((postData && postData.targetMonth) || (postData && postData.options && postData.options.targetMonth) || (params && params.targetMonth) || "").trim();
+    if (!targetMonth || !/^\d{4}-\d{2}$/.test(targetMonth)) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "INVALID_ARGUMENT",
+        message: "Valid targetMonth (YYYY-MM) is required for healSchemaHeaders."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // targetSpreadsheetId直接指定やClient spreadsheet objectは禁止（Runtime Resolver 経由のみ）
+    const isDryRun = (postData && postData.isDryRun !== undefined)
+      ? !!postData.isDryRun
+      : ((postData && postData.options && postData.options.isDryRun !== undefined) ? !!postData.options.isDryRun : true);
+
+    let result;
+    if (typeof healSchemaHeaders === 'function') {
+      result = healSchemaHeaders({ isDryRun: isDryRun, targetMonth: targetMonth, districtId: targetDistrictId }, targetDistrictId);
+    } else {
+      result = { success: false, message: 'healSchemaHeaders not available' };
+    }
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'runIdentityMigration') {
     const token = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)))
                || (params && (params.provisioningToken || (params.options && params.options.provisioningToken)));
@@ -889,10 +938,11 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify(tokenCheck))
         .setMimeType(ContentService.MimeType.JSON);
     }
+    const targetDistrictId = String((postData && postData.districtId) || districtId || (params && params.districtId) || "").trim();
     const isDryRun = (postData && postData.isDryRun !== undefined) ? !!postData.isDryRun : true;
     let result;
     if (typeof migrateIdentityColumns === 'function') {
-      result = migrateIdentityColumns(isDryRun);
+      result = migrateIdentityColumns(isDryRun, { districtId: targetDistrictId }, targetDistrictId);
     } else {
       result = { success: false, message: 'migrateIdentityColumns not available' };
     }

@@ -1,10 +1,9 @@
 [
   ".agents/current-scope.json",
-  "active/infrastructure/spreadsheet/spreadsheet_adapter.js",
-  "active/infrastructure/drive/drive_adapter.js",
-  "active/gas/v2_batch.js",
-  "active/business/system/district_provisioner.js",
-  "active/business/system/system_info_service.js",
+  "active/gas/v2_migration.js",
   "active/api/v2_api.js",
+  "active/business/system/monthly_sheet_resolver.js",
+  "active/business/staff/staff_service.js",
+  "tests/test_schema_provisioning_healing.mjs",
   "tests/test_multi_district_routing_auth.mjs"
 ]

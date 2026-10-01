@@ -256,7 +256,12 @@ function createVmContext(ss) {
         };
       }
     },
-    getSS() { return ss; }
+    lastResolvedDistrict: null,
+    getSS(dist) {
+      sandbox.lastResolvedDistrict = dist;
+      if (dist === "INVALID_DIST") return null;
+      return ss;
+    }
   };
 
   const context = vm.createContext(sandbox);
@@ -719,6 +724,139 @@ runCase("Case 13: inspectSystemInfoKeys (11 standard keys inspection & custom ke
   assert.equal(resMissing.code, "MISSING_SYSTEM_INFO_SHEET");
 });
 
+// --- Case 15: healSchemaHeaders District-Aware Resolution ---
+runCase("Case 15: healSchemaHeaders district-aware resolution", () => {
+  const ss = new MockSpreadsheet("TEST_DISTRICT");
+  const ctx = createVmContext(ss);
+
+  const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
+  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
+  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+
+  // 1. 正常な地区指定
+  const resValid = ctx.healSchemaHeaders({ isDryRun: true, targetMonth: "2026-10", districtId: "TEST_DISTRICT" });
+  assert.equal(resValid.success, true);
+  assert.equal(ctx.lastResolvedDistrict, "TEST_DISTRICT", "districtId must be passed to getSS");
+
+  // 2. 無効な地区指定 (getSS が null を返す)
+  const resInvalid = ctx.healSchemaHeaders({ isDryRun: true, targetMonth: "2026-10", districtId: "INVALID_DIST" });
+  assert.equal(resInvalid.success, false);
+  assert.equal(resInvalid.code, "SPREADSHEET_NOT_FOUND");
+  assert.equal(ctx.lastResolvedDistrict, "INVALID_DIST");
+});
+
+// --- Case 16: healSchemaHeaders Plan A (2026-09 15-col -> 17-col, P=lineUserId, Q=requestId, data rows mutation 0) ---
+runCase("Case 16: healSchemaHeaders Plan A (2026-09 15-col -> 17-col, data rows mutation 0)", () => {
+  const ss = new MockSpreadsheet("KUWANA");
+  const ctx = createVmContext(ss);
+
+  // 原本5種を 15列 (Generation 1 旧構造) でセットアップ
+  const sampleAddresses = [{ rowId: 1, cityName: "KUWANA", townName: "AREA_1" }];
+  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
+
+  // 原本を 15列に縮小
+  const masterDist = ss.getSheetByName("配布実績の原本");
+  masterDist.maxColumns = 15;
+  masterDist.grid[0] = masterDist.grid[0].slice(0, 15);
+
+  // 2026-09 を 15列、既存データ行ありで作成
+  const pastDistGrid = [
+    masterDist.grid[0].slice(0, 15),
+    [1, "KUWANA", "AREA_1", "2026/09/15 10:00", 50, "S001", "Taro", "35.0,136.0", "img.jpg", 35.0, 136.0, "2026/09/15 10:00", "fid1", "http://url", "2026/09/15 10:00"]
+  ];
+  const dist202609 = ss.addSheet("配布実績2026-09", pastDistGrid, 15);
+  // 他の当月シートも 2026-09 で用意
+  ss.addSheet("名簿2026-09", [["ID", "名前", "LINE_USER_ID", "登録日時"]]);
+  ss.addSheet("保有チラシ枚数2026-09", [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]]);
+  ss.addSheet("受渡要請履歴2026-09", [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]]);
+  ss.addSheet("PinStatus2026-09", [["rowId", "status"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+
+  assert.equal(dist202609.getMaxColumns(), 15);
+  assert.equal(dist202609.grid[1].length, 15);
+
+  // Phase 1: DryRun
+  const dryRes = ctx.healSchemaHeaders({ isDryRun: true, targetMonth: "2026-09", districtId: "KUWANA" });
+  assert.equal(dryRes.success, true);
+  assert.equal(dryRes.isDryRun, true);
+  assert.equal(dist202609.getMaxColumns(), 15, "DryRun must not mutate columns");
+
+  // Phase 2: Actual Heal
+  const healRes = ctx.healSchemaHeaders({ isDryRun: false, targetMonth: "2026-09", districtId: "KUWANA" });
+  assert.equal(healRes.success, true);
+  assert.equal(dist202609.getMaxColumns(), 17, "2026-09 must be expanded to 17 columns");
+  assert.equal(dist202609.grid[0][15], "lineUserId", "Col 16 (P) must be lineUserId");
+  assert.equal(dist202609.grid[0][16], "requestId", "Col 17 (Q) must be requestId");
+
+  // 原本も 16列 (P=lineUserId) に補完されたことを確認
+  assert.equal(masterDist.getMaxColumns(), 16);
+  assert.equal(masterDist.grid[0][15], "lineUserId");
+
+  // 【厳格検証】データ行 (2行目) は一切不可侵 (mutation 0、requestId は補完されない)
+  assert.equal(dist202609.grid[1][0], 1);
+  assert.equal(dist202609.grid[1][1], "KUWANA");
+  assert.equal(dist202609.grid[1][5], "S001");
+  assert.equal(dist202609.grid[1][15] || "", "", "Data row col 16 must remain untouched/empty");
+  assert.equal(dist202609.grid[1][16] || "", "", "Data row col 17 (requestId) must remain untouched/empty");
+});
+
+// --- Case 17: healSchemaHeaders (2026-10 17-col with blank P-col healed, data rows mutation 0) ---
+runCase("Case 17: healSchemaHeaders (2026-10 17-col blank P healed, data rows mutation 0)", () => {
+  const ss = new MockSpreadsheet("KUWANA");
+  const ctx = createVmContext(ss);
+
+  const sampleAddresses = [{ rowId: 1, cityName: "KUWANA", townName: "AREA_1" }];
+  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
+  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+
+  const dist202610 = ss.getSheetByName("配布実績2026-10");
+  // 本番 KUWANA の実態を再現: 17列で P列(16)が空文字、Q列(17)が "requestId"
+  dist202610.grid[0][15] = "";
+  dist202610.grid[0][16] = "requestId";
+  // データ行追加
+  dist202610.grid[1] = [1, "KUWANA", "AREA_1", "2026/10/01 09:00", 30, "S001", "Taro", "", "", "", "", "", "", "", "", "", "req-123"];
+
+  const healRes = ctx.healSchemaHeaders({ isDryRun: false, targetMonth: "2026-10", districtId: "KUWANA" });
+  assert.equal(healRes.success, true);
+  assert.equal(dist202610.grid[0][15], "lineUserId", "Col 16 (P) must be healed to lineUserId");
+  assert.equal(dist202610.grid[0][16], "requestId", "Col 17 (Q) must remain requestId");
+
+  // データ行 (2行目) の整合確認
+  assert.equal(dist202610.grid[1][16], "req-123", "Existing requestId in data row must be preserved");
+});
+
+// --- Case 18: inspectSystemInfoKeys District-Aware ---
+runCase("Case 18: inspectSystemInfoKeys district-aware resolution", () => {
+  const ss = new MockSpreadsheet("KUWANA");
+  const ctx = createVmContext(ss);
+
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+
+  const res = ctx.inspectSystemInfoKeys({ districtId: "KUWANA" });
+  assert.equal(res.success, true);
+  assert.equal(ctx.lastResolvedDistrict, "KUWANA");
+
+  const resInvalid = ctx.inspectSystemInfoKeys({ districtId: "INVALID_DIST" });
+  assert.equal(resInvalid.success, false);
+  assert.equal(resInvalid.code, "SPREADSHEET_NOT_FOUND");
+});
+
+// --- Case 19: migrateIdentityColumns District-Aware ---
+runCase("Case 19: migrateIdentityColumns district-aware resolution", () => {
+  const ss = new MockSpreadsheet("KUWANA");
+  const ctx = createVmContext(ss);
+
+  const res = ctx.migrateIdentityColumns(true, { districtId: "KUWANA" });
+  assert.equal(res.success, true);
+  assert.equal(ctx.lastResolvedDistrict, "KUWANA");
+
+  const resInvalid = ctx.migrateIdentityColumns(true, { districtId: "INVALID_DIST" });
+  assert.equal(resInvalid.success, false);
+});
+
 console.log("\n====================================================");
-console.log(`🎉 ALL 14 TEST CASES PASSED PERFECTLY! (${passCount}/14)`);
+console.log(`🎉 ALL 19 TEST CASES PASSED PERFECTLY! (${passCount}/19)`);
 console.log("====================================================");
+

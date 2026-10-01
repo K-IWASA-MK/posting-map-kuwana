@@ -14,13 +14,24 @@
 
 function migrateIdentityColumns(isDryRun) {
   if (typeof isDryRun === 'undefined') isDryRun = true;
-  const ss = (typeof getSS === 'function') ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  const opts = (arguments.length > 1 && typeof arguments[1] === 'object' && arguments[1] !== null)
+    ? arguments[1]
+    : (typeof isDryRun === 'object' && isDryRun !== null ? isDryRun : {});
+  const cleanDistrictId = String((arguments.length > 2 && arguments[2]) || opts.districtId || "").trim().toUpperCase();
+
+  let ss = null;
+  try {
+    ss = (typeof getSS === 'function') ? getSS(cleanDistrictId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  } catch (eSS) {
+    return { success: false, code: "SPREADSHEET_NOT_FOUND", message: eSS.message };
+  }
   if (!ss) {
-    return { success: false, message: "Spreadsheet not found" };
+    return { success: false, code: "SPREADSHEET_NOT_FOUND", message: "Spreadsheet not found" };
   }
 
   const report = {
     isDryRun: isDryRun,
+    districtId: cleanDistrictId,
     sheets: {},
     summary: { updatedRows: 0, skippedRows: 0, headersAdded: 0 }
   };
@@ -29,9 +40,9 @@ function migrateIdentityColumns(isDryRun) {
   let roster = [];
   try {
     if (typeof StaffService !== 'undefined' && StaffService.getInstance) {
-      roster = StaffService.getInstance().getRoster() || [];
+      roster = StaffService.getInstance().getRoster(cleanDistrictId) || [];
     } else {
-      const rSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("staff") : ss.getSheetByName("スタッフ名簿");
+      const rSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("staff", cleanDistrictId) : ss.getSheetByName("スタッフ名簿");
       if (rSheet && rSheet.getLastRow() >= 2) {
         const rVals = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, 4).getValues();
         roster = rVals.map(r => ({ id: String(r[0] || '').trim(), name: String(r[1] || '').trim(), lineUserId: String(r[2] || '').trim() }));
@@ -43,7 +54,7 @@ function migrateIdentityColumns(isDryRun) {
 
   // 2. 「保有チラシ枚数」シートのマイグレーション
   try {
-    const flyerSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("flyer") : ss.getSheetByName("保有チラシ枚数");
+    const flyerSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("flyer", cleanDistrictId) : ss.getSheetByName("保有チラシ枚数");
     if (flyerSheet) {
       const lr = flyerSheet.getLastRow();
       const lc = flyerSheet.getLastColumn();
@@ -98,7 +109,7 @@ function migrateIdentityColumns(isDryRun) {
 
   // 3. 「配布実績」シートのマイグレーション
   try {
-    const distSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("distribution") : ss.getSheetByName("配布実績");
+    const distSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("distribution", cleanDistrictId) : ss.getSheetByName("配布実績");
     if (distSheet) {
       const lr = distSheet.getLastRow();
       const lc = distSheet.getLastColumn();
@@ -203,7 +214,7 @@ function migrateIdentityColumns(isDryRun) {
 
   // 5. 「受渡要請履歴」シートのマイグレーション
   try {
-    const trSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("transfer") : ss.getSheetByName("受渡要請履歴");
+    const trSheet = (typeof MonthlySheetResolver !== 'undefined') ? MonthlySheetResolver.getInstance().getCurrentSheet("transfer", cleanDistrictId) : ss.getSheetByName("受渡要請履歴");
     if (trSheet) {
       const lc = trSheet.getLastColumn();
       const sheetReport = { name: trSheet.getName(), headerAdded: false };
@@ -244,11 +255,18 @@ function migrateIdentityColumns(isDryRun) {
  * @param {string} [options.targetMonth] - 当月解決用 (YYYY-MM)
  * @return {Object} レポートオブジェクト
  */
-function healSchemaHeaders(options) {
+function healSchemaHeaders(options, districtId) {
   const opts = options || {};
   const isDryRun = opts.isDryRun !== false; // デフォルト true (安全第一)
+  const cleanDistrictId = String(districtId || opts.districtId || "").trim().toUpperCase();
 
-  const ss = (typeof getSS === 'function') ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  // targetSpreadsheetId 直接指定や Client spreadsheet object は禁止（必ず getSS(cleanDistrictId) による解決）
+  let ss = null;
+  try {
+    ss = (typeof getSS === 'function') ? getSS(cleanDistrictId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  } catch (eSS) {
+    return { success: false, code: "SPREADSHEET_NOT_FOUND", message: eSS.message, mutationsCount: 0 };
+  }
   if (!ss) {
     return { success: false, code: "SPREADSHEET_NOT_FOUND", message: "Spreadsheet not found", mutationsCount: 0 };
   }
@@ -519,8 +537,16 @@ function healSchemaHeaders(options) {
  * @param {Object} [options]
  * @return {Object} 検査結果
  */
-function inspectSystemInfoKeys(options) {
-  const ss = (typeof getSS === 'function') ? getSS() : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+function inspectSystemInfoKeys(options, districtId) {
+  const opts = options || {};
+  const cleanDistrictId = String(districtId || opts.districtId || "").trim().toUpperCase();
+
+  let ss = null;
+  try {
+    ss = (typeof getSS === 'function') ? getSS(cleanDistrictId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
+  } catch (eSS) {
+    return { success: false, code: "SPREADSHEET_NOT_FOUND", message: eSS.message };
+  }
   if (!ss) {
     return { success: false, code: "SPREADSHEET_NOT_FOUND", message: "Spreadsheet not found" };
   }

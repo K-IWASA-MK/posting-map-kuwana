@@ -498,6 +498,7 @@ const areaRepoCode = fs.readFileSync(path.join(rootDir, 'active/business/area/ar
 const areaServiceCode = fs.readFileSync(path.join(rootDir, 'active/business/area/area_service.js'), 'utf-8');
 const districtProvisionerCode = fs.readFileSync(path.join(rootDir, 'active/business/system/district_provisioner.js'), 'utf-8');
 const v2BatchCode = fs.readFileSync(path.join(rootDir, 'active/gas/v2_batch.js'), 'utf-8');
+const v2MigrationCode = fs.readFileSync(path.join(rootDir, 'active/gas/v2_migration.js'), 'utf-8');
 const v2ApiCode = fs.readFileSync(path.join(rootDir, 'active/api/v2_api.js'), 'utf-8');
 
 // 依存モジュールロード
@@ -522,6 +523,7 @@ vm.runInThisContext(areaRepoCode);
 vm.runInThisContext(areaServiceCode);
 vm.runInThisContext(districtProvisionerCode);
 vm.runInThisContext(v2BatchCode);
+vm.runInThisContext(v2MigrationCode);
 
 const validToken = "super-secret-provisioning-token-123456";
 mockScriptProperties["PROVISIONING_TOKEN_HASH"] = crypto.createHash('sha256').update(validToken).digest('hex');
@@ -1825,6 +1827,167 @@ runTest("Scenario 30: setupRosterSheet(districtId) および v2_api Provisioning
   const getSysRes = doGet(getSysReq);
   const getSysData = JSON.parse(getSysRes.text);
   assert.equal(getSysData.success, true, "doGet early syncSystemInfo for KUWANA must succeed");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 31: action=healSchemaHeaders の POST 専用性（GET 拒否 & METHOD_NOT_ALLOWED）
+// -----------------------------------------------------------------------------
+runTest("Scenario 31: action=healSchemaHeaders および runIdentityMigration の POST 専用性", () => {
+  // 1. doGet healSchemaHeaders -> METHOD_NOT_ALLOWED
+  const getHealRes = doGet({ parameter: { action: "healSchemaHeaders" } });
+  const getHealData = JSON.parse(getHealRes.text);
+  assert.equal(getHealData.success, false);
+  assert.equal(getHealData.code, "METHOD_NOT_ALLOWED");
+
+  // 2. doGet runIdentityMigration -> METHOD_NOT_ALLOWED
+  const getMigRes = doGet({ parameter: { action: "runIdentityMigration" } });
+  const getMigData = JSON.parse(getMigRes.text);
+  assert.equal(getMigData.success, false);
+  assert.equal(getMigData.code, "METHOD_NOT_ALLOWED");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 32: action=healSchemaHeaders の必須パラメータ検証 (token, districtId, targetMonth)
+// -----------------------------------------------------------------------------
+runTest("Scenario 32: action=healSchemaHeaders の必須パラメータ検証", () => {
+  // 1. token 不在 -> UNAUTHORIZED
+  const noTokenRes = doPost({
+    postData: { contents: JSON.stringify({ action: "healSchemaHeaders", districtId: "KUWANA", targetMonth: "2026-10" }) }
+  });
+  assert.equal(JSON.parse(noTokenRes.text).success, false);
+  assert.equal(JSON.parse(noTokenRes.text).code, "UNAUTHORIZED");
+
+  // 2. token 不正 -> UNAUTHORIZED
+  const badTokenRes = doPost({
+    postData: { contents: JSON.stringify({ action: "healSchemaHeaders", provisioningToken: "wrong", districtId: "KUWANA", targetMonth: "2026-10" }) }
+  });
+  assert.equal(JSON.parse(badTokenRes.text).success, false);
+  assert.equal(JSON.parse(badTokenRes.text).code, "UNAUTHORIZED");
+
+  // 3. districtId 不在 -> MISSING_DISTRICT_ID
+  const noDistRes = doPost({
+    postData: { contents: JSON.stringify({ action: "healSchemaHeaders", provisioningToken: validToken, targetMonth: "2026-10" }) }
+  });
+  assert.equal(JSON.parse(noDistRes.text).success, false);
+  assert.equal(JSON.parse(noDistRes.text).code, "MISSING_DISTRICT_ID");
+
+  // 4. targetMonth 不在 -> INVALID_ARGUMENT
+  const noMonthRes = doPost({
+    postData: { contents: JSON.stringify({ action: "healSchemaHeaders", provisioningToken: validToken, districtId: "KUWANA" }) }
+  });
+  assert.equal(JSON.parse(noMonthRes.text).success, false);
+  assert.equal(JSON.parse(noMonthRes.text).code, "INVALID_ARGUMENT");
+
+  // 5. targetMonth フォーマット不正 ("2026/10") -> INVALID_ARGUMENT
+  const badMonthRes = doPost({
+    postData: { contents: JSON.stringify({ action: "healSchemaHeaders", provisioningToken: validToken, districtId: "KUWANA", targetMonth: "2026/10" }) }
+  });
+  assert.equal(JSON.parse(badMonthRes.text).success, false);
+  assert.equal(JSON.parse(badMonthRes.text).code, "INVALID_ARGUMENT");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 33: action=healSchemaHeaders の targetSpreadsheetId バイパス禁止 & Runtime Resolver 解決
+// -----------------------------------------------------------------------------
+runTest("Scenario 33: action=healSchemaHeaders の targetSpreadsheetId バイパス禁止 & Runtime Resolver 解決", () => {
+  const reg = {
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true },
+    "DISABLED_DIST": { spreadsheetId: "ss-disabled-id", storageFolderId: "folder_disabled_id", enabled: false }
+  };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(reg);
+  SpreadsheetResolver.getInstance().clearCache();
+
+  // KUWANA SS に必要な原本・当月シートを準備
+  const kSS = mockSpreadsheets["ss-kuwana-id"];
+  if (!kSS.getSheetByName("配布実績の原本")) {
+    kSS.addSheet("配布実績の原本").rows = [["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"]];
+  }
+  if (!kSS.getSheetByName("名簿の原本")) {
+    kSS.addSheet("名簿の原本").rows = [["ID", "名前", "LINE_USER_ID", "登録日時"]];
+  }
+  if (!kSS.getSheetByName("保有チラシ枚数の原本")) {
+    kSS.addSheet("保有チラシ枚数の原本").rows = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]];
+  }
+  if (!kSS.getSheetByName("受渡要請履歴の原本")) {
+    kSS.addSheet("受渡要請履歴の原本").rows = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
+  }
+  if (!kSS.getSheetByName("PinStatusの原本")) {
+    kSS.addSheet("PinStatusの原本").rows = [["rowId", "status"]];
+  }
+  if (!kSS.getSheetByName("配布実績2026-10")) {
+    kSS.addSheet("配布実績2026-10").rows = [["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId", "requestId"]];
+  }
+  if (!kSS.getSheetByName("名簿2026-10")) {
+    kSS.addSheet("名簿2026-10").rows = [["ID", "名前", "LINE_USER_ID", "登録日時"]];
+  }
+  if (!kSS.getSheetByName("保有チラシ枚数2026-10")) {
+    kSS.addSheet("保有チラシ枚数2026-10").rows = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]];
+  }
+  if (!kSS.getSheetByName("受渡要請履歴2026-10")) {
+    kSS.addSheet("受渡要請履歴2026-10").rows = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
+  }
+  if (!kSS.getSheetByName("PinStatus2026-10")) {
+    kSS.addSheet("PinStatus2026-10").rows = [["rowId", "status"]];
+  }
+
+  // 1. targetSpreadsheetId に別 ID を渡しても無視され、KUWANA の SS (ss-kuwana-id) が解決されること
+  const reqWithBypass = {
+    postData: {
+      contents: JSON.stringify({
+        action: "healSchemaHeaders",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        targetMonth: "2026-10",
+        targetSpreadsheetId: "fake-spreadsheet-id-to-be-ignored",
+        isDryRun: true
+      })
+    }
+  };
+  const bypassRes = doPost(reqWithBypass);
+  const bypassData = JSON.parse(bypassRes.text);
+  assert.equal(bypassData.success, true, "Must succeed using KUWANA Runtime Resolver, ignoring targetSpreadsheetId");
+
+  // 2. enabled: false な地区は Runtime Resolver の enabled チェックで拒否されること
+  const reqDisabled = {
+    postData: {
+      contents: JSON.stringify({
+        action: "healSchemaHeaders",
+        provisioningToken: validToken,
+        districtId: "DISABLED_DIST",
+        targetMonth: "2026-10"
+      })
+    }
+  };
+  const disabledRes = doPost(reqDisabled);
+  const disabledData = JSON.parse(disabledRes.text);
+  assert.equal(disabledData.success, false, "Disabled district must be rejected");
+  assert.equal(disabledData.code, "SPREADSHEET_NOT_FOUND");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 34: action=runIdentityMigration の districtId 伝播検証
+// -----------------------------------------------------------------------------
+runTest("Scenario 34: action=runIdentityMigration の districtId 伝播検証", () => {
+  const reg = {
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true }
+  };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(reg);
+  SpreadsheetResolver.getInstance().clearCache();
+
+  const req = {
+    postData: {
+      contents: JSON.stringify({
+        action: "runIdentityMigration",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        isDryRun: true
+      })
+    }
+  };
+  const res = doPost(req);
+  const data = JSON.parse(res.text);
+  assert.equal(data.success, true, "runIdentityMigration must succeed with districtId");
+  assert.equal(data.districtId, "KUWANA", "districtId must be propagated in report");
 });
 
 console.log('\n================================================================');
