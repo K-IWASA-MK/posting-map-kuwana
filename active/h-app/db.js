@@ -198,19 +198,24 @@ window.getSyncQueueRowIds = getSyncQueueRowIds;
 
 /**
  * 失敗時にリトライをスケジュール
- * - retryCount >= MAX_RETRIES の場合は次回送信なし（永久保留）
+ * - retryCount >= MAX_RETRIES の場合は FAILED_PERMANENT（手動再送待機、nextRetryAt=0）
+ * - 呼出元へ最終 syncStatus ("RETRY" または "FAILED_PERMANENT") を返却
  */
 async function scheduleRetry(item) {
   const count = (item.retryCount || 0) + 1;
+  const isPermanent = count >= MAX_RETRIES;
   const delay = RETRY_DELAYS[Math.min(count - 1, RETRY_DELAYS.length - 1)];
+  const status = isPermanent ? 'FAILED_PERMANENT' : 'RETRY';
 
-  console.log(`[Queue] Retry scheduled: id=${item.id}, attempt=${count}/${MAX_RETRIES}, delay=${delay / 1000}s`);
+  console.log(`[Queue] Retry scheduled: id=${item.id}, attempt=${count}/${MAX_RETRIES}, status=${status}, delay=${isPermanent ? 0 : delay / 1000}s`);
 
   await updateQueueItem(item.id, {
-    syncStatus:  'RETRY',
+    syncStatus:  status,
     retryCount:  count,
-    nextRetryAt: count >= MAX_RETRIES ? Infinity : Date.now() + delay
+    nextRetryAt: isPermanent ? 0 : Date.now() + delay
   });
+
+  return status;
 }
 
 // ── メイン同期処理 ────────────────────────────────────────────
@@ -379,14 +384,21 @@ async function processQueue() {
 
       } catch (err) {
         console.error(`[Queue] Failed: id=${item.id}`, err.message);
-        await scheduleRetry(item);
+        const finalStatus = await scheduleRetry(item);
 
         // 1. メモリキャッシュのステータス更新
         if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
           const cachedPoints = window.cityAreaCache[item.areaName];
           const p = cachedPoints.find(pt => pt.rowId === item.rowId);
           if (p) {
-            p.syncStatus = 'RETRY';
+            p.syncStatus = finalStatus;
+          }
+        }
+        // 2. モーダル表示中の points も同期
+        if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
+          const p = allPoints.find(pt => pt.rowId === item.rowId);
+          if (p) {
+            p.syncStatus = finalStatus;
           }
         }
       }
@@ -428,6 +440,46 @@ function updateUISyncStatus() {
     window.triggerUISyncRefresh();
   }
 }
+
+/**
+ * FAILED_PERMANENT 状態のキューを手動で再送待機 (PENDING) に戻し、即時 processQueue() を実行
+ * - 既存Queue item の id, requestId, timestamp, count, photoBase64, 座標等全payloadを完全維持
+ * - retryCount: 0, nextRetryAt: 0, syncStatus: 'PENDING' の3状態フィールドのみ更新
+ * - 新規レコード作成禁止 (enqueueSync は呼ばない)
+ * @param {number|string} rowId
+ */
+async function manualRetrySync(rowId) {
+  const targetId = Number(rowId);
+  const currentMonth = getJstMonth(Date.now());
+  const queue = await getQueue();
+  const item = queue.find(q => Number(q.rowId) === targetId && getJstMonth(q.timestamp) === currentMonth);
+  if (!item) {
+    console.warn(`[Queue] manualRetrySync: Item not found for rowId=${rowId}`);
+    return;
+  }
+
+  // 状態フィールド（syncStatus, retryCount, nextRetryAt）の3点のみリセット（payload完全維持）
+  await updateQueueItem(item.id, {
+    syncStatus:  'PENDING',
+    retryCount:  0,
+    nextRetryAt: 0
+  });
+
+  // メモリキャッシュ・allPointsの同期
+  if (window.cityAreaCache && window.cityAreaCache[item.areaName]) {
+    const cachedPoints = window.cityAreaCache[item.areaName];
+    const p = cachedPoints.find(pt => pt.rowId === item.rowId);
+    if (p) p.syncStatus = 'PENDING';
+  }
+  if (typeof allPoints !== 'undefined' && allPoints && window.currentCityDetailAreaName === item.areaName) {
+    const p = allPoints.find(pt => pt.rowId === item.rowId);
+    if (p) p.syncStatus = 'PENDING';
+  }
+
+  updateUISyncStatus();
+  processQueue();
+}
+window.manualRetrySync = manualRetrySync;
 
 // ── イベントリスナー ──────────────────────────────────────────
 
