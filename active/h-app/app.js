@@ -812,7 +812,16 @@ async function submitMissionComplete(areaName, rowId) {
             return; // 重要：後段の「送信処理中です」へ落ちずに即時終了
           }
 
-          // 正常完了判定: Queue消滅かつ db.js 正常経路によって既に p.isDone === true と確定されている場合のみ成功
+          // 正常完了判定: Queue消滅かつ (db.js により p.isDone === true 確定 または globalPinStatus.completed 反映済み)
+          const isCompletedInPinStatus = Boolean(
+            window.globalPinStatus &&
+            Array.isArray(window.globalPinStatus.completed) &&
+            window.globalPinStatus.completed.includes(Number(rowId))
+          );
+          if (isCompletedInPinStatus) {
+            p.isDone = true;
+          }
+
           if (p.isDone === true) {
             p.isDone = true;
             delete p.isReadyToSubmit;
