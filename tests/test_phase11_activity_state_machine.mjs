@@ -619,7 +619,6 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜11 & キャン
     const removedRowIds = [];
 
     const mockWindow = {
-      currentCityDetailAreaName: "桑名市中央",
       globalPinStatus: {
         completed: [],
         inProgress: [101]
@@ -765,13 +764,13 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜11 & キャン
     assert.equal(h.getRemoveCount(), 1, 'Case 3: submitMissionComplete 成功検知でも追加発火が 0 であること (通算1)');
   }
 
-  // Case 4: currentCityDetailAreaName !== item.areaName → db.js 正規 remove は発火 = 1
+  // Case 4: areaName条件に依存せず、Backend受諾時に db.js 正規 remove は発火 = 1
   {
     const h = createTestHarness();
     const item = { id: 1, rowId: 101, areaName: "桑名市中央" };
     // 表示中エリアが別エリア（"桑名市東部"）
     await h.simulateDbPostAcceptance(item, { success: true, accepted: true }, "桑名市東部");
-    assert.equal(h.getRemoveCount(), 1, 'Case 4: 別画面遷移時でも正規発火点から remove が 1 回発火すること');
+    assert.equal(h.getRemoveCount(), 1, 'Case 4: areaName条件に依存せず正規発火点から remove が 1 回発火すること');
   }
 
   // Case 5: offline Queue 復旧後の成功 → remove = 1
@@ -827,11 +826,10 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜11 & キャン
     assert.equal(h.getRemoveCount(), 0, 'Case 10: FAILED_PERMANENT では remove が 0 であること');
   }
 
-  // Case 11: 新Contract (currentCityDetailAreaNameなし / areaName非依存 ➔ db.js rowId同期で p.isDone=true ➔ Handshake成功 ➔ remove追加発火なし)
+  // Case 11: 新Contract (areaName非依存 ➔ db.js rowId同期で p.isDone=true ➔ Handshake成功 ➔ remove追加発火なし)
   {
     const h = createTestHarness();
-    // 1. MAP直接動線を再現: currentCityDetailAreaName は不在、areaName は空文字または townName
-    h.mockWindow.currentCityDetailAreaName = undefined;
+    // 1. MAP直接動線を再現: rowId 基準で item と point を生成
     const item = { id: 8, rowId: 332, areaName: "" };
     const pt = { rowId: 332, isDone: false, syncStatus: 'submitting' };
 
