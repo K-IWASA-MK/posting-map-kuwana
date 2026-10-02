@@ -86,11 +86,23 @@ async function callApiPost(action, payload = {}) {
   }
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    // リトライ毎に前回のトークンを削除し、最新の有効トークンのみを動的取得して付与
+    // リトライ毎に前回のトークンを削除し、最新の有効トークンを動的取得
     delete payload.liffToken;
-    const token = getLiffAuthToken();
-    if (token) {
+    if (!isPublic) {
+      const token = getLiffAuthToken();
+      if (!token || typeof token !== 'string' || token.trim().length === 0) {
+        const authErr = new Error("LIFF_TOKEN_MISSING_FOR_ATTEMPT");
+        authErr.code = "UNAUTHORIZED";
+        authErr.errorType = "PERMANENT";
+        authErr.retryable = false;
+        throw authErr;
+      }
       payload.liffToken = token;
+    } else {
+      const token = getLiffAuthToken();
+      if (token && typeof token === 'string' && token.trim().length > 0) {
+        payload.liffToken = token;
+      }
     }
 
     const url = `${API_URL}?_t=${Date.now()}`;

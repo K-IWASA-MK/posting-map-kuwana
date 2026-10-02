@@ -1,427 +1,423 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
 
-test('Identity Safety Gate: Verified before write allows execution', async () => {
-  let _identityVerified = false;
-  let _identitySyncPromise = null;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..');
 
-  function waitForIdentityVerified() {
-    if (_identityVerified) return Promise.resolve(true);
-    if (_identitySyncPromise) return _identitySyncPromise;
-    return Promise.reject(new Error("IDENTITY_NOT_INITIALIZED"));
+const API_JS_PATH = path.join(REPO_ROOT, 'active/h-app/modules/api.js');
+const APP_JS_PATH = path.join(REPO_ROOT, 'active/h-app/app.js');
+const MEASURE_JS_PATH = path.join(REPO_ROOT, 'tests/measure_chrome_real.mjs');
+
+const apiJs = fs.readFileSync(API_JS_PATH, 'utf8');
+const appJs = fs.readFileSync(APP_JS_PATH, 'utf8');
+const measureJs = fs.readFileSync(MEASURE_JS_PATH, 'utf8');
+
+/**
+ * Robust function extractor using brace-depth counting
+ */
+function extractFunction(source, fnName) {
+  const startIdx = source.search(new RegExp(`(?:async\\s+)?function\\s+${fnName}\\s*\\(`));
+  if (startIdx === -1) return null;
+  const braceStart = source.indexOf('{', startIdx);
+  let depth = 1;
+  let idx = braceStart + 1;
+  while (depth > 0 && idx < source.length) {
+    if (source[idx] === '{') depth++;
+    else if (source[idx] === '}') depth--;
+    idx++;
   }
+  return source.slice(startIdx, idx);
+}
 
-  // Simulate in-flight getStaffIdentity
-  let resolveIdentity;
-  _identitySyncPromise = new Promise(resolve => {
-    resolveIdentity = resolve;
-  }).then(() => {
-    _identityVerified = true;
-    return true;
-  });
+/**
+ * VM Helper: Creates a browser-like sandbox and loads the ACTUAL modules/api.js source
+ */
+function createApiVmContext({
+  tokens = ['mock_token_1'],
+  fetchHandler = null,
+  hasAuthGate = true,
+  hasIdentityGate = true
+} = {}) {
+  let tokenIndex = 0;
+  let fetchCallCount = 0;
+  const fetchCalls = [];
 
-  let writeExecuted = false;
-
-  // Background write attempt while in-flight
-  const writeTask = (async () => {
-    await waitForIdentityVerified();
-    writeExecuted = true;
-    return "WRITE_SUCCESS";
-  })();
-
-  // Before resolution, write must not have executed yet
-  assert.equal(writeExecuted, false, 'Write must not execute before identity is resolved');
-
-  // Resolve identity (Verified)
-  resolveIdentity();
-  const res = await writeTask;
-
-  assert.equal(writeExecuted, true, 'Write must execute after identity is verified');
-  assert.equal(res, "WRITE_SUCCESS");
-});
-
-test('Identity Safety Gate: Unregistered or Failed Identity strictly REJECTS write', async () => {
-  let _identityVerified = false;
-  let _identitySyncPromise = null;
-
-  function waitForIdentityVerified() {
-    if (_identityVerified) return Promise.resolve(true);
-    if (_identitySyncPromise) return _identitySyncPromise;
-    return Promise.reject(new Error("IDENTITY_NOT_INITIALIZED"));
-  }
-
-  // Simulate failed identity check
-  _identitySyncPromise = Promise.resolve({ success: false, code: "NOT_REGISTERED" }).then(res => {
-    if (!res.success) {
-      _identityVerified = false;
-      throw new Error("STAFF_NOT_REGISTERED");
-    }
-  });
-
-  let writeExecuted = false;
-  let caughtError = null;
-
-  try {
-    await waitForIdentityVerified();
-    writeExecuted = true;
-  } catch (err) {
-    caughtError = err;
-  }
-
-  assert.equal(writeExecuted, false, 'Write MUST NOT be executed when identity fails or unregistered');
-  assert.ok(caughtError, 'Should throw error when identity is not verified');
-  assert.equal(caughtError.message, 'STAFF_NOT_REGISTERED');
-});
-
-test('getStaffIdentity API Response: lineUserId must NOT be exposed', () => {
-  // Simulate getStaffIdentity resolved payload from active/api/v2_api.js
-  const identityResponse = {
-    success: true,
-    registered: true,
-    staffId: "S001",
-    staffName: "なお"
+  const mockWindow = {
+    PMS_DEBUG: false,
+    PMS_CLIENT_CONFIG: {
+      districtId: 'kuwana',
+      api: {
+        gasWebAppUrl: 'https://script.google.com/macros/s/dummy/exec'
+      }
+    },
+    getApiUrl: null,
+    getLiffAuthToken: null,
+    callApiPost: null,
+    logDebug: () => {}
   };
 
-  assert.equal(identityResponse.lineUserId, undefined, 'getStaffIdentity response MUST NOT expose lineUserId');
-  assert.equal(identityResponse.staffId, "S001");
-  assert.equal(identityResponse.staffName, "なお");
-});
-
-test('Optimistic First Paint logic: existing staffId launches without waiting for API', () => {
-  const existingUserInfo = { id: "S001", last: "なお" };
-  const hasExistingStaffId = existingUserInfo.id && String(existingUserInfo.id).trim() !== '';
-
-  let mainAppLaunchedImmediately = false;
-  if (hasExistingStaffId) {
-    mainAppLaunchedImmediately = true;
+  if (hasAuthGate) {
+    mockWindow.waitForLiffAuthReady = async () => true;
+  }
+  if (hasIdentityGate) {
+    mockWindow.waitForIdentityVerified = async () => true;
   }
 
-  assert.equal(mainAppLaunchedImmediately, true, 'Existing staffId MUST trigger immediate launch');
-});
-
-test('First-time user logic: missing staffId holds launch until registered', () => {
-  const existingUserInfo = { id: "" };
-  const hasExistingStaffId = existingUserInfo.id && String(existingUserInfo.id).trim() !== '';
-
-  let mainAppLaunchedImmediately = false;
-  if (hasExistingStaffId) {
-    mainAppLaunchedImmediately = true;
-  }
-
-  assert.equal(mainAppLaunchedImmediately, false, 'First-time user MUST NOT trigger immediate launch before verification');
-});
-
-test('Queue Auth Gate: processQueue skips sending without consuming retry when Auth/Identity not ready', async () => {
-  let isReady = false;
-  let networkSent = false;
-  let retryCount = 0;
-
-  async function mockProcessQueue() {
-    // Fail-Closed check
-    if (!isReady) {
-      return; // 中断: retryCount消費ゼロ、送信ゼロ
-    }
-    networkSent = true;
-    retryCount++;
-  }
-
-  // 1. 未認証・未準備状態で processQueue 実行
-  await mockProcessQueue();
-  assert.equal(networkSent, false, 'Must not send when Auth/Identity is not ready');
-  assert.equal(retryCount, 0, 'Must NOT consume retryCount when Auth/Identity is not ready');
-
-  // 2. Identity 成立後に processQueue 実行
-  isReady = true;
-  await mockProcessQueue();
-  assert.equal(networkSent, true, 'Must send when Auth/Identity is verified ready');
-  assert.equal(retryCount, 1, 'Retry count incremented only upon actual send attempt');
-});
-
-test('callApiPost: PERMANENT error (UNAUTHORIZED, CONTRACT_EXPIRED) strictly rejects without retry', async () => {
-  const permanentCodes = ['UNAUTHORIZED', 'NOT_REGISTERED', 'CONTRACT_EXPIRED', 'INVALID_ARGUMENT', 'FORBIDDEN'];
-
-  for (const code of permanentCodes) {
-    let callCount = 0;
-    async function mockCall(action) {
-      callCount++;
-      const err = new Error("API Failure: " + code);
-      err.code = code;
-      err.errorType = "PERMANENT";
-      err.retryable = false;
-      throw err;
-    }
-
-    let caughtErr = null;
-    try {
-      await mockCall('getStaffIdentity');
-    } catch (e) {
-      caughtErr = e;
-    }
-
-    assert.ok(caughtErr, `Error should be caught for ${code}`);
-    assert.equal(caughtErr.code, code, `Error code ${code} must be preserved on thrown error`);
-    assert.equal(caughtErr.retryable, false, `PERMANENT error ${code} must have retryable=false`);
-    assert.equal(callCount, 1, `PERMANENT error ${code} must NOT be retried (callCount === 1)`);
-  }
-});
-
-test('Queue catch logic: PERMANENT error terminates as FAILED_PERMANENT without calling scheduleRetry', async () => {
-  let scheduleRetryCalled = false;
-  let queueItemStatus = 'PENDING';
-  let nextRetryAt = 999999;
-
-  const TRANSIENT_CODES = ['NETWORK_FAILURE', 'LOCK_TIMEOUT', 'RATE_LIMIT_EXCEEDED', 'INTERNAL_ERROR'];
-
-  async function handleQueueCatch(err) {
-    const isTransient = err.retryable === true || (err.retryable === undefined && TRANSIENT_CODES.includes(err.code));
-    if (isTransient) {
-      scheduleRetryCalled = true;
-    } else {
-      // PERMANENT 終端: scheduleRetry() 禁止、payload保持
-      queueItemStatus = 'FAILED_PERMANENT';
-      nextRetryAt = 0;
-    }
-  }
-
-  // PERMANENT エラーのシミュレート
-  const permErr = new Error("Unauthorized access");
-  permErr.code = "UNAUTHORIZED";
-  permErr.retryable = false;
-
-  await handleQueueCatch(permErr);
-  assert.equal(scheduleRetryCalled, false, 'scheduleRetry MUST NOT be called for PERMANENT error');
-  assert.equal(queueItemStatus, 'FAILED_PERMANENT', 'Status must transition to FAILED_PERMANENT');
-  assert.equal(nextRetryAt, 0, 'nextRetryAt must be reset to 0 for manual retry wait');
-});
-
-test('First-time Identity Retry: retryIdentityVerification creates fresh attempt and does not reuse rejected promise', async () => {
-  let attemptSeq = 0;
-
-  function createIdentityAttempt() {
-    const currentSeq = ++attemptSeq;
-    if (currentSeq === 1) {
-      return Promise.reject(new Error("NETWORK_FAILURE"));
-    }
-    return Promise.resolve({ success: true, registered: true, staffId: "STF_RETRY_001" });
-  }
-
-  // Attempt 1: 失敗
-  let firstPromise = createIdentityAttempt();
-  let firstErr = null;
-  try {
-    await firstPromise;
-  } catch (e) {
-    firstErr = e;
-  }
-  assert.ok(firstErr, 'First attempt should fail');
-
-  // Attempt 2 (Retry): 新規 Promise を生成して成功
-  let retryPromise = createIdentityAttempt();
-  const retryRes = await retryPromise;
-  assert.notEqual(firstPromise, retryPromise, 'Retry must generate a brand new Promise instance');
-  assert.equal(retryRes.registered, true);
-  assert.equal(retryRes.staffId, "STF_RETRY_001");
-});
-
-test('Contract 1: LIFF isLoggedIn=true + token=null strictly prevents Protected API sending (network calls = 0)', async () => {
-  let _liffAuthState = 'READY';
-  function waitForLiffAuthReady() {
-    const currentToken = null; // token missing
-    if (_liffAuthState === 'READY') {
-      const err = new Error("LIFF_TOKEN_MISSING");
-      err.code = "UNAUTHORIZED";
-      err.errorType = "PERMANENT";
-      err.retryable = false;
-      return Promise.reject(err);
-    }
-    return Promise.resolve(true);
-  }
-
-  let networkSent = false;
-  let caught = null;
-  try {
-    await waitForLiffAuthReady();
-    networkSent = true;
-  } catch (e) {
-    caught = e;
-  }
-
-  assert.equal(networkSent, false, 'Network must not be called when token is null despite isLoggedIn=true');
-  assert.equal(caught?.code, 'UNAUTHORIZED');
-  assert.equal(caught?.errorType, 'PERMANENT');
-});
-
-test('Contract 2: LIFF init reject explicitly terminates gate (no permanent pending)', async () => {
-  let _liffAuthState = 'PENDING';
-  let _liffAuthError = null;
-  let rejectGate;
-  const gatePromise = new Promise((_, reject) => { rejectGate = reject; });
-  gatePromise.catch(() => {});
-
-  function waitForLiffAuthReady() {
-    if (_liffAuthState === 'FAILED') {
-      return Promise.reject(_liffAuthError || new Error("LIFF_AUTH_FAILED"));
-    }
-    return gatePromise;
-  }
-
-  // Simulate init failure
-  const initErr = new Error("LINE_INIT_TIMEOUT_5S");
-  _liffAuthState = 'FAILED';
-  _liffAuthError = initErr;
-  rejectGate(initErr);
-
-  let waitRejected = false;
-  let waitErr = null;
-  try {
-    await waitForLiffAuthReady();
-  } catch (e) {
-    waitRejected = true;
-    waitErr = e;
-  }
-
-  assert.equal(waitRejected, true, 'Gate must immediately reject when init fails');
-  assert.equal(waitErr?.message, 'LINE_INIT_TIMEOUT_5S');
-});
-
-test('Contract 3: CONTRACT_EXPIRED blocks app UI and sets NO retry handler', () => {
-  let appHidden = false;
-  let loadingShown = false;
-  let statusText = '';
-  let statusOnclick = 'dummy';
-  let contractExpired = false;
-
-  const mockApp = { classList: { add: (c) => { if (c === 'hidden') appHidden = true; } } };
-  const mockLoading = { classList: { remove: (c) => { if (c === 'hidden') loadingShown = true; } } };
-  const mockStatus = {
-    set textContent(v) { statusText = v; },
-    set onclick(fn) { statusOnclick = fn; }
-  };
-
-  function handleContractExpired() {
-    contractExpired = true;
-    mockApp.classList.add('hidden');
-    mockLoading.classList.remove('hidden');
-    mockStatus.textContent = "契約期間が終了しているため利用できません。";
-    mockStatus.onclick = null;
-  }
-
-  handleContractExpired();
-
-  assert.equal(contractExpired, true, 'window.__contractExpired must be set to true');
-  assert.equal(appHidden, true, 'App element must be hidden');
-  assert.equal(loadingShown, true, 'Loading element must be shown to block UI');
-  assert.equal(statusOnclick, null, 'Must strictly NOT attach retry handler');
-  assert.ok(statusText.includes('契約期間が終了'), 'Must show contract expired message');
-});
-
-test('Contract 4: UNAUTHORIZED leads to re-login flow and sets liff_initializing flag', () => {
-  let storageFlag = null;
-  let logoutCalled = false;
-  let loginCalled = false;
-
-  const mockSessionStorage = {
-    setItem: (k, v) => { if (k === 'liff_initializing') storageFlag = v; }
-  };
   const mockLiff = {
-    logout: () => { logoutCalled = true; },
-    login: () => { loginCalled = true; }
+    isLoggedIn: () => true,
+    getAccessToken: () => {
+      if (tokenIndex < tokens.length) {
+        return tokens[tokenIndex++];
+      }
+      return null;
+    }
   };
 
-  let retryAction = null;
-  function handleUnauthorized() {
-    retryAction = function() {
-      // Safe Delay OAuth復帰フラグを必ずlogin前に設定
-      mockSessionStorage.setItem('liff_initializing', 'true');
-      mockLiff.logout();
-      mockLiff.login();
+  const sandbox = {
+    window: mockWindow,
+    document: {},
+    liff: mockLiff,
+    logDebug: () => {},
+    console: {
+      log: () => {},
+      warn: () => {},
+      error: () => {}
+    },
+    setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 10)), // speed up retries in tests
+    clearTimeout: (id) => clearTimeout(id),
+    AbortController: globalThis.AbortController,
+    fetch: async (url, options) => {
+      fetchCallCount++;
+      fetchCalls.push({ url, options });
+      if (typeof fetchHandler === 'function') {
+        return fetchHandler(url, options, fetchCallCount);
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ success: true, data: { status: 'OK' } })
+      };
+    }
+  };
+
+  mockWindow.liff = mockLiff;
+
+  const context = vm.createContext(sandbox);
+  vm.runInContext(apiJs, context);
+
+  return {
+    callApiPost: sandbox.window.callApiPost,
+    getFetchCount: () => fetchCallCount,
+    getFetchCalls: () => fetchCalls,
+    sandbox
+  };
+}
+
+// ============================================================================
+// PART 1: ACTUAL modules/api.js VM EXECUTION CONTRACTS
+// ============================================================================
+
+test('modules/api.js [VM Real]: Mandatory Negative Test: Attempt 1 transient -> Attempt 2 token=null stops before fetch (fetch count = 1, UNAUTHORIZED)', async () => {
+  // Attempt 1 provides token 'token_A', Attempt 2 provides null
+  const { callApiPost, getFetchCount } = createApiVmContext({
+    tokens: ['token_A', null],
+    fetchHandler: async (url, options, callSeq) => {
+      if (callSeq === 1) {
+        // Attempt 1: network transient failure (HTTP 500 with retryable TRANSIENT)
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ success: false, code: 'INTERNAL_ERROR', retryable: true })
+        };
+      }
+      throw new Error('Fetch MUST NOT be called for Attempt 2!');
+    }
+  });
+
+  let caughtErr = null;
+  try {
+    await callApiPost('getStaffIdentity', {});
+  } catch (err) {
+    caughtErr = err;
+  }
+
+  assert.ok(caughtErr, 'Must reject with error');
+  assert.equal(getFetchCount(), 1, 'Total fetch calls must be EXACTLY 1 (Attempt 2 must NOT call fetch)');
+  assert.equal(caughtErr.code, 'UNAUTHORIZED', 'Error code must be UNAUTHORIZED');
+  assert.equal(caughtErr.retryable, false, 'retryable must be false');
+  assert.equal(caughtErr.errorType, 'PERMANENT', 'errorType must be PERMANENT');
+});
+
+test('modules/api.js [VM Real]: Non-public action with token=null stops before fetch (fetch count = 0, UNAUTHORIZED)', async () => {
+  const { callApiPost, getFetchCount } = createApiVmContext({
+    tokens: [null] // Token missing on attempt 1
+  });
+
+  let caughtErr = null;
+  try {
+    await callApiPost('getStaffIdentity', {});
+  } catch (err) {
+    caughtErr = err;
+  }
+
+  assert.ok(caughtErr, 'Must reject when token is null');
+  assert.equal(getFetchCount(), 0, 'fetch() MUST NOT be called when token is null on protected action');
+  assert.equal(caughtErr.code, 'UNAUTHORIZED');
+  assert.equal(caughtErr.retryable, false);
+});
+
+test('modules/api.js [VM Real]: Public actions proceed without token (fetch count = 1)', async () => {
+  const { callApiPost, getFetchCount, getFetchCalls } = createApiVmContext({
+    tokens: [null] // No token
+  });
+
+  const res = await callApiPost('getMapsApiKey', {});
+  assert.equal(getFetchCount(), 1, 'Public action MUST call fetch even without token');
+  assert.equal(res?.status, 'OK');
+
+  const body = JSON.parse(getFetchCalls()[0].options.body);
+  assert.equal(body.liffToken, undefined, 'liffToken should not be attached when null');
+});
+
+test('modules/api.js [VM Real]: Auth gate missing strictly fails closed before fetch (fetch count = 0)', async () => {
+  const { callApiPost, getFetchCount } = createApiVmContext({
+    hasAuthGate: false // window.waitForLiffAuthReady is undefined
+  });
+
+  let caughtErr = null;
+  try {
+    await callApiPost('getStaffIdentity', {});
+  } catch (err) {
+    caughtErr = err;
+  }
+
+  assert.ok(caughtErr, 'Must reject when auth gate is unavailable');
+  assert.equal(getFetchCount(), 0, 'fetch() MUST NOT be called when auth gate is unavailable');
+  assert.equal(caughtErr.code, 'UNAUTHORIZED');
+});
+
+test('modules/api.js [VM Real]: Protected write gate missing strictly fails closed before fetch (fetch count = 0)', async () => {
+  const { callApiPost, getFetchCount } = createApiVmContext({
+    hasIdentityGate: false // window.waitForIdentityVerified is undefined
+  });
+
+  let caughtErr = null;
+  try {
+    await callApiPost('submitDistribution', { rowId: 1 });
+  } catch (err) {
+    caughtErr = err;
+  }
+
+  assert.ok(caughtErr, 'Must reject when identity gate is unavailable');
+  assert.equal(getFetchCount(), 0, 'fetch() MUST NOT be called when identity gate is unavailable');
+  assert.equal(caughtErr.code, 'UNAUTHORIZED');
+});
+
+test('modules/api.js [VM Real]: HTTP 429 response maps to RATE_LIMIT_EXCEEDED / TRANSIENT / retryable: true', async () => {
+  const { callApiPost } = createApiVmContext({
+    tokens: ['tok1', 'tok2', 'tok3'],
+    fetchHandler: async () => ({
+      ok: false,
+      status: 429,
+      text: async () => "Rate limit exceeded"
+    })
+  });
+
+  let caughtErr = null;
+  try {
+    await callApiPost('getStaffIdentity', {});
+  } catch (err) {
+    caughtErr = err;
+  }
+
+  assert.ok(caughtErr, 'Should throw after retry exhaustion');
+  assert.equal(caughtErr.code, 'RATE_LIMIT_EXCEEDED');
+  assert.equal(caughtErr.errorType, 'TRANSIENT');
+  assert.equal(caughtErr.retryable, true);
+});
+
+// ============================================================================
+// PART 2: ACTUAL active/h-app/app.js SOURCE CONTRACTS
+// ============================================================================
+
+test('app.js [Source-Bound]: waitForIdentityVerified requires _identityVerified === true even if promise resolves', async () => {
+  const gateSource = extractFunction(appJs, 'waitForIdentityVerified');
+  assert.ok(gateSource, 'waitForIdentityVerified must be present in app.js');
+
+  const sandbox = {
+    _identityVerified: false,
+    _identitySyncPromise: Promise.resolve(false), // Promise resolved to false!
+    _identityLastError: Object.assign(new Error("AUTH_REJECTED"), { code: "UNAUTHORIZED", retryable: false }),
+    Error,
+    Object
+  };
+
+  const gateFn = new Function(
+    'sandbox',
+    `with(sandbox) { return (${gateSource}); }`
+  )(sandbox);
+
+  let caughtErr = null;
+  try {
+    await gateFn();
+  } catch (e) {
+    caughtErr = e;
+  }
+
+  assert.ok(caughtErr, 'Must reject when _identityVerified is false even if promise resolved');
+  assert.equal(caughtErr.code, 'UNAUTHORIZED');
+
+  // Now verify that when _identityVerified is true, it passes
+  sandbox._identityVerified = true;
+  const passResult = await gateFn();
+  assert.equal(passResult, true, 'Must pass when _identityVerified is true');
+});
+
+test('app.js [Source-Bound]: showIdentityErrorUI hides #app, shows #loading, and separates error actions', () => {
+  const fnSource = extractFunction(appJs, 'showIdentityErrorUI');
+  assert.ok(fnSource, 'showIdentityErrorUI must be present in app.js');
+
+  function runShowUI(err, liffAuthState = 'READY') {
+    let appHidden = false;
+    let loadingShown = false;
+    let statusText = '';
+    let statusOnclick = null;
+    let reloadCalled = false;
+    let liffLoginCalled = false;
+    let retryCalled = false;
+    let sessionFlag = null;
+
+    const mockApp = {
+      classList: {
+        add: (c) => { if (c === 'hidden') appHidden = true; }
+      }
+    };
+    const mockLoading = {
+      classList: {
+        remove: (c) => { if (c === 'hidden') loadingShown = true; }
+      }
+    };
+    const mockStatus = {
+      set textContent(v) { statusText = v; },
+      get textContent() { return statusText; },
+      set onclick(fn) { statusOnclick = fn; },
+      get onclick() { return statusOnclick; },
+      style: {}
+    };
+
+    const mockSessionStorage = {
+      setItem: (k, v) => { if (k === 'liff_initializing') sessionFlag = v; },
+      getItem: (k) => (k === 'liff_initializing' ? sessionFlag : null)
+    };
+
+    const mockLiff = {
+      logout: () => {},
+      login: () => { liffLoginCalled = true; }
+    };
+
+    // Set on globalThis so unqualified sessionStorage and liff resolve correctly
+    globalThis.sessionStorage = mockSessionStorage;
+    globalThis.liff = mockLiff;
+
+    const sandbox = {
+      $: (id) => {
+        if (id === 'app') return mockApp;
+        if (id === 'loading') return mockLoading;
+        if (id === 'loading-status') return mockStatus;
+        return null;
+      },
+      mainAppVisible: true,
+      window: {
+        __contractExpired: false,
+        location: { reload: () => { reloadCalled = true; }, href: 'https://kuwana.postingmap.jp' },
+        retryIdentityVerification: () => { retryCalled = true; },
+        sessionStorage: mockSessionStorage,
+        liff: mockLiff
+      },
+      sessionStorage: mockSessionStorage,
+      setSyncStatus: () => {},
+      _liffAuthState: liffAuthState,
+      liff: mockLiff
+    };
+
+    const showUiFn = new Function(
+      'sandbox',
+      `with(sandbox) { return (${fnSource}); }`
+    )(sandbox);
+
+    showUiFn(err);
+
+    return {
+      appHidden,
+      loadingShown,
+      statusText,
+      statusOnclick,
+      reloadCalled: () => reloadCalled,
+      liffLoginCalled: () => liffLoginCalled,
+      retryCalled: () => retryCalled,
+      sessionFlag: () => sessionFlag,
+      contractExpired: () => sandbox.window.__contractExpired
     };
   }
 
-  handleUnauthorized();
-  assert.ok(typeof retryAction === 'function', 'Must create re-login action');
+  // Case 1: CONTRACT_EXPIRED
+  const r1 = runShowUI({ code: 'CONTRACT_EXPIRED' });
+  assert.equal(r1.appHidden, true, 'App must be hidden on CONTRACT_EXPIRED');
+  assert.equal(r1.loadingShown, true, 'Loading must be shown on CONTRACT_EXPIRED');
+  assert.equal(r1.contractExpired(), true, '__contractExpired must be set');
+  assert.equal(r1.statusOnclick, null, 'Must NOT attach retry onclick on CONTRACT_EXPIRED');
 
-  // Trigger tap
-  retryAction();
-  assert.equal(storageFlag, 'true', 'sessionStorage liff_initializing must be set before login');
-  assert.equal(logoutCalled, true, 'Must call liff.logout');
-  assert.equal(loginCalled, true, 'Must call liff.login');
+  // Case 2: UNAUTHORIZED
+  const r2 = runShowUI({ code: 'UNAUTHORIZED' });
+  assert.equal(r2.appHidden, true, 'App must be hidden on UNAUTHORIZED');
+  assert.equal(r2.loadingShown, true, 'Loading must be shown on UNAUTHORIZED');
+  assert.ok(typeof r2.statusOnclick === 'function', 'Must attach re-login handler on UNAUTHORIZED');
+  r2.statusOnclick();
+  assert.equal(r2.sessionFlag(), 'true', 'Must set sessionStorage liff_initializing=true before login');
+  assert.equal(r2.liffLoginCalled(), true, 'Must call liff.login on UNAUTHORIZED tap');
+
+  // Case 3: LIFF Init Failure (FAILED state or timeout) -> MUST route to reload, NOT retryIdentityVerification
+  const r3 = runShowUI(new Error("LINEログインの応答がタイムアウトしました(5秒)"), 'FAILED');
+  assert.equal(r3.appHidden, true, 'App must be hidden on LIFF init failure');
+  assert.equal(r3.loadingShown, true, 'Loading must be shown on LIFF init failure');
+  assert.ok(typeof r3.statusOnclick === 'function', 'Must attach reload handler on LIFF failure');
+  r3.statusOnclick();
+  assert.equal(r3.reloadCalled(), true, 'Must call window.location.reload() on LIFF failure tap');
+  assert.equal(r3.retryCalled(), false, 'Must NOT call retryIdentityVerification() on LIFF failure tap');
+
+  // Case 4: Identity API TRANSIENT -> Routes to retryIdentityVerification
+  const r4 = runShowUI({ code: 'LOCK_TIMEOUT', message: 'Lock wait timeout' });
+  assert.equal(r4.appHidden, true, 'App must be hidden on TRANSIENT');
+  assert.equal(r4.loadingShown, true, 'Loading must be shown on TRANSIENT');
+  assert.ok(typeof r4.statusOnclick === 'function', 'Must attach retry handler on TRANSIENT');
+  r4.statusOnclick();
+  assert.equal(r4.retryCalled(), true, 'Must call retryIdentityVerification() on TRANSIENT tap');
+  assert.equal(r4.reloadCalled(), false, 'Must NOT reload on TRANSIENT tap');
 });
 
-test('Contract 5: HTTP 429 maps to RATE_LIMIT_EXCEEDED / TRANSIENT / retryable:true', () => {
-  function mapHttpStatus(status) {
-    if (status === 429) {
-      return { code: "RATE_LIMIT_EXCEEDED", errorType: "TRANSIENT", retryable: true };
-    }
-    return { code: "UNKNOWN", errorType: "PERMANENT", retryable: false };
-  }
+test('app.js [Source-Bound Static]: safeInitApp identity sync error handling eliminated unhandled rethrows', () => {
+  // Verify that _identitySyncPromise catch block invokes showIdentityErrorUI and sets _identityLastError
+  assert.ok(appJs.includes('_identityLastError = err;'), 'Must record _identityLastError on failure');
+  assert.ok(appJs.includes('showIdentityErrorUI(err);'), 'Must call showIdentityErrorUI on failure');
 
-  const err = mapHttpStatus(429);
-  assert.equal(err.code, 'RATE_LIMIT_EXCEEDED');
-  assert.equal(err.errorType, 'TRANSIENT');
-  assert.equal(err.retryable, true);
+  // Verify that safeInitApp catches liff.init error and invokes showIdentityErrorUI
+  assert.ok(
+    appJs.includes("_liffAuthState = 'FAILED';\n      _liffAuthError = err;\n      if (typeof _liffAuthReadyRejecter === 'function') {\n        _liffAuthReadyRejecter(err);\n      }\n      showIdentityErrorUI(err);"),
+    'LIFF init error block must call showIdentityErrorUI'
+  );
 });
 
-test('Contract 6: Retry attempt 2 deletes previous payload.liffToken and prevents token residue when token=null', () => {
-  const payload = { action: 'submitDistribution', count: 100 };
+// ============================================================================
+// PART 3: tests/measure_chrome_real.mjs SOURCE CONTRACTS
+// ============================================================================
 
-  // Attempt 1: Valid token
-  let token1 = 'valid_token_attempt_1';
-  delete payload.liffToken;
-  if (token1) payload.liffToken = token1;
-  assert.equal(payload.liffToken, 'valid_token_attempt_1');
-
-  // Attempt 2: Token became null / revoked
-  let token2 = null;
-  delete payload.liffToken;
-  if (token2) payload.liffToken = token2;
-  assert.equal('liffToken' in payload, false, 'Stale token from attempt 1 must be strictly deleted when token is null');
-});
-
-test('Contract 7: Cold Start SEPARATED is NOT counted as local benchmark PASS', () => {
-  const benchmarkResults = {
-    warmPass: true,
-    offlinePass: true,
-    coldStatus: 'SEPARATED'
-  };
-
-  // PASS evaluation must only check warmPass and offlinePass
-  const localPass = benchmarkResults.warmPass && benchmarkResults.offlinePass;
-  assert.equal(localPass, true);
-  assert.equal('coldPass' in benchmarkResults, false, 'coldPass must not exist in benchmark results');
-  assert.equal(benchmarkResults.coldStatus, 'SEPARATED', 'Cold Start must be explicitly marked SEPARATED');
-});
-
-test('Contract 8: Protected Write + waitForIdentityVerified missing strictly fails closed (network calls = 0)', async () => {
-  const mockWindow = {
-    waitForLiffAuthReady: async () => true
-    // waitForIdentityVerified is completely missing (undefined)
-  };
-
-  let networkSent = false;
-  let caught = null;
-
-  async function mockCallApiPost(action) {
-    if (action === 'submitDistribution') {
-      if (typeof mockWindow.waitForIdentityVerified !== 'function') {
-        const identErr = new Error("IDENTITY_GATE_UNAVAILABLE");
-        identErr.code = "UNAUTHORIZED";
-        identErr.errorType = "PERMANENT";
-        identErr.retryable = false;
-        throw identErr;
-      }
-      networkSent = true;
-    }
-  }
-
-  try {
-    await mockCallApiPost('submitDistribution');
-  } catch (e) {
-    caught = e;
-  }
-
-  assert.equal(networkSent, false, 'Network request must NOT be sent when identity gate is unavailable');
-  assert.equal(caught?.code, 'UNAUTHORIZED');
-  assert.equal(caught?.errorType, 'PERMANENT');
-  assert.equal(caught?.retryable, false);
+test('measure_chrome_real.mjs [Source-Bound]: coldPass is strictly absent and coldStatus is SEPARATED', () => {
+  assert.ok(!measureJs.includes('coldPass'), 'coldPass MUST NOT exist in measure_chrome_real.mjs');
+  assert.ok(measureJs.includes("coldStatus = 'SEPARATED'"), 'Cold Start must be explicitly marked SEPARATED');
+  assert.ok(!measureJs.includes('coldT2'), 'coldT2 must not be converted to benchmark metric');
 });

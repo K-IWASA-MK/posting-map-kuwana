@@ -184,11 +184,29 @@ window.isLiffAuthReady = function() {
 // --- Identity Safety Gate (Verified後のみ業務Write許可) ---
 let _identityVerified = false;
 let _identitySyncPromise = null;
+let _identityLastError = null;
 
-function waitForIdentityVerified() {
-  if (_identityVerified) return Promise.resolve(true);
-  if (_identitySyncPromise) return _identitySyncPromise;
-  return Promise.reject(new Error("IDENTITY_NOT_INITIALIZED"));
+async function waitForIdentityVerified() {
+  if (_identityVerified === true) return true;
+
+  if (_identitySyncPromise) {
+    await _identitySyncPromise;
+
+    if (_identityVerified === true) return true;
+
+    throw _identityLastError ||
+      Object.assign(new Error('IDENTITY_NOT_VERIFIED'), {
+        code: 'UNAUTHORIZED',
+        errorType: 'PERMANENT',
+        retryable: false
+      });
+  }
+
+  throw Object.assign(new Error('IDENTITY_NOT_INITIALIZED'), {
+    code: 'UNAUTHORIZED',
+    errorType: 'PERMANENT',
+    retryable: false
+  });
 }
 window.waitForIdentityVerified = waitForIdentityVerified;
 
@@ -1710,6 +1728,7 @@ async function safeInitApp() {
           }
 
           // 【Backend Identity 非同期同期】getStaffIdentity をバックグラウンド Promise で実行
+          _identityLastError = null;
           _identitySyncPromise = callApiPost('getStaffIdentity', {})
             .then(identityRes => {
               if (identityRes && identityRes.success && identityRes.registered && identityRes.staffId && String(identityRes.staffId).trim() !== '') {
@@ -1723,6 +1742,7 @@ async function safeInitApp() {
                 };
                 localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
                 _identityVerified = true;
+                _identityLastError = null;
 
                 if (typeof renderSettings === 'function') {
                   renderSettings();
@@ -1767,6 +1787,7 @@ async function safeInitApp() {
                     throw new Error("Registration finished but staffId is missing in storage");
                   }
                   _identityVerified = true;
+                  _identityLastError = null;
 
                   // 登録完了に伴う未送信Queue Flush再発火
                   if (typeof processQueue === 'function') {
@@ -1778,6 +1799,7 @@ async function safeInitApp() {
                   return true;
                 }).catch(rErr => {
                   _identityVerified = false;
+                  _identityLastError = rErr;
                   logDebug("Registration halted: " + (rErr ? rErr.message : rErr));
                   throw rErr;
                 });
@@ -1787,16 +1809,15 @@ async function safeInitApp() {
               console.warn("Identity verification failed:", err);
               logDebug("Identity verification failed: " + err.message);
               _identityVerified = false;
-              throw err;
+              _identityLastError = err;
+              showIdentityErrorUI(err);
+              return false;
             });
 
           // 初回起動時のみ、非同期 Promise の完了を待ってから抜ける
           if (!hasExistingStaffId) {
-            try {
-              await _identitySyncPromise;
-            } catch (waitErr) {
-              console.warn("First-time identity wait encountered error:", waitErr);
-              showIdentityErrorUI(waitErr);
+            await _identitySyncPromise;
+            if (!_identityVerified) {
               return;
             }
           }
@@ -1844,7 +1865,7 @@ async function safeInitApp() {
       if (typeof _liffAuthReadyRejecter === 'function') {
         _liffAuthReadyRejecter(err);
       }
-      $('loading-status').textContent = "起動エラー: " + err.message;
+      showIdentityErrorUI(err);
     }
   } else {
     logDebug("Running in standalone web browser. Blocked.");
@@ -1862,23 +1883,32 @@ async function safeInitApp() {
 }
 
 function showIdentityErrorUI(err) {
+  mainAppVisible = false;
+  const appEl = $('app');
+  if (appEl) {
+    appEl.classList.add('hidden');
+    appEl.classList.add('opacity-0');
+  }
+  const loadingEl = $('loading');
+  if (loadingEl) {
+    loadingEl.classList.remove('hidden');
+    loadingEl.classList.remove('opacity-0');
+  }
+
   const statusEl = $('loading-status');
   if (!statusEl) return;
 
+  // 1. CONTRACT_EXPIRED: App遮断、再試行なし
   if (err && (err.code === 'CONTRACT_EXPIRED' || err.contractStatus === 'EXPIRED' || err.isExpired === true)) {
     window.__contractExpired = true;
     if (typeof setSyncStatus === 'function') setSyncStatus('offline');
-    const appEl = $('app');
-    if (appEl) { appEl.classList.add('hidden'); appEl.classList.add('opacity-0'); }
-    const loadingEl = $('loading');
-    if (loadingEl) { loadingEl.classList.remove('hidden'); loadingEl.classList.remove('opacity-0'); }
-
     statusEl.textContent = "契約期間が終了しているため利用できません。";
     statusEl.onclick = null;
     statusEl.style.cursor = 'default';
     return;
   }
 
+  // 2. UNAUTHORIZED / token失効: App遮断、LINE再ログイン
   if (err && err.code === 'UNAUTHORIZED') {
     statusEl.textContent = "認証エラー: LINEログインの有効期限が切れました。\n(タップして再ログイン)";
     statusEl.style.cursor = 'pointer';
@@ -1887,9 +1917,10 @@ function showIdentityErrorUI(err) {
       statusEl.style.cursor = 'default';
       // Safe Delay OAuth復帰フラグを必ずlogin前に設定
       sessionStorage.setItem('liff_initializing', 'true');
-      if (typeof liff !== 'undefined' && liff.logout && liff.login) {
-        try { liff.logout(); } catch(e) {}
-        liff.login({ redirectUri: window.location.href });
+      const liffObj = typeof liff !== 'undefined' ? liff : (typeof window !== 'undefined' ? window.liff : null);
+      if (liffObj && liffObj.logout && liffObj.login) {
+        try { liffObj.logout(); } catch(e) {}
+        liffObj.login({ redirectUri: window.location.href });
       } else {
         window.location.reload();
       }
@@ -1897,7 +1928,22 @@ function showIdentityErrorUI(err) {
     return;
   }
 
-  // その他のエラー (TRANSIENT / 通信エラー等)
+  // 3. LIFF init timeout / init reject / FAILED: App遮断、「タップして再接続」でページreload
+  const isLiffInitFailure = _liffAuthState === 'FAILED' || (err && (err.isLiffInitError || (err.message && err.message.includes('LINEログインの応答がタイムアウト'))));
+  if (isLiffInitFailure) {
+    let msg = "接続エラー: ";
+    msg += (err ? err.message : "LINE初期化に失敗しました") + "\n(タップして再接続)";
+    statusEl.textContent = msg;
+    statusEl.style.cursor = 'pointer';
+    statusEl.onclick = function() {
+      statusEl.onclick = null;
+      statusEl.style.cursor = 'default';
+      window.location.reload();
+    };
+    return;
+  }
+
+  // 4. Identity API の TRANSIENT / 通信エラー: App遮断、retryIdentityVerification()
   let msg = "初期化エラー: ";
   msg += (err ? (err.message || err.code) : "通信エラー") + "\n(タップして再試行)";
   statusEl.textContent = msg;
@@ -1924,6 +1970,7 @@ window.retryIdentityVerification = function() {
   } : null);
 
   // 新規 Promise を生成して再試行（reject済みの古いPromiseは再利用しない）
+  _identityLastError = null;
   _identitySyncPromise = callApiPost('getStaffIdentity', {})
     .then(identityRes => {
       if (identityRes && identityRes.success && identityRes.registered && identityRes.staffId && String(identityRes.staffId).trim() !== '') {
@@ -1936,6 +1983,7 @@ window.retryIdentityVerification = function() {
         };
         localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
         _identityVerified = true;
+        _identityLastError = null;
         if (typeof renderSettings === 'function') renderSettings();
         updateBottomNavVisibility();
         if (typeof processQueue === 'function') processQueue();
@@ -1952,6 +2000,7 @@ window.retryIdentityVerification = function() {
             throw new Error("Registration finished but staffId is missing in storage");
           }
           _identityVerified = true;
+          _identityLastError = null;
           if (typeof processQueue === 'function') processQueue();
           setLoadingProgress(100, 'READY');
           showMainApp();
@@ -1962,7 +2011,9 @@ window.retryIdentityVerification = function() {
     .catch(err => {
       console.warn("Retry identity verification failed:", err);
       _identityVerified = false;
+      _identityLastError = err;
       showIdentityErrorUI(err);
+      return false;
     });
 };
 
