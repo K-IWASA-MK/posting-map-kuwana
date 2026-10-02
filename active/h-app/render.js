@@ -831,6 +831,7 @@ window.initMainMap = function() {
 
       // ユーザ指定のoverlayMouseTargetに格納し、クリックを有効にする
       const panes = this.getPanes();
+      google.maps.OverlayView.preventMapHitsAndGesturesFrom(div);
       panes.overlayMouseTarget.appendChild(div);
     }
 
