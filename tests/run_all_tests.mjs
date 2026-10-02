@@ -39,7 +39,8 @@ const testSuites = [
   'test_gap001_ready_freeze_regression.mjs',
   'test_registry_provisioning_gate.mjs',
   'test_district_data_gate.mjs',
-  'test_schema_provisioning_healing.mjs'
+  'test_schema_provisioning_healing.mjs',
+  'test_architecture_gate.mjs'
 ];
 
 console.log("====================================================");

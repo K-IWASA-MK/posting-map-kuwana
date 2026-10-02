@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import { resolve, normalize } from 'path';
 
@@ -86,6 +86,35 @@ if (violations.length > 0) {
 }
 
 console.log('🟢 Scope Validation PASSED: All code changes are within the approved Git-HEAD scope.');
+
+// [防衛 3] Governance Separation Control (改ざん耐性)
+const governanceFiles = new Set([
+  normalize('scripts/check-scope.mjs'),
+  normalize('scripts/check-architecture-gate.mjs'),
+  normalize('package.json'),
+  normalize('AGENTS.md')
+]);
+
+const hasGovernanceChanges = changedFiles.some(f => governanceFiles.has(f));
+const hasAppChanges = changedFiles.some(f => f.startsWith(normalize('active/h-app/')));
+
+if (hasGovernanceChanges && hasAppChanges) {
+  exitFail('Governance Separation Violation: Cannot modify Architecture Governance Files and active/h-app/** in the same transaction.');
+}
+
+// ─────────────────────────────────────────────────────────────
+// 【モード 3: Architecture Guard (実装コミット時のみ実行)】
+// ─────────────────────────────────────────────────────────────
+console.log('\n[Architecture Guard] Executing Mechanical Architecture Guard...');
+try {
+  execFileSync(
+    process.execPath,
+    [resolve(rootDir, 'scripts/check-architecture-gate.mjs')],
+    { cwd: rootDir, stdio: 'inherit' }
+  );
+} catch (e) {
+  exitFail('Architecture Guard Failed. See details above.');
+}
 
 // 5. Scope Guard Complete
 console.log('\n✅ [Scope Guard Complete] Scope Validation Succeeded.');
