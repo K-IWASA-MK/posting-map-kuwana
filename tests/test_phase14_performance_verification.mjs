@@ -31,6 +31,8 @@ test('1. 性能契約直接検証: T0〜T5測定境界、Warm/Cold/Offline SLA�
   assert.ok(chromeReal.includes('calcStats(measurementsT2)'), 'measure_chrome_real.mjs must invoke calcStats for measurements');
   assert.ok(chromeReal.includes('sorted[mid]'), 'measure_chrome_real.mjs must explicitly derive statistical median from sorted samples');
   assert.ok(chromeReal.includes('warmPass') && chromeReal.includes('offlinePass') && chromeReal.includes('SEPARATED'), 'measure_chrome_real.mjs must implement real-browser benchmark for Warm/Offline SLAs and separate Cold Start to LIFF/Auth E2E');
+  assert.ok(!chromeReal.includes('coldPass'), 'measure_chrome_real.mjs must strictly NOT treat Cold Start as local benchmark pass');
+  assert.ok(!chromeReal.includes('ALL CHROME REAL-BROWSER SLA TESTS PASSED'), 'measure_chrome_real.mjs must strictly NOT claim ALL SLA PASSED when Cold is unmeasured');
   assert.ok(chromeReal.includes('MEASUREMENT_TIMEOUT'), 'measure_chrome_real.mjs must enforce MEASUREMENT_TIMEOUT on unobserved metrics without fake fallbacks');
 });
 

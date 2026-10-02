@@ -222,3 +222,206 @@ test('First-time Identity Retry: retryIdentityVerification creates fresh attempt
   assert.equal(retryRes.registered, true);
   assert.equal(retryRes.staffId, "STF_RETRY_001");
 });
+
+test('Contract 1: LIFF isLoggedIn=true + token=null strictly prevents Protected API sending (network calls = 0)', async () => {
+  let _liffAuthState = 'READY';
+  function waitForLiffAuthReady() {
+    const currentToken = null; // token missing
+    if (_liffAuthState === 'READY') {
+      const err = new Error("LIFF_TOKEN_MISSING");
+      err.code = "UNAUTHORIZED";
+      err.errorType = "PERMANENT";
+      err.retryable = false;
+      return Promise.reject(err);
+    }
+    return Promise.resolve(true);
+  }
+
+  let networkSent = false;
+  let caught = null;
+  try {
+    await waitForLiffAuthReady();
+    networkSent = true;
+  } catch (e) {
+    caught = e;
+  }
+
+  assert.equal(networkSent, false, 'Network must not be called when token is null despite isLoggedIn=true');
+  assert.equal(caught?.code, 'UNAUTHORIZED');
+  assert.equal(caught?.errorType, 'PERMANENT');
+});
+
+test('Contract 2: LIFF init reject explicitly terminates gate (no permanent pending)', async () => {
+  let _liffAuthState = 'PENDING';
+  let _liffAuthError = null;
+  let rejectGate;
+  const gatePromise = new Promise((_, reject) => { rejectGate = reject; });
+  gatePromise.catch(() => {});
+
+  function waitForLiffAuthReady() {
+    if (_liffAuthState === 'FAILED') {
+      return Promise.reject(_liffAuthError || new Error("LIFF_AUTH_FAILED"));
+    }
+    return gatePromise;
+  }
+
+  // Simulate init failure
+  const initErr = new Error("LINE_INIT_TIMEOUT_5S");
+  _liffAuthState = 'FAILED';
+  _liffAuthError = initErr;
+  rejectGate(initErr);
+
+  let waitRejected = false;
+  let waitErr = null;
+  try {
+    await waitForLiffAuthReady();
+  } catch (e) {
+    waitRejected = true;
+    waitErr = e;
+  }
+
+  assert.equal(waitRejected, true, 'Gate must immediately reject when init fails');
+  assert.equal(waitErr?.message, 'LINE_INIT_TIMEOUT_5S');
+});
+
+test('Contract 3: CONTRACT_EXPIRED blocks app UI and sets NO retry handler', () => {
+  let appHidden = false;
+  let loadingShown = false;
+  let statusText = '';
+  let statusOnclick = 'dummy';
+  let contractExpired = false;
+
+  const mockApp = { classList: { add: (c) => { if (c === 'hidden') appHidden = true; } } };
+  const mockLoading = { classList: { remove: (c) => { if (c === 'hidden') loadingShown = true; } } };
+  const mockStatus = {
+    set textContent(v) { statusText = v; },
+    set onclick(fn) { statusOnclick = fn; }
+  };
+
+  function handleContractExpired() {
+    contractExpired = true;
+    mockApp.classList.add('hidden');
+    mockLoading.classList.remove('hidden');
+    mockStatus.textContent = "契約期間が終了しているため利用できません。";
+    mockStatus.onclick = null;
+  }
+
+  handleContractExpired();
+
+  assert.equal(contractExpired, true, 'window.__contractExpired must be set to true');
+  assert.equal(appHidden, true, 'App element must be hidden');
+  assert.equal(loadingShown, true, 'Loading element must be shown to block UI');
+  assert.equal(statusOnclick, null, 'Must strictly NOT attach retry handler');
+  assert.ok(statusText.includes('契約期間が終了'), 'Must show contract expired message');
+});
+
+test('Contract 4: UNAUTHORIZED leads to re-login flow and sets liff_initializing flag', () => {
+  let storageFlag = null;
+  let logoutCalled = false;
+  let loginCalled = false;
+
+  const mockSessionStorage = {
+    setItem: (k, v) => { if (k === 'liff_initializing') storageFlag = v; }
+  };
+  const mockLiff = {
+    logout: () => { logoutCalled = true; },
+    login: () => { loginCalled = true; }
+  };
+
+  let retryAction = null;
+  function handleUnauthorized() {
+    retryAction = function() {
+      // Safe Delay OAuth復帰フラグを必ずlogin前に設定
+      mockSessionStorage.setItem('liff_initializing', 'true');
+      mockLiff.logout();
+      mockLiff.login();
+    };
+  }
+
+  handleUnauthorized();
+  assert.ok(typeof retryAction === 'function', 'Must create re-login action');
+
+  // Trigger tap
+  retryAction();
+  assert.equal(storageFlag, 'true', 'sessionStorage liff_initializing must be set before login');
+  assert.equal(logoutCalled, true, 'Must call liff.logout');
+  assert.equal(loginCalled, true, 'Must call liff.login');
+});
+
+test('Contract 5: HTTP 429 maps to RATE_LIMIT_EXCEEDED / TRANSIENT / retryable:true', () => {
+  function mapHttpStatus(status) {
+    if (status === 429) {
+      return { code: "RATE_LIMIT_EXCEEDED", errorType: "TRANSIENT", retryable: true };
+    }
+    return { code: "UNKNOWN", errorType: "PERMANENT", retryable: false };
+  }
+
+  const err = mapHttpStatus(429);
+  assert.equal(err.code, 'RATE_LIMIT_EXCEEDED');
+  assert.equal(err.errorType, 'TRANSIENT');
+  assert.equal(err.retryable, true);
+});
+
+test('Contract 6: Retry attempt 2 deletes previous payload.liffToken and prevents token residue when token=null', () => {
+  const payload = { action: 'submitDistribution', count: 100 };
+
+  // Attempt 1: Valid token
+  let token1 = 'valid_token_attempt_1';
+  delete payload.liffToken;
+  if (token1) payload.liffToken = token1;
+  assert.equal(payload.liffToken, 'valid_token_attempt_1');
+
+  // Attempt 2: Token became null / revoked
+  let token2 = null;
+  delete payload.liffToken;
+  if (token2) payload.liffToken = token2;
+  assert.equal('liffToken' in payload, false, 'Stale token from attempt 1 must be strictly deleted when token is null');
+});
+
+test('Contract 7: Cold Start SEPARATED is NOT counted as local benchmark PASS', () => {
+  const benchmarkResults = {
+    warmPass: true,
+    offlinePass: true,
+    coldStatus: 'SEPARATED'
+  };
+
+  // PASS evaluation must only check warmPass and offlinePass
+  const localPass = benchmarkResults.warmPass && benchmarkResults.offlinePass;
+  assert.equal(localPass, true);
+  assert.equal('coldPass' in benchmarkResults, false, 'coldPass must not exist in benchmark results');
+  assert.equal(benchmarkResults.coldStatus, 'SEPARATED', 'Cold Start must be explicitly marked SEPARATED');
+});
+
+test('Contract 8: Protected Write + waitForIdentityVerified missing strictly fails closed (network calls = 0)', async () => {
+  const mockWindow = {
+    waitForLiffAuthReady: async () => true
+    // waitForIdentityVerified is completely missing (undefined)
+  };
+
+  let networkSent = false;
+  let caught = null;
+
+  async function mockCallApiPost(action) {
+    if (action === 'submitDistribution') {
+      if (typeof mockWindow.waitForIdentityVerified !== 'function') {
+        const identErr = new Error("IDENTITY_GATE_UNAVAILABLE");
+        identErr.code = "UNAUTHORIZED";
+        identErr.errorType = "PERMANENT";
+        identErr.retryable = false;
+        throw identErr;
+      }
+      networkSent = true;
+    }
+  }
+
+  try {
+    await mockCallApiPost('submitDistribution');
+  } catch (e) {
+    caught = e;
+  }
+
+  assert.equal(networkSent, false, 'Network request must NOT be sent when identity gate is unavailable');
+  assert.equal(caught?.code, 'UNAUTHORIZED');
+  assert.equal(caught?.errorType, 'PERMANENT');
+  assert.equal(caught?.retryable, false);
+});

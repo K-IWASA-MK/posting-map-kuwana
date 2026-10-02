@@ -359,19 +359,17 @@ async function main() {
 
   let warmPass = warmT2.median <= 200 && warmT2.max <= 250;
   let offlinePass = offlineT2.median <= 200 && offlineT2.max <= 250;
-  // Cold Start (≤ 800ms): LIFF/Auth 必須のため Local file:// では偽実測を行わず、本番E2E/実機受入プロトコル（Acceptance）にて実測検証
-  let coldPass = true; // SEPARATED to E2E / Acceptance Protocol
+  const coldStatus = 'SEPARATED'; // NOT_MEASURED: Local file:// では本番LINE OAuthが成立しないため実機受入プロトコル側で実測判定
 
   console.log(`Warm Start SLA (≤ 200ms):    ${warmPass ? '✅ PASS' : '❌ FAIL'} (Median: ${warmT2.median.toFixed(1)}ms, Max: ${warmT2.max.toFixed(1)}ms)`);
-  console.log(`Cold Start SLA (≤ 800ms):    ℹ️ SEPARATED (LIFF/Auth Production E2E Verification)`);
+  console.log(`Cold Start SLA (≤ 800ms):    ℹ️ ${coldStatus} / NOT_MEASURED (LIFF/Auth Production E2E Verification)`);
   console.log(`Offline Start SLA (≤ 200ms): ${offlinePass ? '✅ PASS' : '❌ FAIL'} (Median: ${offlineT2.median.toFixed(1)}ms, Max: ${offlineT2.max.toFixed(1)}ms)`);
   console.log(`Weak Network (観測記録):     ✅ STABLE (Median: ${weakT2.median.toFixed(1)}ms, Max: ${weakT2.max.toFixed(1)}ms, No Freeze)`);
 
   assert.ok(warmPass, `Warm Start failed SLA: Median=${warmT2.median}ms, Max=${warmT2.max}ms`);
-  assert.ok(coldPass, `Cold Start SLA separation verified`);
   assert.ok(offlinePass, `Offline Start failed SLA: Median=${offlineT2.median}ms, Max=${offlineT2.max}ms`);
 
-  console.log("\n🎉 ALL CHROME REAL-BROWSER SLA TESTS PASSED HONESTLY!");
+  console.log("\n🎉 LOCAL CHROME BENCHMARKS PASSED (Warm/Offline SLA Clear, Cold Start: NOT MEASURED HERE)");
   console.log("====================================================");
 }
 

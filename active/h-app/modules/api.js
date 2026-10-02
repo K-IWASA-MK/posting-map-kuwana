@@ -56,15 +56,26 @@ async function callApiPost(action, payload = {}) {
   const isIdentityBootstrap = IDENTITY_BOOTSTRAP_ACTIONS.includes(action);
   const isProtectedWrite = PROTECTED_WRITE_ACTIONS.includes(action);
 
-  // 1. Auth Readiness Gates (送信前の安全な待機)
+  // 1. Auth Readiness Gates (Fail-Closed: 存在しない場合も送信拒否)
   if (!isPublic) {
-    if (typeof window !== 'undefined' && typeof window.waitForLiffAuthReady === 'function') {
-      await window.waitForLiffAuthReady();
+    if (typeof window === 'undefined' || typeof window.waitForLiffAuthReady !== 'function') {
+      const authErr = new Error("AUTH_GATE_UNAVAILABLE");
+      authErr.code = "UNAUTHORIZED";
+      authErr.errorType = "PERMANENT";
+      authErr.retryable = false;
+      throw authErr;
     }
+    await window.waitForLiffAuthReady();
+
     if (isProtectedWrite) {
-      if (typeof window !== 'undefined' && typeof window.waitForIdentityVerified === 'function') {
-        await window.waitForIdentityVerified();
+      if (typeof window.waitForIdentityVerified !== 'function') {
+        const identErr = new Error("IDENTITY_GATE_UNAVAILABLE");
+        identErr.code = "UNAUTHORIZED";
+        identErr.errorType = "PERMANENT";
+        identErr.retryable = false;
+        throw identErr;
       }
+      await window.waitForIdentityVerified();
     }
   }
 
@@ -75,7 +86,8 @@ async function callApiPost(action, payload = {}) {
   }
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    // リトライ毎に最新の有効トークンを動的取得
+    // リトライ毎に前回のトークンを削除し、最新の有効トークンのみを動的取得して付与
+    delete payload.liffToken;
     const token = getLiffAuthToken();
     if (token) {
       payload.liffToken = token;
@@ -111,40 +123,76 @@ async function callApiPost(action, payload = {}) {
       clearTimeout(timeoutId);
       logDebug(`[callApiPost] FETCH OK. status=${response.status}`);
 
-      if (!response.ok) {
-        const httpErr = new Error(`HTTP Error: ${response.status}`);
-        httpErr.code = response.status === 401 ? "UNAUTHORIZED" : (response.status >= 500 ? "INTERNAL_ERROR" : "NETWORK_FAILURE");
-        httpErr.errorType = response.status >= 500 ? "TRANSIENT" : "PERMANENT";
-        httpErr.retryable = response.status >= 500;
-        throw httpErr;
-      }
-
       const text = await response.text();
-      logDebug(`[callApiPost] TEXT RECEIVED (length=${text.length})`);
+      logDebug(`[callApiPost] TEXT RECEIVED (length=${text.length}, status=${response.status})`);
 
-      let data;
+      let data = null;
+      let jsonParsed = false;
       try {
         data = JSON.parse(text);
+        jsonParsed = true;
       } catch (parseErr) {
-        const jsonErr = new Error("JSON形式ではない応答を受け取りました: " + parseErr.message);
-        jsonErr.code = "MALFORMED_JSON";
-        jsonErr.errorType = "PERMANENT";
-        jsonErr.retryable = false;
-        throw jsonErr;
+        // JSON パース失敗時はスキップし後続の判定へ
       }
 
-      // レスポンスの展開とエラーチェック
+      // レスポンスの展開
       let targetResult = data;
       if (data && typeof data === 'object' && 'data' in data && data.data !== null) {
         targetResult = data.data;
       }
 
-      if (targetResult && targetResult.success === false) {
-        const apiErr = new Error(targetResult.message || data.message || "API Error");
-        apiErr.code = targetResult.code || data.code || "UNKNOWN_ERROR";
-        apiErr.errorType = targetResult.errorType || data.errorType || "PERMANENT";
-        apiErr.retryable = targetResult.retryable !== undefined ? targetResult.retryable : (data.retryable !== undefined ? data.retryable : TRANSIENT_ERROR_CODES.includes(apiErr.code));
-        throw apiErr;
+      // 1. GAS JSON 契約最優先: JSONに code / errorType / retryable が存在する場合
+      if (jsonParsed && targetResult && typeof targetResult === 'object') {
+        if (targetResult.success === false || targetResult.code || targetResult.errorType) {
+          const apiErr = new Error(targetResult.message || data.message || `API Error (${response.status})`);
+          apiErr.code = targetResult.code || data.code || "UNKNOWN_ERROR";
+          apiErr.errorType = targetResult.errorType || data.errorType || "PERMANENT";
+          apiErr.retryable = targetResult.retryable !== undefined
+            ? targetResult.retryable
+            : (data.retryable !== undefined ? data.retryable : TRANSIENT_ERROR_CODES.includes(apiErr.code));
+          throw apiErr;
+        }
+      }
+
+      // 2. HTTP 非2xx かつ 構造化JSONエラーがない場合の HTTP status mapping fallback
+      if (!response.ok) {
+        const status = response.status;
+        const httpErr = new Error(`HTTP Error: ${status}`);
+        if (status === 401) {
+          httpErr.code = "UNAUTHORIZED";
+          httpErr.errorType = "PERMANENT";
+          httpErr.retryable = false;
+        } else if (status === 403) {
+          httpErr.code = "FORBIDDEN";
+          httpErr.errorType = "PERMANENT";
+          httpErr.retryable = false;
+        } else if (status === 404) {
+          httpErr.code = "RESOURCE_NOT_FOUND";
+          httpErr.errorType = "PERMANENT";
+          httpErr.retryable = false;
+        } else if (status === 429) {
+          httpErr.code = "RATE_LIMIT_EXCEEDED";
+          httpErr.errorType = "TRANSIENT";
+          httpErr.retryable = true;
+        } else if (status >= 500) {
+          httpErr.code = "INTERNAL_ERROR";
+          httpErr.errorType = "TRANSIENT";
+          httpErr.retryable = true;
+        } else {
+          httpErr.code = "NETWORK_FAILURE";
+          httpErr.errorType = "PERMANENT";
+          httpErr.retryable = false;
+        }
+        throw httpErr;
+      }
+
+      // 3. HTTP 2xx かつ JSON パース失敗時のエラー
+      if (!jsonParsed) {
+        const jsonErr = new Error("JSON形式ではない応答を受け取りました");
+        jsonErr.code = "MALFORMED_JSON";
+        jsonErr.errorType = "PERMANENT";
+        jsonErr.retryable = false;
+        throw jsonErr;
       }
 
       return targetResult;

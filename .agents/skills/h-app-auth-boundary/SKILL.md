@@ -48,16 +48,18 @@ LINE認証済みだが名簿照合（Identity確定）前に必要な専用API�
 
 ### 4. Write API (配布員書き込み・認証＆名簿登録必須)
 
-以下を含む全Write APIは、有効な `liffToken` ＋ 名簿登録済み（`found === true` / `_identityVerified === true`）を必須とする。
+以下を含む業務Write APIは、有効な `liffToken` ＋ 名簿登録済み（`found === true` / `_identityVerified === true`）を必須とする。
 
 - `updateRecordWithGPSPhoto`
 - `submitDistribution`
-- `setPinInProgress`
 - `updateFlyerStock`
 - `requestFlyerTransfer`
 - `resolveTransferRequest`
 - `createBulletinPost`
 - `sendBulletinContact`
+
+※ `setPinInProgress` の境界整合:
+Current Backend（`v2_api.js`）では有効な LINE 認証（`liffToken`）を必須とするが、Staff Master 認可（`resolveStaffIdentity` による名簿照合）は実行しない。Client 側（`app.js`）において `waitForIdentityVerified()` を待機して送信し、ローカル整合性を担保する。Backend 仕様に存在しない「Active Staff 必須」を断定しない。
 
 ### 5. Provisioning APIは別の保護境界を維持する
 

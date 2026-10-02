@@ -134,21 +134,42 @@ window.fetchGlobalPinStatus = async function() {
   }
 };
 
-// --- Auth Readiness Gate (LIFF認証完了待機) ---
+// --- Auth Readiness Gate (LIFF認証完了待機: PENDING / READY / FAILED) ---
+let _liffAuthState = 'PENDING'; // 'PENDING' | 'READY' | 'FAILED'
+let _liffAuthError = null;
 let _liffAuthReadyResolver = null;
 let _liffAuthReadyRejecter = null;
 const _liffAuthReadyPromise = new Promise((resolve, reject) => {
   _liffAuthReadyResolver = resolve;
   _liffAuthReadyRejecter = reject;
 });
+// 未購読rejectによる unhandledrejection 警告を防止
+_liffAuthReadyPromise.catch(() => {});
 
 function waitForLiffAuthReady() {
-  if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) {
-    const token = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
-    if (typeof token === 'string' && token.trim().length > 0) {
-      return Promise.resolve(true);
-    }
+  const currentToken = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
+  const hasValidToken = typeof currentToken === 'string' && currentToken.trim().length > 0;
+
+  // 1. 現時点で有効な token が存在し、かつログイン済みなら即時 resolve
+  if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn() && hasValidToken) {
+    return Promise.resolve(true);
   }
+
+  // 2. 過去に READY に遷移していたとしても、現時点で token が失われていれば過去の resolve を信用せず即時 reject
+  if (_liffAuthState === 'READY') {
+    const err = new Error("LIFF_TOKEN_MISSING");
+    err.code = "UNAUTHORIZED";
+    err.errorType = "PERMANENT";
+    err.retryable = false;
+    return Promise.reject(err);
+  }
+
+  // 3. FAILED 状態なら明示的 reject
+  if (_liffAuthState === 'FAILED') {
+    return Promise.reject(_liffAuthError || new Error("LIFF_AUTH_FAILED"));
+  }
+
+  // 4. PENDING 状態（init実行中）なら Promise 待機
   return _liffAuthReadyPromise;
 }
 window.waitForLiffAuthReady = waitForLiffAuthReady;
@@ -1526,6 +1547,20 @@ async function fetchSystemSummary(forceRefresh = false) {
       }
     } catch (err) {
       console.warn("fetchSystemSummary failed:", err);
+      if (err && (err.code === 'CONTRACT_EXPIRED' || err.contractStatus === 'EXPIRED' || err.isExpired === true)) {
+        window.__contractExpired = true;
+        if (typeof setSyncStatus === 'function') setSyncStatus('offline');
+        const appEl = $('app');
+        if (appEl) { appEl.classList.add('hidden'); appEl.classList.add('opacity-0'); }
+        const loadingEl = $('loading');
+        if (loadingEl) { loadingEl.classList.remove('hidden'); loadingEl.classList.remove('opacity-0'); }
+        const statusEl = $('loading-status');
+        if (statusEl) {
+          statusEl.textContent = '契約期間が終了しているため利用できません。';
+          statusEl.onclick = null;
+          statusEl.style.cursor = 'default';
+        }
+      }
     }
     _systemSummaryPromise = null;
     return null;
@@ -1633,9 +1668,22 @@ async function safeInitApp() {
         logDebug("LOGIN OK");
         sessionStorage.removeItem('liff_initializing');
 
-        // LIFF Ready 成立: Protected Read / Bootstrap API の送信待機を解禁
-        if (typeof _liffAuthReadyResolver === 'function') {
-          _liffAuthReadyResolver(true);
+        const currentToken = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
+        if (typeof currentToken === 'string' && currentToken.trim().length > 0) {
+          _liffAuthState = 'READY';
+          if (typeof _liffAuthReadyResolver === 'function') {
+            _liffAuthReadyResolver(true);
+          }
+        } else {
+          _liffAuthState = 'FAILED';
+          const tokenErr = new Error("LIFF_TOKEN_MISSING");
+          tokenErr.code = "UNAUTHORIZED";
+          tokenErr.errorType = "PERMANENT";
+          tokenErr.retryable = false;
+          _liffAuthError = tokenErr;
+          if (typeof _liffAuthReadyRejecter === 'function') {
+            _liffAuthReadyRejecter(tokenErr);
+          }
         }
 
         // ★ MASTER指示 ①: fetchSystemSummary() は liff.isLoggedIn() 成立直後、await liff.getProfile() より前に非同期発火すること。HeaderをProfile取得に依存させない。
@@ -1791,10 +1839,24 @@ async function safeInitApp() {
     } catch (err) {
       console.error("LIFF Init Error:", err);
       logDebug("LIFF Error: " + err.message);
+      _liffAuthState = 'FAILED';
+      _liffAuthError = err;
+      if (typeof _liffAuthReadyRejecter === 'function') {
+        _liffAuthReadyRejecter(err);
+      }
       $('loading-status').textContent = "起動エラー: " + err.message;
     }
   } else {
     logDebug("Running in standalone web browser. Blocked.");
+    const standaloneErr = new Error("STANDALONE_BROWSER_NOT_SUPPORTED");
+    standaloneErr.code = "UNAUTHORIZED";
+    standaloneErr.errorType = "PERMANENT";
+    standaloneErr.retryable = false;
+    _liffAuthState = 'FAILED';
+    _liffAuthError = standaloneErr;
+    if (typeof _liffAuthReadyRejecter === 'function') {
+      _liffAuthReadyRejecter(standaloneErr);
+    }
     $('loading-status').textContent = "エラー: LINEアプリ内から起動してください。";
   }
 }
@@ -1802,14 +1864,42 @@ async function safeInitApp() {
 function showIdentityErrorUI(err) {
   const statusEl = $('loading-status');
   if (!statusEl) return;
-  let msg = "初期化エラー: ";
-  if (err && err.code === 'CONTRACT_EXPIRED') {
-    msg = "契約期間が終了しているため利用できません。";
-  } else if (err && err.code === 'UNAUTHORIZED') {
-    msg = "認証エラー: LINEログインの有効期限が切れました。\nタップして再試行";
-  } else {
-    msg += (err ? (err.message || err.code) : "通信エラー") + "\n(タップして再試行)";
+
+  if (err && (err.code === 'CONTRACT_EXPIRED' || err.contractStatus === 'EXPIRED' || err.isExpired === true)) {
+    window.__contractExpired = true;
+    if (typeof setSyncStatus === 'function') setSyncStatus('offline');
+    const appEl = $('app');
+    if (appEl) { appEl.classList.add('hidden'); appEl.classList.add('opacity-0'); }
+    const loadingEl = $('loading');
+    if (loadingEl) { loadingEl.classList.remove('hidden'); loadingEl.classList.remove('opacity-0'); }
+
+    statusEl.textContent = "契約期間が終了しているため利用できません。";
+    statusEl.onclick = null;
+    statusEl.style.cursor = 'default';
+    return;
   }
+
+  if (err && err.code === 'UNAUTHORIZED') {
+    statusEl.textContent = "認証エラー: LINEログインの有効期限が切れました。\n(タップして再ログイン)";
+    statusEl.style.cursor = 'pointer';
+    statusEl.onclick = function() {
+      statusEl.onclick = null;
+      statusEl.style.cursor = 'default';
+      // Safe Delay OAuth復帰フラグを必ずlogin前に設定
+      sessionStorage.setItem('liff_initializing', 'true');
+      if (typeof liff !== 'undefined' && liff.logout && liff.login) {
+        try { liff.logout(); } catch(e) {}
+        liff.login({ redirectUri: window.location.href });
+      } else {
+        window.location.reload();
+      }
+    };
+    return;
+  }
+
+  // その他のエラー (TRANSIENT / 通信エラー等)
+  let msg = "初期化エラー: ";
+  msg += (err ? (err.message || err.code) : "通信エラー") + "\n(タップして再試行)";
   statusEl.textContent = msg;
   statusEl.style.cursor = 'pointer';
   statusEl.onclick = function() {

@@ -91,8 +91,9 @@ assert.ok(chromeRealContent.includes('latency'), "measure_chrome_real.mjs must s
 
 // 勝手な新規SLA（<=800ms等）がWeak Networkに課されていないか（Phase 14のSLAのみをアサートしているか）
 assert.ok(chromeRealContent.includes('warmPass'), "Must verify warmPass");
-assert.ok(chromeRealContent.includes('coldPass'), "Must verify coldPass");
 assert.ok(chromeRealContent.includes('offlinePass'), "Must verify offlinePass");
+assert.ok(!chromeRealContent.includes('coldPass'), "Must NOT treat Cold Start as a local benchmark pass");
+assert.ok(chromeRealContent.includes('SEPARATED'), "Must separate Cold Start to E2E");
 assert.ok(!chromeRealContent.includes('weakPass'), "Must NOT introduce arbitrary weakPass SLA assertion");
 
 console.log("  ✅ GATE 4 PASS: Chrome CDP による Weak Network 実測を網羅し、勝手な新規SLAは不設定");
