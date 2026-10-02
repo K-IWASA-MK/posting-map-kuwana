@@ -1,4 +1,228 @@
 // Election Master SSOT Loader & Memory Cache
+const StorageView = (function() {
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function updateCountDisplay() {
+    const countInput = $('storage-register-count');
+    const countText = $('storage-register-count-text');
+    const countUnit = $('storage-register-count-unit');
+
+    if (!countInput || !countText) return;
+
+    const raw = countInput.value.replace(/,/g, '').replace(/枚/g, '').trim();
+    if (raw !== '' && !isNaN(parseInt(raw, 10))) {
+      countText.textContent = Number(raw).toLocaleString();
+      if (countUnit) countUnit.style.display = 'inline';
+    } else {
+      countText.textContent = '';
+      if (countUnit) countUnit.style.display = 'none';
+    }
+  }
+
+  function updateRegisterButtonText() {
+    const btn = $('btn-storage-register-submit');
+    const countInput = $('storage-register-count');
+    if (!btn || !countInput) return;
+
+    const raw = countInput.value.replace(/,/g, '').replace(/枚/g, '').trim();
+    btn.textContent = raw ? 'チラシ枚数を更新する' : 'チラシ枚数を入力する';
+  }
+
+  function setupRegisterInputFormatter(inputEl) {
+    if (!inputEl || inputEl.dataset.formatted) return;
+    inputEl.dataset.formatted = 'true';
+
+    const container = $('storage-register-count-container');
+    const display = $('storage-register-count-display');
+
+    if (container && display) {
+      container.addEventListener('click', function() {
+        inputEl.classList.remove('hidden');
+        display.classList.add('hidden');
+        inputEl.dataset.userEditing = 'true';
+
+        const raw = inputEl.value.replace(/,/g, '').replace(/枚/g, '').trim();
+        inputEl.value = raw;
+        inputEl.focus();
+
+        if (typeof inputEl.setSelectionRange === 'function') {
+          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+        }
+      });
+    }
+
+    inputEl.addEventListener('focus', function() {
+      if (display) display.classList.add('hidden');
+      inputEl.classList.remove('hidden');
+      inputEl.dataset.userEditing = 'true';
+      const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
+      this.value = rawVal;
+    });
+
+    inputEl.addEventListener('blur', function() {
+      inputEl.classList.add('hidden');
+      if (display) display.classList.remove('hidden');
+
+      const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
+      if (!rawVal) {
+        this.value = '';
+      } else {
+        const num = parseInt(rawVal, 10);
+        this.value = isNaN(num) ? '' : String(num);
+      }
+
+      updateCountDisplay();
+      updateRegisterButtonText();
+    });
+
+    inputEl.addEventListener('input', function() {
+      inputEl.dataset.userEditing = 'true';
+      const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
+      this.value = rawVal;
+      updateRegisterButtonText();
+    });
+  }
+
+  function updateLocationDisplayText() {
+    const locSelect = $('storage-register-location');
+    const locText = $('storage-location-text');
+    if (!locSelect || !locText) return;
+
+    if (locSelect.value) {
+      locText.textContent = locSelect.value;
+    } else {
+      locText.textContent = '保管場所を選択';
+    }
+  }
+
+  function updateLocationDropdown(locations, overrideCities, tier1CacheFallback) {
+    const locSelect = $('storage-register-location');
+    if (!locSelect) return;
+
+    if (!locSelect.dataset.listenerBound) {
+      locSelect.dataset.listenerBound = 'true';
+      locSelect.addEventListener('change', function() {
+        updateLocationDisplayText();
+      });
+    }
+
+    const prevValue = locSelect.value;
+
+    const customCities = (Array.isArray(locations) && locations.length > 0)
+      ? locations
+      : (Array.isArray(overrideCities) && overrideCities.length > 0 ? overrideCities : null);
+
+    const targetCities = customCities || (Array.isArray(tier1CacheFallback) && tier1CacheFallback.length > 0 ? tier1CacheFallback : null);
+
+    locSelect.innerHTML = '';
+    const cityList = [];
+
+    if (Array.isArray(targetCities) && targetCities.length > 0) {
+      targetCities.forEach(c => {
+        const name = typeof c === 'string' ? c : (c.name || '');
+        if (name && !cityList.includes(name)) {
+          cityList.push(name);
+        }
+      });
+    }
+
+    if (cityList.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'データ読み込み中...';
+      locSelect.appendChild(opt);
+      updateLocationDisplayText();
+      return;
+    }
+
+    cityList.forEach(city => {
+      const opt = document.createElement('option');
+      opt.value = city;
+      opt.textContent = city;
+      locSelect.appendChild(opt);
+    });
+
+    if (prevValue && cityList.includes(prevValue)) {
+      locSelect.value = prevValue;
+    }
+
+    updateLocationDisplayText();
+  }
+
+  function applyMyStockToForm(snapshot, options = {}) {
+    const { isAsyncResponse = false } = options;
+    const countInput = $('storage-register-count');
+    const locSelect = $('storage-register-location');
+    if (!countInput) return;
+
+    let myStock = snapshot.myStock || null;
+    if (!myStock && Array.isArray(snapshot.stocks) && snapshot.stocks.length > 0) {
+      myStock = snapshot.stocks.find(s => s.isMe === true) || null;
+    }
+    if (!myStock) return;
+
+    const isInputActive = document.activeElement === countInput ||
+                          !countInput.classList.contains('hidden') ||
+                          countInput.dataset.userEditing === 'true';
+
+    if (!isAsyncResponse || !isInputActive) {
+      const rawCount = parseInt(myStock.count, 10);
+      countInput.value = isNaN(rawCount) ? '' : String(rawCount);
+      if (!isAsyncResponse) {
+        delete countInput.dataset.userEditing;
+      }
+      updateCountDisplay();
+      updateRegisterButtonText();
+    }
+
+    const isLocActive = document.activeElement === locSelect || (locSelect && locSelect.dataset.userSelected === 'true');
+    if (locSelect && myStock.location && (!isAsyncResponse || !isLocActive)) {
+      locSelect.value = myStock.location;
+      updateLocationDisplayText();
+    }
+  }
+
+  function renderLoadingUI(container) {
+    if (!container) return;
+    container.innerHTML = `
+      <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+        <div class="w-8 h-8 rounded-full border-2 border-[#2563eb]/40 border-t-[#2563eb] animate-spin"></div>
+        <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Inventory...</p>
+      </div>`;
+  }
+
+  function renderErrorUI(container) {
+    if (!container) return;
+    container.innerHTML = `
+      <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+        <span class="text-2xl">⚠️</span>
+        <p class="text-sm font-black text-white/60">エラーが発生しました</p>
+      </div>`;
+  }
+
+  function renderFetchFailedUI(container) {
+    if (!container) return;
+    container.innerHTML = `
+      <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+        <span class="text-2xl">⚠️</span>
+        <p class="text-sm font-black text-white/60">データ取得に失敗しました</p>
+      </div>`;
+  }
+
+  return {
+    updateCountDisplay,
+    updateRegisterButtonText,
+    setupRegisterInputFormatter,
+    updateLocationDisplayText,
+    updateLocationDropdown,
+    applyMyStockToForm,
+    renderLoadingUI,
+    renderErrorUI,
+    renderFetchFailedUI
+  };
+})();
 let cachedElectionData = null;
 let electionDataPromise = null;
 
@@ -465,7 +689,7 @@ function renderRanking() {
 }
 
 // チラシ保管状況の描画処理
-function renderStorageList(stocks) {
+function renderStorageList(stocks, fallbackCities = null) {
   const container = $('storage-list-container');
   if (!container) return;
 
@@ -502,10 +726,10 @@ function renderStorageList(stocks) {
     groups[loc].push(s);
   });
 
-  // tier1Cache の出現順を SSOT として取得
+  // fallbackCities の出現順を SSOT として取得
   let masterCities = [];
-  if (typeof tier1Cache !== 'undefined' && Array.isArray(tier1Cache) && tier1Cache.length > 0) {
-    masterCities = tier1Cache.map(c => typeof c === 'string' ? c : (c.name || ''));
+  if (Array.isArray(fallbackCities) && fallbackCities.length > 0) {
+    masterCities = fallbackCities.map(c => typeof c === 'string' ? c : (c.name || ''));
   }
 
   const sortedLocations = Object.keys(groups).sort((a, b) => {

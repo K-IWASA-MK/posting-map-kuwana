@@ -46,8 +46,7 @@ window.onunhandledrejection = function(event) {
 
 let allPoints = [], rankingData = [];
 let _rankingFetched = false;  // ランキング遅延取得済みフラグ
-let _stockFetched = false;    // 在庫一覧取得済みフラグ
-let _stockData = [];          // 在庫一覧キャッシュデータ
+
 let currentCity = null;
 window.activeRankingPromise = null;
 window.globalPinStatus = { inProgress: [], completed: [] };
@@ -1009,266 +1008,6 @@ function initRankingPage() {
   }
 }
 
-function updateStorageCountDisplay() {
-  const countInput = $('storage-register-count');
-  const countText = $('storage-register-count-text');
-  const countUnit = $('storage-register-count-unit');
-
-  if (!countInput || !countText) return;
-
-  const raw = countInput.value.replace(/,/g, '').replace(/枚/g, '').trim();
-  if (raw !== '' && !isNaN(parseInt(raw, 10))) {
-    countText.textContent = Number(raw).toLocaleString();
-    if (countUnit) countUnit.style.display = 'inline';
-  } else {
-    countText.textContent = '';
-    if (countUnit) countUnit.style.display = 'none';
-  }
-}
-
-window.updateStorageRegisterButtonText = function updateStorageRegisterButtonText() {
-  const btn = $('btn-storage-register-submit');
-  const countInput = $('storage-register-count');
-  if (!btn || !countInput) return;
-
-  const raw = countInput.value.replace(/,/g, '').replace(/枚/g, '').trim();
-  btn.textContent = raw ? 'チラシ枚数を更新する' : 'チラシ枚数を入力する';
-};
-
-function setupStorageRegisterInputFormatter(inputEl) {
-  if (!inputEl || inputEl.dataset.formatted) return;
-  inputEl.dataset.formatted = 'true';
-
-  const container = $('storage-register-count-container');
-  const display = $('storage-register-count-display');
-
-  if (container && display) {
-    container.addEventListener('click', function() {
-      inputEl.classList.remove('hidden');
-      display.classList.add('hidden');
-      inputEl.dataset.userEditing = 'true';
-
-      const raw = inputEl.value.replace(/,/g, '').replace(/枚/g, '').trim();
-      inputEl.value = raw;
-      inputEl.focus();
-
-      if (typeof inputEl.setSelectionRange === 'function') {
-        inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-      }
-    });
-  }
-
-  inputEl.addEventListener('focus', function() {
-    if (display) display.classList.add('hidden');
-    inputEl.classList.remove('hidden');
-    inputEl.dataset.userEditing = 'true';
-    const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
-    this.value = rawVal;
-  });
-
-  inputEl.addEventListener('blur', function() {
-    inputEl.classList.add('hidden');
-    if (display) display.classList.remove('hidden');
-
-    const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
-    if (!rawVal) {
-      this.value = '';
-    } else {
-      const num = parseInt(rawVal, 10);
-      this.value = isNaN(num) ? '' : String(num);
-    }
-
-    updateStorageCountDisplay();
-    updateStorageRegisterButtonText();
-  });
-
-  inputEl.addEventListener('input', function() {
-    inputEl.dataset.userEditing = 'true';
-    const rawVal = this.value.replace(/,/g, '').replace(/枚/g, '').replace(/[^\d]/g, '');
-    this.value = rawVal;
-    updateStorageRegisterButtonText();
-  });
-}
-
-function updateStorageLocationDisplayText() {
-  const locSelect = $('storage-register-location');
-  const locText = $('storage-location-text');
-  if (!locSelect || !locText) return;
-
-  if (locSelect.value) {
-    locText.textContent = locSelect.value;
-  } else {
-    locText.textContent = '保管場所を選択';
-  }
-}
-
-let _storageLocationsCache = null;
-let _storageLocationsFetching = null;
-
-async function getStorageLocations() {
-  if (_storageLocationsCache) return _storageLocationsCache;
-  if (_storageLocationsFetching) return _storageLocationsFetching;
-
-  _storageLocationsFetching = (async () => {
-    try {
-      const res = await fetch('../../data/storage_locations.json');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          _storageLocationsCache = data;
-          return _storageLocationsCache;
-        }
-      }
-    } catch (e) {
-      console.warn('[Storage] Fallback to tier1Cache:', e);
-    } finally {
-      _storageLocationsFetching = null;
-    }
-    return null;
-  })();
-
-  return _storageLocationsFetching;
-}
-
-window.updateStorageLocationDropdown = function updateStorageLocationDropdown(overrideCities = null) {
-  const locSelect = $('storage-register-location');
-  if (!locSelect) return;
-
-  if (!locSelect.dataset.listenerBound) {
-    locSelect.dataset.listenerBound = 'true';
-    locSelect.addEventListener('change', function() {
-      updateStorageLocationDisplayText();
-    });
-  }
-
-  const prevValue = locSelect.value;
-
-  const customCities = (Array.isArray(_storageLocationsCache) && _storageLocationsCache.length > 0)
-    ? _storageLocationsCache
-    : (Array.isArray(overrideCities) && overrideCities.length > 0 ? overrideCities : null);
-
-  const targetCities = customCities || (Array.isArray(tier1Cache) && tier1Cache.length > 0 ? tier1Cache : null);
-
-  locSelect.innerHTML = '';
-  const cityList = [];
-
-  if (Array.isArray(targetCities) && targetCities.length > 0) {
-    targetCities.forEach(c => {
-      const name = typeof c === 'string' ? c : (c.name || '');
-      if (name && !cityList.includes(name)) {
-        cityList.push(name);
-      }
-    });
-  }
-
-  if (cityList.length === 0) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'データ読み込み中...';
-    locSelect.appendChild(opt);
-    updateStorageLocationDisplayText();
-    return;
-  }
-
-  cityList.forEach(city => {
-    const opt = document.createElement('option');
-    opt.value = city;
-    opt.textContent = city;
-    locSelect.appendChild(opt);
-  });
-
-  if (prevValue && cityList.includes(prevValue)) {
-    locSelect.value = prevValue;
-  }
-
-  updateStorageLocationDisplayText();
-};
-
-// 在庫データの In-flight リクエスト管理 & 世代管理
-let _activeFlyerStockPromise = null;
-let _flyerStockReqSeq = 0;
-
-async function fetchFlyerStock() {
-  // 1. 進行中 Promise がある場合は重複発射せず既存Promiseを共有
-  if (_activeFlyerStockPromise) {
-    return _activeFlyerStockPromise;
-  }
-
-  const currentSeq = ++_flyerStockReqSeq;
-
-  _activeFlyerStockPromise = (async () => {
-    try {
-      const data = await callApiPost('getFlyerStock');
-      // 世代チェック: 新しいリクエストが後に発行されていたら古い結果は破棄
-      if (currentSeq !== _flyerStockReqSeq) {
-        return null;
-      }
-      if (data && data.success) {
-        if (Array.isArray(data.stocks)) {
-          _stockData = data.stocks;
-          _stockFetched = true;
-        }
-        if (data.myStock) {
-          window._myStockData = data.myStock;
-        }
-      }
-      return data;
-    } catch (err) {
-      console.warn('[fetchFlyerStock] Error:', err);
-      throw err;
-    } finally {
-      _activeFlyerStockPromise = null;
-    }
-  })();
-
-  return _activeFlyerStockPromise;
-}
-
-// 在庫登録フォームへのデータ反映（Backend判定済みの myStock / isMe を最優先）
-function applyMyStockToForm(options = {}) {
-  const { isAsyncResponse = false } = options;
-  const countInput = $('storage-register-count');
-  const locSelect = $('storage-register-location');
-  if (!countInput) return;
-
-  // Backend側が判定した myStock または isMe フラグを優先（staffIdによる照合は行わない）
-  let myStock = window._myStockData || null;
-  if (!myStock && Array.isArray(_stockData) && _stockData.length > 0) {
-    myStock = _stockData.find(s => s.isMe === true) || null;
-  }
-  if (!myStock) return;
-
-  // 【ユーザー入力保護（枚数）】
-  // 非同期APIレスポンスの反映時、以下のいずれかならユーザー入力を保護し上書きしない:
-  // ① document.activeElement === countInput (フォーカス中)
-  // ② !countInput.classList.contains('hidden') (編集モード中)
-  // ③ countInput.dataset.userEditing === 'true' (ユーザーが編集操作を行った)
-  const isInputActive = document.activeElement === countInput ||
-                        !countInput.classList.contains('hidden') ||
-                        countInput.dataset.userEditing === 'true';
-
-  if (!isAsyncResponse || !isInputActive) {
-    const rawCount = parseInt(myStock.count, 10);
-    countInput.value = isNaN(rawCount) ? '' : String(rawCount);
-    // 同期初期反映時は userEditing フラグをクリア
-    if (!isAsyncResponse) {
-      delete countInput.dataset.userEditing;
-    }
-    updateStorageCountDisplay();
-    updateStorageRegisterButtonText();
-  }
-
-  // 【ユーザー選択保護（保管場所）】
-  // 非同期APIレスポンスの反映時、ユーザーが選択・操作中なら上書きしない:
-  // ① document.activeElement === locSelect (フォーカス中)
-  // ② locSelect.dataset.userSelected === 'true' (ユーザーが手動変更した)
-  const isLocActive = document.activeElement === locSelect || (locSelect && locSelect.dataset.userSelected === 'true');
-  if (locSelect && myStock.location && (!isAsyncResponse || !isLocActive)) {
-    locSelect.value = myStock.location;
-    updateStorageLocationDisplayText();
-  }
-}
-
 function initStorageRegisterPage() {
   const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
   const staffId = userInfo.id || '';
@@ -1312,92 +1051,67 @@ function initStorageRegisterPage() {
   if (nameEl) nameEl.textContent = staffName || '---';
 
   const countInput = $('storage-register-count');
-  setupStorageRegisterInputFormatter(countInput);
+  StorageView.setupRegisterInputFormatter(countInput);
 
   const locSelect = $('storage-register-location');
   if (locSelect && !locSelect.dataset.changeBound) {
     locSelect.dataset.changeBound = 'true';
     locSelect.addEventListener('change', function() {
       this.dataset.userSelected = 'true';
-      updateStorageLocationDisplayText();
+      StorageView.updateLocationDisplayText();
     });
   }
 
-  updateStorageLocationDropdown();
-  if (!_storageLocationsCache) {
-    getStorageLocations().then(cities => {
-      if (cities && Array.isArray(cities) && cities.length > 0) {
-        updateStorageLocationDropdown(cities);
-        updateStorageLocationDisplayText();
-      }
+  StorageView.updateLocationDropdown(StorageModule.getSnapshot().locations, null, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
+
+  const snapshot = StorageModule.getSnapshot();
+  if (!snapshot.locations) {
+    StorageModule.getLocations().then(cities => {
+      StorageView.updateLocationDropdown(cities, null, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
     });
   }
 
-  // 1. 【要件1】既存の _stockData が存在する場合、開いた瞬間にキャッシュから即座に同期反映！
-  // API通信完了を待たず、画面遷移の体感遅延をゼロにする
-  if (_stockFetched && Array.isArray(_stockData) && _stockData.length > 0) {
-    applyMyStockToForm({ isAsyncResponse: false });
+  if (snapshot.fetched && Array.isArray(snapshot.stocks) && snapshot.stocks.length > 0) {
+    StorageView.applyMyStockToForm(snapshot, { isAsyncResponse: false });
   }
 
-  // 2. 【要件2・3・4】API取得（初回必須、またはバックグラウンド更新）
-  // In-flight共有付きで実行し、画面表示はブロックしない
   if (staffId && countInput) {
-    fetchFlyerStock().then(data => {
+    StorageModule.fetchStock().then(data => {
       if (data && data.success && Array.isArray(data.stocks)) {
-        // 【要件5】非同期レスポンス到着時の反映。ユーザー入力操作中は絶対に上書きしない！
-        applyMyStockToForm({ isAsyncResponse: true });
+        StorageView.applyMyStockToForm(StorageModule.getSnapshot(), { isAsyncResponse: true });
       }
     }).catch(err => {
       console.warn('[initStorageRegisterPage] fetchFlyerStock failed:', err);
-      updateStorageCountDisplay();
-      updateStorageRegisterButtonText();
+      StorageView.updateCountDisplay();
+      StorageView.updateRegisterButtonText();
     });
   }
 
-  updateStorageCountDisplay();
-  updateStorageRegisterButtonText();
+  StorageView.updateCountDisplay();
+  StorageView.updateRegisterButtonText();
 }
 
 function initStorageListPage() {
   const listContainer = $('storage-list-container');
+  const snapshot = StorageModule.getSnapshot();
 
-  if (!_stockFetched) {
-    if (listContainer) {
-      listContainer.innerHTML = `
-        <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-          <div class="w-8 h-8 rounded-full border-2 border-[#2563eb]/40 border-t-[#2563eb] animate-spin"></div>
-          <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Inventory...</p>
-        </div>`;
-    }
-    fetchFlyerStock().then(data => {
+  if (!snapshot.fetched) {
+    StorageView.renderLoadingUI(listContainer);
+    StorageModule.fetchStock().then(data => {
       if (data && data.success) {
-        if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+        if (typeof renderStorageList === 'function') renderStorageList(StorageModule.getSnapshot().stocks, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
       } else if (data === null) {
-        // stale response discard: 登録成功等により新世代で上書き済み
-        if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+        if (typeof renderStorageList === 'function') renderStorageList(StorageModule.getSnapshot().stocks, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
       } else {
-        if (listContainer) {
-          listContainer.innerHTML = `
-            <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-              <span class="text-2xl">⚠️</span>
-              <p class="text-sm font-black text-white/60">データ取得に失敗しました</p>
-            </div>`;
-        }
+        StorageView.renderFetchFailedUI(listContainer);
       }
     }).catch(err => {
-      if (listContainer) {
-        listContainer.innerHTML = `
-          <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-            <span class="text-2xl">⚠️</span>
-            <p class="text-sm font-black text-white/60">エラーが発生しました</p>
-          </div>`;
-      }
+      StorageView.renderErrorUI(listContainer);
     });
   } else {
-    if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+    if (typeof renderStorageList === 'function') renderStorageList(snapshot.stocks, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
   }
 }
-
 
 // 在庫登録フォームの処理
 window.submitFlyerStock = async function() {
@@ -1441,7 +1155,7 @@ window.submitFlyerStock = async function() {
   }
 
   try {
-    const res = await callApiPost('updateFlyerStock', {
+    const res = await StorageModule.updateStock({
       location: location,
       count: count,
       staffName: staffName,
@@ -1450,34 +1164,18 @@ window.submitFlyerStock = async function() {
 
     if (res && res.success) {
       alert("✓ チラシ枚数を更新しました");
-      window._myStockData = { location: location, count: count, updatedAt: "たった今" };
-      // 成功した登録結果を _stockData に即時反映し、キャッシュ有効状態を維持する！
-      if (!Array.isArray(_stockData)) _stockData = [];
-      const idx = _stockData.findIndex(s => s.isMe === true);
-      if (idx >= 0) {
-        _stockData[idx] = { ..._stockData[idx], location: location, count: count, staffName: staffName, isMe: true };
-      } else {
-        _stockData.unshift({ staffId: staffId, staffName: staffName, location: location, count: count, isMe: true });
-      }
-      _stockFetched = true;
-
-      // 入力完了のため編集フラグをクリア
       if (countInput) delete countInput.dataset.userEditing;
       if (locSelect) delete locSelect.dataset.userSelected;
-
-      // 世代インクリメント: 登録前から走っている古い getFlyerStock のレスポンスを破棄し、上書きを完全防止
-      _flyerStockReqSeq++;
     } else {
       alert("更新に失敗しました: " + (res.message || "エラー"));
     }
   } catch (e) {
     alert("エラーが発生しました: " + e.message);
   } finally {
-    const btn = $('btn-storage-register-submit');
     if (btn) {
       btn.disabled = false;
-      if (typeof updateStorageRegisterButtonText === 'function') {
-        updateStorageRegisterButtonText();
+      if (typeof StorageView !== 'undefined' && typeof StorageView.updateRegisterButtonText === 'function') {
+        StorageView.updateRegisterButtonText();
       } else {
         btn.textContent = "チラシ枚数を更新する";
       }
@@ -1599,9 +1297,8 @@ async function fetchTier1() {
     if (cities && cities.length > 0) {
       tier1Cache = cities;
 
-
-      if (typeof updateStorageLocationDropdown === 'function') {
-        updateStorageLocationDropdown(tier1Cache);
+      if (typeof StorageView !== 'undefined' && typeof StorageView.updateLocationDropdown === 'function') {
+        StorageView.updateLocationDropdown(StorageModule.getSnapshot().locations, null, tier1Cache);
       }
 
       if (typeof renderAreas === 'function') {

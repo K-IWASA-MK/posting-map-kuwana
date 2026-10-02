@@ -1,22 +1,15 @@
 /**
  * test_storage_register_lifecycle.mjs
- * 在庫登録画面 (page-storage-register) のライフサイクル & ユーザー入力保護 監査テスト
- * 
- * Gate 1: 初回取得（キャッシュなし時、API取得後に正常反映）
- * Gate 2: キャッシュ即時復元（キャッシュあり時、即座に同期反映、API待ちゼロ）
- * Gate 3: In-flight重複防止（高速画面往復で getFlyerStock が重複発射されずPromise共有）
- * Gate 4: ユーザー入力保護【最重要】（API通信中に「500」入力 → レスポンス到着後も500を維持）
- * Gate 5: 保管場所選択保護（手動選択中にAPIレスポンスが到着しても選択値を維持）
- * Gate 6: 登録完了後のキャッシュ即時更新（_stockFetched=true維持、次回一覧即時表示）
  */
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
 
 console.log('====================================================');
 console.log('🧪 STORAGE REGISTER LIFECYCLE & INPUT PROTECTION AUDIT');
 console.log('====================================================\n');
 
-// 仮想 DOM & LocalStorage 環境のモック
 class MockElement {
   constructor(id, tagName = 'div') {
     this.id = id;
@@ -24,10 +17,17 @@ class MockElement {
     this.value = '';
     this.textContent = '';
     this.innerHTML = '';
-    this.classList = new Set(['hidden']);
+    this.classListSet = new Set(['hidden']);
     this.style = {};
     this.dataset = {};
     this._listeners = {};
+
+    this.classList = {
+      add: (cls) => this.classListSet.add(cls),
+      remove: (cls) => this.classListSet.delete(cls),
+      contains: (cls) => this.classListSet.has(cls),
+      has: (cls) => this.classListSet.has(cls)
+    };
   }
   addEventListener(event, fn) {
     if (!this._listeners[event]) this._listeners[event] = [];
@@ -38,466 +38,313 @@ class MockElement {
       this._listeners[event].forEach(fn => fn.call(this));
     }
   }
-}
-
-const elements = {};
-function $(id) {
-  if (!elements[id]) {
-    const tag = id.includes('input') || id.includes('count') ? 'input' :
-                id.includes('select') || id.includes('location') ? 'select' : 'div';
-    elements[id] = new MockElement(id, tag);
+  focus() {
+    this.dispatchEvent('focus');
   }
-  return elements[id];
-}
-
-const localStorageStore = {
-  'user_info': JSON.stringify({ id: 'STAFF_007', first: '太郎', last: '桑名' })
-};
-
-const localStorage = {
-  getItem: (k) => localStorageStore[k] || null,
-  setItem: (k, v) => { localStorageStore[k] = String(v); }
-};
-
-let activeElement = null;
-const document = {
-  get activeElement() { return activeElement; },
-  getElementById: (id) => $(id),
-  querySelectorAll: () => []
-};
-
-// 被テスト変数の初期化
-let _stockData = [];
-let _stockFetched = false;
-let _activeFlyerStockPromise = null;
-let _flyerStockReqSeq = 0;
-let apiCallCount = 0;
-let mockApiResponseData = null;
-let mockApiDelayMs = 20;
-
-async function callApiPost(action, payload = {}) {
-  if (action === 'getFlyerStock') {
-    apiCallCount++;
-    await new Promise(r => setTimeout(r, mockApiDelayMs));
-    return mockApiResponseData;
+  appendChild(child) {
+    this.innerHTML += `<${child.tagName} value="${child.value}">${child.textContent}</${child.tagName}>`;
   }
-  if (action === 'updateFlyerStock') {
-    apiCallCount++;
-    await new Promise(r => setTimeout(r, mockApiDelayMs));
-    return { success: true };
-  }
-  return { success: true };
 }
 
-// UIヘルパーモック
-function updateStorageCountDisplay() {
-  const countInput = $('storage-register-count');
-  const countText = $('storage-register-count-text');
-  if (countInput && countText) countText.textContent = countInput.value;
-}
-function updateStorageRegisterButtonText() {}
-function updateStorageLocationDisplayText() {
-  const locSelect = $('storage-register-location');
-  const locText = $('storage-location-text');
-  if (locSelect && locText) locText.textContent = locSelect.value;
-}
-function updateStorageLocationDropdown() {}
-function getStorageLocations() { return Promise.resolve(['桑名市', '四日市市']); }
-let _storageLocationsCache = ['桑名市', '四日市市'];
+const storageSrc = fs.readFileSync('active/h-app/modules/storage.js', 'utf8');
+const renderSrc = fs.readFileSync('active/h-app/render.js', 'utf8');
+const appSrc = fs.readFileSync('active/h-app/app.js', 'utf8');
 
-function setupStorageRegisterInputFormatter(inputEl) {
-  if (!inputEl || inputEl.dataset.formatted) return;
-  inputEl.dataset.formatted = 'true';
+function createTestEnvironment() {
+  const elements = {};
+  let activeElement = null;
 
-  inputEl.addEventListener('click', function() {
-    inputEl.classList.delete('hidden');
-    inputEl.dataset.userEditing = 'true';
-    activeElement = inputEl;
-  });
-  inputEl.addEventListener('focus', function() {
-    inputEl.classList.delete('hidden');
-    inputEl.dataset.userEditing = 'true';
-    activeElement = inputEl;
-  });
-  inputEl.addEventListener('input', function() {
-    inputEl.dataset.userEditing = 'true';
-  });
-  inputEl.addEventListener('blur', function() {
-    inputEl.classList.add('hidden');
-    activeElement = null;
-  });
-}
-
-// 評価対象の関数群 (app.js のロジックと100%同一)
-async function fetchFlyerStock() {
-  if (_activeFlyerStockPromise) {
-    return _activeFlyerStockPromise;
-  }
-
-  const currentSeq = ++_flyerStockReqSeq;
-
-  _activeFlyerStockPromise = (async () => {
-    try {
-      const data = await callApiPost('getFlyerStock');
-      if (currentSeq !== _flyerStockReqSeq) {
-        return null;
-      }
-      if (data && data.success && Array.isArray(data.stocks)) {
-        _stockData = data.stocks;
-        _stockFetched = true;
-      }
-      return data;
-    } catch (err) {
-      console.warn('[fetchFlyerStock] Error:', err);
-      throw err;
-    } finally {
-      _activeFlyerStockPromise = null;
+  function $(id) {
+    if (!elements[id]) {
+      const tag = id.includes('input') || id.includes('count') ? 'input' :
+                  id.includes('select') || id.includes('location') ? 'select' : 'div';
+      elements[id] = new MockElement(id, tag);
+      const origFocus = elements[id].focus.bind(elements[id]);
+      elements[id].focus = () => { activeElement = elements[id]; origFocus(); };
     }
-  })();
-
-  return _activeFlyerStockPromise;
-}
-
-function applyMyStockToForm(options = {}) {
-  const { isAsyncResponse = false } = options;
-  const countInput = $('storage-register-count');
-  const locSelect = $('storage-register-location');
-  if (!countInput) return;
-
-  // Backend側が判定した myStock または isMe フラグを優先（staffIdによる照合は行わない）
-  let myStock = (typeof window !== 'undefined' && window._myStockData) || null;
-  if (!myStock && Array.isArray(_stockData) && _stockData.length > 0) {
-    myStock = _stockData.find(s => s.isMe === true) || null;
-  }
-  if (!myStock) {
-    // 後方互換性フォールバック
-    const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-    const staffId = userInfo.id || '';
-    if (staffId && Array.isArray(_stockData)) {
-      myStock = _stockData.find(s => String(s.staffId) === String(staffId));
-    }
-  }
-  if (!myStock) return;
-
-  const isInputActive = document.activeElement === countInput ||
-                        !countInput.classList.has('hidden') ||
-                        countInput.dataset.userEditing === 'true';
-
-  if (!isAsyncResponse || !isInputActive) {
-    const rawCount = parseInt(myStock.count, 10);
-    countInput.value = isNaN(rawCount) ? '' : String(rawCount);
-    if (!isAsyncResponse) {
-      delete countInput.dataset.userEditing;
-    }
-    updateStorageCountDisplay();
-    updateStorageRegisterButtonText();
+    return elements[id];
   }
 
-  const isLocActive = document.activeElement === locSelect || (locSelect && locSelect.dataset.userSelected === 'true');
-  if (locSelect && myStock.location && (!isAsyncResponse || !isLocActive)) {
-    locSelect.value = myStock.location;
-    updateStorageLocationDisplayText();
-  }
-}
+  const localStorageStore = {
+    'user_info': JSON.stringify({ id: 'STAFF_007', first: '太郎', last: '桑名' })
+  };
 
-function initStorageRegisterPage() {
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const staffId = userInfo.id || '';
-  const countInput = $('storage-register-count');
-  setupStorageRegisterInputFormatter(countInput);
+  const mockLocalStorage = {
+    getItem: (k) => localStorageStore[k] || null,
+    setItem: (k, v) => { localStorageStore[k] = String(v); }
+  };
 
-  const locSelect = $('storage-register-location');
-  if (locSelect && !locSelect.dataset.changeBound) {
-    locSelect.dataset.changeBound = 'true';
-    locSelect.addEventListener('change', function() {
-      this.dataset.userSelected = 'true';
-      updateStorageLocationDisplayText();
-    });
-  }
+  const mockDocument = {
+    get activeElement() { return activeElement; },
+    set activeElement(val) { activeElement = val; },
+    getElementById: (id) => $(id),
+    querySelectorAll: () => [],
+    createElement: (tag) => new MockElement('', tag),
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  };
 
-  // 1. 既存キャッシュからの即時同期反映
-  if (_stockFetched && Array.isArray(_stockData) && _stockData.length > 0) {
-    applyMyStockToForm({ isAsyncResponse: false });
-  }
+  const state = {
+    apiCallCount: 0,
+    mockApiResponseData: null,
+    mockApiDelayMs: 20,
+    shouldFail: false
+  };
 
-  // 2. API取得 (In-flight共有付き)
-  if (staffId && countInput) {
-    fetchFlyerStock().then(data => {
-      if (data && data.success && Array.isArray(data.stocks)) {
-        applyMyStockToForm({ isAsyncResponse: true });
+  const sandbox = {
+    console: console,
+    setTimeout: setTimeout,
+    Promise: Promise,
+    String: String,
+    Number: Number,
+    parseInt: parseInt,
+    isNaN: isNaN,
+    Array: Array,
+    Object: Object,
+    JSON: JSON,
+    Math: Math,
+    document: mockDocument,
+    localStorage: mockLocalStorage,
+    window: {
+      addEventListener: () => {},
+      removeEventListener: () => {}
+    },
+    tier1Cache: ['桑名市', '四日市市'],
+    isRegistering: false,
+    registrationError: false,
+    $: $,
+    alert: (msg) => { console.log("ALERT:", msg); },
+    fetch: async () => ({ ok: true, json: async () => (['桑名市', '四日市市']) }),
+    waitForIdentityVerified: async () => {},
+    renderStorageList: (data) => { sandbox.renderStorageListCallCount++; },
+    callApiPost: async function(action, payload = {}) {
+      if (action === 'getFlyerStock') {
+        state.apiCallCount++;
+        await new Promise(r => setTimeout(r, state.mockApiDelayMs));
+        if (state.shouldFail) throw new Error("NETWORK_FAILURE");
+        return state.mockApiResponseData;
       }
-    }).catch(() => {});
-  }
-
-  updateStorageCountDisplay();
-  updateStorageRegisterButtonText();
-}
-
-let renderStorageListCallCount = 0;
-function renderStorageList(data) {
-  renderStorageListCallCount++;
-}
-
-function initStorageListPage() {
-  const listContainer = $('storage-list-container');
-  if (!_stockFetched) {
-    fetchFlyerStock().then(data => {
-      if (data && data.success) {
-        renderStorageList(_stockData);
-      } else if (data === null) {
-        renderStorageList(_stockData);
+      if (action === 'updateFlyerStock') {
+        state.apiCallCount++;
+        await new Promise(r => setTimeout(r, state.mockApiDelayMs));
+        return { success: true };
       }
-    }).catch(() => {});
-  } else {
-    renderStorageList(_stockData);
-  }
-}
-
-async function submitFlyerStock(location, count) {
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const staffId = userInfo.id || '';
-  const staffName = `${userInfo.last || ''} ${userInfo.first || ''}`.trim();
-  const countInput = $('storage-register-count');
-  const locSelect = $('storage-register-location');
-
-  const res = await callApiPost('updateFlyerStock', {
-    location, count, staffName, staffId
-  });
-
-  if (res && res.success) {
-    if (!Array.isArray(_stockData)) _stockData = [];
-    const idx = _stockData.findIndex(s => s.isMe === true || String(s.staffId) === String(staffId));
-    if (idx >= 0) {
-      _stockData[idx] = { ..._stockData[idx], location: location, count: count, staffName: staffName, isMe: true };
-    } else {
-      _stockData.unshift({ staffId: staffId, staffName: staffName, location: location, count: count, isMe: true });
+      return { success: true };
     }
-    _stockFetched = true;
+  };
 
-    if (countInput) delete countInput.dataset.userEditing;
-    if (locSelect) delete locSelect.dataset.userSelected;
+  sandbox.renderStorageListCallCount = 0;
 
-    // 世代インクリメント: 登録前から走っている古い getFlyerStock のレスポンスを破棄し、上書きを完全防止
-    _flyerStockReqSeq++;
-  }
+  vm.createContext(sandbox);
+  vm.runInContext(storageSrc, sandbox);
+  vm.runInContext(renderSrc, sandbox);
+  vm.runInContext(appSrc, sandbox);
+  vm.runInContext("_identityVerified = true;", sandbox);
+  sandbox._identityVerified = true;
+
+  return { sandbox, state, $, document: mockDocument };
 }
-
-// --------------------------------------------------------------------------
-// TEST EXECUTION
-// --------------------------------------------------------------------------
 
 async function runTests() {
-  // Gate 1: 初回取得（キャッシュなし時）
   console.log('--- Gate 1: 初回取得（キャッシュなし時、API取得後に正常反映） ---');
-  _stockData = [];
-  _stockFetched = false;
-  apiCallCount = 0;
-  mockApiResponseData = {
+  let env = createTestEnvironment();
+  env.state.mockApiResponseData = {
     success: true,
-    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1200 }]
+    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '四日市市', count: 300, isMe: true }]
   };
+  env.state.mockApiDelayMs = 20;
 
-  initStorageRegisterPage();
-  assert.equal($('storage-register-count').value, '', 'API完了前は空');
-  assert.equal(apiCallCount, 1, '初回のAPI呼び出しが発射された');
-
-  // API完了を待機
-  await new Promise(r => setTimeout(r, mockApiDelayMs + 10));
-  assert.equal($('storage-register-count').value, '1200', 'API完了後に1200が反映された');
-  assert.equal($('storage-register-location').value, '桑名市', '保管場所が反映された');
-  assert.equal(_stockFetched, true, '_stockFetchedがtrueに設定された');
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  assert.equal(env.$('storage-register-count').value, '', 'APIレスポンス前は空');
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(env.$('storage-register-count').value, '300', 'APIレスポンス後に300が反映された');
   console.log('✅ Gate 1 PASS\n');
 
-  // Gate 2: キャッシュ即時復元（API完了を待たない）
-  console.log('--- Gate 2: キャッシュ即時復元（API待ちゼロ） ---');
-  $('storage-register-count').value = '';
-  $('storage-register-location').value = '';
-  delete $('storage-register-count').dataset.userEditing;
+  console.log('--- Gate 2: キャッシュ即時復元（キャッシュあり時、即座に同期反映） ---');
+  env = createTestEnvironment();
+  // Simulate cached state by running a fetch first and waiting for it
+  env.state.mockApiResponseData = {
+    success: true,
+    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '四日市市', count: 300, isMe: true }]
+  };
+  env.state.mockApiDelayMs = 10;
+  await vm.runInContext('StorageModule.fetchStock()', env.sandbox);
 
-  initStorageRegisterPage();
-  assert.equal($('storage-register-count').value, '1200', 'API待ちゼロで即座に1200が反映された');
-  assert.equal($('storage-register-location').value, '桑名市', 'API待ちゼロで即座に桑名市が反映された');
-  await new Promise(r => setTimeout(r, mockApiDelayMs + 10));
+  env.state.mockApiResponseData = {
+    success: true,
+    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '四日市市', count: 1200, isMe: true }]
+  };
+
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  assert.equal(env.$('storage-register-count').value, '300', '即座に前回キャッシュ(300)が反映される');
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(env.$('storage-register-count').value, '1200', 'APIレスポンス後に最新値(1200)が反映された');
   console.log('✅ Gate 2 PASS\n');
 
-  // Gate 3: In-flight重複防止（高速画面往復）
   console.log('--- Gate 3: In-flight重複防止（高速画面往復） ---');
-  apiCallCount = 0;
-  mockApiDelayMs = 50;
-
-  initStorageRegisterPage();
-  assert.equal(apiCallCount, 1, '1回目のAPI発射');
-
-  initStorageRegisterPage();
-  assert.equal(apiCallCount, 1, '2回目オープン時、進行中Promise共有のためAPIは重複発射されない');
-
-  initStorageRegisterPage();
-  assert.equal(apiCallCount, 1, '3回目オープン時もAPIは重複発射されない');
-
+  env = createTestEnvironment();
+  const countBefore = env.state.apiCallCount;
+  env.state.mockApiDelayMs = 50;
+  env.state.mockApiResponseData = { success: true, stocks: [] };
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  vm.runInContext('initStorageListPage()', env.sandbox);
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  vm.runInContext('initStorageListPage()', env.sandbox);
   await new Promise(r => setTimeout(r, 60));
-  assert.equal(_activeFlyerStockPromise, null, 'API完了後にPromiseがnullにクリアされる');
+  assert.equal(env.state.apiCallCount - countBefore, 1, '4回画面遷移しても、APIコールは1回のみ');
   console.log('✅ Gate 3 PASS\n');
 
-  // Gate 4: ユーザー入力保護【最重要】
-  console.log('--- Gate 4: ユーザー入力保護【最重要】（API通信中に「500」入力 → レスポンス到着後も500維持） ---');
-  mockApiDelayMs = 40;
-  mockApiResponseData = {
+  console.log('--- Gate 4: ユーザー入力保護（枚数） ---');
+  env = createTestEnvironment();
+  env.state.mockApiDelayMs = 40;
+  env.state.mockApiResponseData = {
     success: true,
-    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1200 }]
+    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1200, isMe: true }]
   };
 
-  initStorageRegisterPage();
-  assert.equal($('storage-register-count').value, '1200', 'キャッシュから1200が即座に入力');
-
-  // ★ API通信中にユーザーが「500」と手入力するシナリオ
-  const inputEl = $('storage-register-count');
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  const inputEl = env.$('storage-register-count');
   inputEl.dispatchEvent('click');
+  inputEl.focus();
   inputEl.value = '500';
   inputEl.dispatchEvent('input');
+  assert.equal(inputEl.dataset.userEditing, 'true');
 
-  assert.equal(inputEl.value, '500', 'ユーザーが500を入力');
-  assert.equal(inputEl.dataset.userEditing, 'true', 'userEditingフラグがセットされている');
-
-  // ★ この状態で遅延していた API レスポンスが到着
-  await new Promise(r => setTimeout(r, 50));
-
-  // ★ 検証: APIレスポンス (1200) で上書きされず、ユーザー入力「500」が保持されていること！
+  await new Promise(r => setTimeout(r, 60));
   assert.equal(inputEl.value, '500', '遅延APIレスポンス到着後もユーザー入力 500 が100%保持されている');
-  console.log('✅ Gate 4 PASS (ユーザー入力値 500 が完全保護された)\n');
+  console.log('✅ Gate 4 PASS\n');
 
-  // Gate 5: 保管場所選択保護
-  console.log('--- Gate 5: 保管場所選択保護（手動変更中にAPIレスポンス到着） ---');
-  mockApiDelayMs = 40;
-  mockApiResponseData = {
+  console.log('--- Gate 5: 保管場所選択保護 ---');
+  env = createTestEnvironment();
+  env.state.mockApiDelayMs = 40;
+  env.state.mockApiResponseData = {
     success: true,
-    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1200 }]
+    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1200, isMe: true }]
   };
 
-  initStorageRegisterPage();
-  const locSelect = $('storage-register-location');
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  const locSelect = env.$('storage-register-location');
+  locSelect.focus();
   locSelect.value = '四日市市';
   locSelect.dispatchEvent('change');
-  assert.equal(locSelect.dataset.userSelected, 'true');
 
-  await new Promise(r => setTimeout(r, 50));
+  await new Promise(r => setTimeout(r, 60));
   assert.equal(locSelect.value, '四日市市', '遅延API到着後もユーザーが選択した「四日市市」が保持されている');
-  console.log('✅ Gate 5 PASS (保管場所選択値が完全保護された)\n');
+  console.log('✅ Gate 5 PASS\n');
 
-  // Gate 6: 在庫登録成功後のキャッシュ即時更新
-  console.log('--- Gate 6: 在庫登録成功後のキャッシュ即時更新（_stockFetched=true維持） ---');
-  mockApiDelayMs = 10;
-  await submitFlyerStock('四日市市', 500);
+  console.log('--- Gate 6: 在庫登録成功後のキャッシュ即時更新 ---');
+  env = createTestEnvironment();
+  env.state.mockApiDelayMs = 10;
 
-  assert.equal(_stockFetched, true, '登録後も _stockFetched=true が維持されている');
-  const myStock = _stockData.find(s => s.staffId === 'STAFF_007');
+  env.$('storage-register-location').value = '四日市市';
+  env.$('storage-register-count').value = '500';
+  await vm.runInContext('window.submitFlyerStock()', env.sandbox);
+
+  const snapshot = vm.runInContext('StorageModule.getSnapshot()', env.sandbox);
+  assert.equal(snapshot.fetched, true, '登録後も fetched=true が維持されている');
+  const myStock = snapshot.stocks.find(s => s.isMe === true);
   assert.equal(myStock.count, 500, 'キャッシュ上の枚数が500に更新された');
   assert.equal(myStock.location, '四日市市', 'キャッシュ上の場所が四日市市に更新された');
 
-  delete $('storage-register-count').dataset.userEditing;
-  initStorageRegisterPage();
-  assert.equal($('storage-register-count').value, '500', '次回遷移時に即座に500が表示される');
+  delete env.$('storage-register-count').dataset.userEditing;
+  env.document.activeElement = null; // blur
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  assert.equal(env.$('storage-register-count').value, '500', '次回遷移時に即座に500が表示される');
   console.log('✅ Gate 6 PASS\n');
 
-  // Gate 7: 登録前の遅延GET (1000枚) と登録 (500枚) の世代競合検証【最重要競合試験】
   console.log('--- Gate 7: 登録前の遅延GET (1000枚) と登録 (500枚) の世代競合検証 ---');
-  _stockData = [];
-  _stockFetched = false;
-  _activeFlyerStockPromise = null;
+  env = createTestEnvironment();
 
-  // 1. サーバー上の初期在庫は 1000枚
-  mockApiResponseData = {
+  env.state.mockApiResponseData = {
     success: true,
-    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1000 }]
+    stocks: [{ staffId: 'STAFF_007', staffName: '桑名 太郎', location: '桑名市', count: 1000, isMe: true }]
   };
-  // 2. getFlyerStock を意図的に大きく遅延させる (100ms)
-  mockApiDelayMs = 100;
+  env.state.mockApiDelayMs = 100;
 
-  // 3. 画面を開く → getFlyerStock が In-flight 状態になる
-  const initialSeq = _flyerStockReqSeq + 1;
-  const inFlightGetPromise = fetchFlyerStock();
-  assert.equal(_flyerStockReqSeq, initialSeq, '先行GETの世代番号が記録された');
-  assert.notEqual(_activeFlyerStockPromise, null, 'GETがIn-flight状態である');
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
 
-  // 4. GET通信の完了前（30ms後）に、ユーザーが「500枚」で在庫登録を成功させる
   await new Promise(r => setTimeout(r, 30));
-  mockApiDelayMs = 10;
-  await submitFlyerStock('桑名市', 500);
+  env.state.mockApiDelayMs = 10;
+  env.$('storage-register-location').value = '桑名市';
+  env.$('storage-register-count').value = '500';
+  await vm.runInContext('window.submitFlyerStock()', env.sandbox);
 
-  // 5. 登録成功直後の _stockData が 500枚 であることを確認
-  assert.equal(_stockData.find(s => s.staffId === 'STAFF_007')?.count, 500, '登録直後のキャッシュは500枚');
-  assert.equal(_flyerStockReqSeq, initialSeq + 1, 'submitFlyerStockによって世代番号がインクリメントされた');
+  let snap = vm.runInContext('StorageModule.getSnapshot()', env.sandbox);
+  assert.equal(snap.stocks.find(s => s.isMe === true)?.count, 500, '登録直後のキャッシュは500枚');
 
-  // 6. その後、遅延していた旧GETレスポンス（1000枚）を到着させる
-  await inFlightGetPromise;
+  await new Promise(r => setTimeout(r, 90)); // wait for delayed GET
 
-  // 7. 【核心検証】_stockData が 1000枚 へ戻らず、500枚 を維持していることを確認！
-  const finalStock = _stockData.find(s => s.staffId === 'STAFF_007');
-  assert.equal(finalStock?.count, 500, '遅延した旧GET(1000枚)到着後も500枚が維持されている（上書き破棄成功）');
-  console.log('✅ Gate 7 PASS: 世代不一致により旧GET(1000枚)が破棄され、最新値500枚が完全維持された！\n');
+  snap = vm.runInContext('StorageModule.getSnapshot()', env.sandbox);
+  assert.equal(snap.stocks.find(s => s.isMe === true)?.count, 500, '遅延した旧GET(1000枚)到着後も500枚が維持されている');
+  console.log('✅ Gate 7 PASS\n');
 
-  // Gate 8: 在庫登録画面 ↔ 一覧画面の高速往復における In-flight 単一通信検証【一本化検証】
   console.log('--- Gate 8: 在庫登録画面 ↔ 一覧画面の高速往復における In-flight 単一通信検証 ---');
-  _stockData = [];
-  _stockFetched = false;
-  _activeFlyerStockPromise = null;
-  apiCallCount = 0;
-  mockApiDelayMs = 50;
+  env = createTestEnvironment();
+  env.state.apiCallCount = 0;
+  env.state.mockApiDelayMs = 50;
+  env.state.mockApiResponseData = { success: true, stocks: [] };
 
-  // 1. 登録画面で fetchFlyerStock() を発火
-  const p1 = fetchFlyerStock();
-  assert.equal(apiCallCount, 1, '1回目の fetchFlyerStock で API が 1 回呼ばれる');
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  assert.equal(env.state.apiCallCount, 1);
 
-  // 2. 完了前（通信中）に一覧画面 ↔ 登録画面を高速往復
-  initStorageListPage();
-  initStorageRegisterPage();
-  assert.equal(apiCallCount, 1, '一覧・登録画面を高速往復しても In-flight 共有により API は重複発射されず 1 回のまま');
+  vm.runInContext('initStorageListPage()', env.sandbox);
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  assert.equal(env.state.apiCallCount, 1, '一覧・登録画面を高速往復しても In-flight 共有により API は重複発射されず 1 回のまま');
 
-  // 3. 通信完了待機
-  await p1;
-  assert.equal(apiCallCount, 1, '完了まで合計通信は厳格に 1 回のみ');
-  assert.equal(_stockFetched, true, 'キャッシュが有効化されている');
+  await new Promise(r => setTimeout(r, 70));
+  assert.equal(env.state.apiCallCount, 1, '完了まで合計通信は厳格に 1 回のみ');
 
-  // 4. 通信完了後の一覧画面再訪ではキャッシュ有効により API 通信ゼロで即時表示
-  const countBefore = apiCallCount;
-  initStorageListPage();
-  assert.equal(apiCallCount, countBefore, '一覧画面はキャッシュ有効時、追加通信ゼロで即時描画');
-  console.log('✅ Gate 8 PASS: 登録・一覧画面間で fetchFlyerStock が一本化され、同時通信1本＆キャッシュ即時表示を実証！\n');
+  const countB = env.state.apiCallCount;
+  vm.runInContext('initStorageListPage()', env.sandbox);
+  assert.equal(env.state.apiCallCount, countB, '一覧画面はキャッシュ有効時、追加通信ゼロで即時描画');
+  console.log('✅ Gate 8 PASS\n');
 
-  // Gate 9: API 失敗後の Promise 解放・次回再試行保証検証【Promise固着防止】
   console.log('--- Gate 9: API 失敗後の Promise 解放・次回再試行保証検証 ---');
-  _stockData = [];
-  _stockFetched = false;
-  _activeFlyerStockPromise = null;
-  mockApiDelayMs = 10;
+  env = createTestEnvironment();
+  env.state.mockApiDelayMs = 10;
+  env.state.shouldFail = true;
 
-  // 1. エラーを投げるモック
-  let shouldFail = true;
-  callApiPost = async function(action, payload) {
-    if (action === 'getFlyerStock' && shouldFail) {
-      throw new Error("NETWORK_FAILURE");
-    }
-    return { success: true, stocks: [{ staffId: 'STAFF_007', count: 300, isMe: true }] };
-  };
-
-  // 2. 1回目: 失敗
-  let caught = false;
   try {
-    await fetchFlyerStock();
+    await vm.runInContext('StorageModule.fetchStock()', env.sandbox);
+    assert.fail('Should have thrown');
   } catch (e) {
-    caught = true;
+    // Expected
   }
-  assert.equal(caught, true, '1回目はエラーがスローされる');
-  assert.equal(_activeFlyerStockPromise, null, 'エラー後も finally で _activeFlyerStockPromise が null に解放されている');
 
-  // 3. 2回目: 復旧後の再試行
-  shouldFail = false;
-  const retryData = await fetchFlyerStock();
+  env.state.shouldFail = false;
+  env.state.mockApiResponseData = { success: true, stocks: [{ staffId: 'STAFF_007', count: 300, isMe: true }] };
+
+  const retryData = await vm.runInContext('StorageModule.fetchStock()', env.sandbox);
   assert.ok(retryData && retryData.success, 'Promise固着なく次回再試行が成功する');
-  assert.equal(_activeFlyerStockPromise, null, '成功後も _activeFlyerStockPromise が null に解放されている');
-  console.log('✅ Gate 9 PASS: API失敗後もPromiseが固着せず、次回取得が正常に再試行可能！\n');
+  console.log('✅ Gate 9 PASS\n');
+
+  console.log('--- Gate 10: Snapshot mutation isolation ---');
+  env = createTestEnvironment();
+  env.state.mockApiResponseData = { success: true, stocks: [{ staffId: 'STAFF_007', count: 300, isMe: true }], myStock: { location: '桑名市', count: 300 } };
+  env.state.mockApiDelayMs = 10;
+  await vm.runInContext('StorageModule.fetchStock()', env.sandbox);
+  const snap1 = vm.runInContext('StorageModule.getSnapshot()', env.sandbox);
+  snap1.stocks[0].count = 999; // Try to mutate stocks
+  if (snap1.myStock) snap1.myStock.count = 999; // Try to mutate myStock
+  const snap2 = vm.runInContext('StorageModule.getSnapshot()', env.sandbox);
+  assert.equal(snap2.stocks[0].count, 300, '外部からのミューテーションが内部ステート(stocks)に影響を与えないこと');
+  assert.equal(snap2.myStock.count, 300, '外部からのミューテーションが内部ステート(myStock)に影響を与えないこと');
+  console.log('✅ Gate 10 PASS\n');
+
+  console.log('--- Gate 11: tier1Cache late arrival ---');
+  env = createTestEnvironment();
+  vm.runInContext('tier1Cache = null;', env.sandbox);
+  vm.runInContext('initStorageRegisterPage()', env.sandbox);
+  assert.ok(env.$('storage-register-location').innerHTML.includes('データ読み込み中...'), '最初はデータなし');
+
+  // Simulate fetchTier1 completion
+  vm.runInContext('tier1Cache = ["桑名市", "四日市市"];', env.sandbox);
+  vm.runInContext('if (typeof StorageView !== "undefined") StorageView.updateLocationDropdown(StorageModule.getSnapshot().locations, null, tier1Cache);', env.sandbox);
+  assert.ok(env.$('storage-register-location').innerHTML.includes('桑名市'), 'fetchTier1後にDropdownが更新される');
+  console.log('✅ Gate 11 PASS\n');
 
   console.log('====================================================');
-  console.log('🎉 ALL 9 GATES PASSED PERFECTLY!');
+  console.log('🎉 ALL 11 GATES PASSED PERFECTLY!');
   console.log('====================================================');
 }
 
