@@ -1228,7 +1228,7 @@ window.initMainMap = function() {
             const center = map.getCenter();
             const pos = marker.getPosition();
 
-            // 投影法を用いてカメラの中心位置を120px上にずらし、PINが画面中央より120px下に下がるようにする
+            // 投影法を用いてカメラの中心位置を22px上にずらし、PINが画面中央より22px下に下がるようにする
             const scale = Math.pow(2, map.getZoom());
             const projection = map.getProjection();
             let targetPos = pos;
@@ -1236,7 +1236,7 @@ window.initMainMap = function() {
               const projPoint = projection.fromLatLngToPoint(pos);
               const offsetPoint = new google.maps.Point(
                 projPoint.x,
-                projPoint.y - (120 / scale) // 120px分カメラを北へずらす（Y座標を引き算）
+                projPoint.y - (22 / scale) // 22px分カメラを北へずらす（Y座標を引き算）
               );
               targetPos = projection.fromPointToLatLng(offsetPoint);
             }
