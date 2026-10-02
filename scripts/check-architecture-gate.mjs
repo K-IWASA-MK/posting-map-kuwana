@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { resolve, join } from 'path';
 
 const rootDir = process.cwd();
 
@@ -191,7 +191,7 @@ export function analyzeTokens(tokens, filePath) {
   const isAppJs = filePath.endsWith('app.js');
   const isModule = filePath.includes('modules/') || filePath.endsWith('render.js');
 
-  const assignmentOps = ['=', '+=', '-=', '*=', '/=', '??=', '||=', '&&='];
+  const assignmentOps = ['=', '+=', '-=', '*=', '/=', '??=', '||=', '&&=', '++', '--'];
 
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
@@ -224,6 +224,14 @@ export function analyzeTokens(tokens, filePath) {
         if (next && next.value === '[' && next2 && next2.type === 'string' && next3 && next3.value === ']') {
           const next4 = tokens[i + 4];
           if (next4 && assignmentOps.includes(next4.value)) {
+            findings.push({ kind: 'HARD_FAIL:GLOBAL_EXPOSURE', file: filePath, symbol: `${t.value}[${next2.value}]`, fingerprint: getContextFingerprint(tokens, i) });
+          }
+        }
+        if (prev && (prev.value === '++' || prev.value === '--')) {
+          if (next && next.value === '.' && next2 && next2.type === 'identifier') {
+            findings.push({ kind: 'HARD_FAIL:GLOBAL_EXPOSURE', file: filePath, symbol: `${t.value}.${next2.value}`, fingerprint: getContextFingerprint(tokens, i) });
+          }
+          if (next && next.value === '[' && next2 && next2.type === 'string' && next3 && next3.value === ']') {
             findings.push({ kind: 'HARD_FAIL:GLOBAL_EXPOSURE', file: filePath, symbol: `${t.value}[${next2.value}]`, fingerprint: getContextFingerprint(tokens, i) });
           }
         }
@@ -260,6 +268,20 @@ export function analyzeTokens(tokens, filePath) {
   return findings;
 }
 
+function walkDir(dir, files = []) {
+  if (!existsSync(dir)) return files;
+  const list = readdirSync(dir);
+  for (const item of list) {
+    const fullPath = join(dir, item);
+    if (statSync(fullPath).isDirectory()) {
+      walkDir(fullPath, files);
+    } else {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
+
 // --- 3. Core Gate Logic ---
 export function runArchitectureGate(mockFiles = null) {
   let filesToScan = [];
@@ -269,8 +291,19 @@ export function runArchitectureGate(mockFiles = null) {
   } else {
     const filesSet = new Set();
     try {
-      execSync('git ls-files active/h-app/', {cwd: rootDir}).toString('utf8').split('\n').filter(f => f.endsWith('.js')).forEach(f => filesSet.add(f));
-      execSync('git ls-tree -r --name-only HEAD active/h-app/', {cwd: rootDir}).toString('utf8').split('\n').filter(f => f.endsWith('.js')).forEach(f => filesSet.add(f));
+      const allFiles = walkDir(resolve(rootDir, 'active/h-app'));
+      for (const f of allFiles) {
+        if (f.endsWith('.js')) {
+          const relPath = f.replace(resolve(rootDir) + '/', '');
+          filesSet.add(relPath.replace(/\\/g, '/'));
+        }
+      }
+      try {
+        execSync('git ls-tree -r --name-only HEAD active/h-app/', {cwd: rootDir, stdio: ['pipe', 'pipe', 'ignore']})
+          .toString('utf8').split('\n').filter(f => f.endsWith('.js')).forEach(f => filesSet.add(f));
+      } catch (e) {
+        // HEAD might not have active/h-app if completely new, which is fine, we just fall back to WT files.
+      }
     } catch (e) {
       console.error(`🛑 Failed to enumerate files: ${e.message}`);
       return { hasError: true };
@@ -281,18 +314,17 @@ export function runArchitectureGate(mockFiles = null) {
       let wtContent = '';
 
       try {
-        const treeCheck = execSync(`git ls-tree HEAD "${f}"`, {cwd: rootDir}).toString('utf8').trim();
+        const treeCheck = execSync(`git ls-tree HEAD "${f}"`, {cwd: rootDir, stdio: ['pipe', 'pipe', 'ignore']}).toString('utf8').trim();
         if (treeCheck) {
           try {
-            headContent = execSync(`git show HEAD:"${f}"`, {cwd: rootDir, stdio: 'pipe'}).toString('utf8');
+            headContent = execSync(`git show HEAD:"${f}"`, {cwd: rootDir, stdio: ['pipe', 'pipe', 'ignore']}).toString('utf8');
           } catch (e) {
             console.error(`🛑 Failed to read HEAD content for ${f}: ${e.message}`);
             return { hasError: true };
           }
         }
       } catch (e) {
-        console.error(`🛑 Failed to check HEAD existence for ${f}: ${e.message}`);
-        return { hasError: true };
+        // If git ls-tree fails (e.g., path not in HEAD), headContent remains ''
       }
 
       if (existsSync(resolve(rootDir, f))) {

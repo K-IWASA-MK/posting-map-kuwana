@@ -47,6 +47,38 @@ const FAIL_TESTS = [
   {
     name: 'WT app.js消失',
     files: [{ filePath: 'active/h-app/app.js', headContent: 'var a = 1;', wtContent: null, wtMissing: true }]
+  },
+  {
+    name: 'window.counter++',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: 'window.counter++;' }]
+  },
+  {
+    name: 'window.counter--',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: 'window.counter--;' }]
+  },
+  {
+    name: '++window.counter',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: '++window.counter;' }]
+  },
+  {
+    name: '--window.counter',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: '--window.counter;' }]
+  },
+  {
+    name: 'globalThis.counter++',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: 'globalThis.counter++;' }]
+  },
+  {
+    name: '++globalThis.counter',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: '++globalThis.counter;' }]
+  },
+  {
+    name: 'window[\'counter\']++',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: 'window[\'counter\']++;' }]
+  },
+  {
+    name: '++window[\'counter\']',
+    files: [{ filePath: 'active/h-app/app.js', headContent: '', wtContent: '++window[\'counter\'];' }]
   }
 ];
 
@@ -93,7 +125,7 @@ try {
 
   fs.mkdirSync(path.join(tempDir, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(tempDir, '.agents'), { recursive: true });
-  fs.mkdirSync(path.join(tempDir, 'active/h-app'), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, 'active/h-app/modules'), { recursive: true });
 
   fs.copyFileSync(path.join(rootDir, 'scripts/check-scope.mjs'), path.join(tempDir, 'scripts/check-scope.mjs'));
   fs.copyFileSync(path.join(rootDir, 'scripts/check-architecture-gate.mjs'), path.join(tempDir, 'scripts/check-architecture-gate.mjs'));
@@ -135,6 +167,30 @@ try {
   } catch (e) {
     assert.ok(e.status !== 0 && e.stderr.toString().includes('Governance Separation Violation'), 'Test 4 failed');
   }
+  execSync('git checkout -- scripts/check-scope.mjs active/h-app/app.js', { cwd: tempDir, stdio: 'ignore' });
+
+  // Test 5: Untracked new JS file is scanned
+  // Track the modules directory so git status outputs the file path, not the directory path
+  fs.writeFileSync(path.join(tempDir, 'active/h-app/modules/.keep'), '');
+  execSync('git add active/h-app/modules/.keep', { cwd: tempDir, stdio: 'ignore' });
+  
+  fs.writeFileSync(path.join(tempDir, '.agents/current-scope.json'), JSON.stringify([...scope, "active/h-app/modules/storage.js"]));
+  execSync('git add .agents/current-scope.json && git commit -m "update scope for test 5"', { cwd: tempDir, stdio: 'ignore' });
+  
+  fs.writeFileSync(path.join(tempDir, 'active/h-app/modules/storage.js'), 'window.appState;');
+  // NOT running git add for storage.js
+  try {
+    execSync('node scripts/check-scope.mjs', { cwd: tempDir, encoding: 'utf8', stdio: 'pipe' });
+    throw new Error('Test 5: Should have failed');
+  } catch (e) {
+    const stderr = e.stderr ? e.stderr.toString() : '';
+    const stdout = e.stdout ? e.stdout.toString() : '';
+    if (stderr.includes('Scope Violations Detected')) {
+      throw new Error(`Test 5 failed with Scope Violation instead of Arch Guard: ${stderr}`);
+    }
+    assert.ok(e.status !== 0 && stderr.includes('REVIEW_REQUIRED:REVERSE_DEPENDENCY'), `Test 5 failed: Untracked file was not scanned. Stderr: ${stderr}, Stdout: ${stdout}`);
+  }
+
 } catch (e) {
   console.error(`❌ Integration test failed: ${e.message}`);
   failed = true;
