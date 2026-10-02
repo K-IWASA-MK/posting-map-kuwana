@@ -1,7 +1,7 @@
 [
   ".agents/current-scope.json",
-  "AGENTS.md",
-  "docs/architecture/DESIGN_SYSTEM.md",
-  "docs/architecture/CURRENT_ARCHITECTURE.md",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
+  "scripts/check-scope.mjs",
+  "scripts/check-architecture-gate.mjs",
+  "tests/test_architecture_gate.mjs",
+  "tests/run_all_tests.mjs"
 ]
