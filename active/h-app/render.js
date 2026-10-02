@@ -804,6 +804,37 @@ function renderStorageList(stocks, fallbackCities = null) {
   container.innerHTML = groupsHtml;
 }
 
+const BulletinView = {
+  renderPosts(posts) {
+    if (typeof renderBulletinList === 'function') {
+      renderBulletinList(posts);
+    }
+  },
+  showLoading() {
+    const container = typeof $ === 'function' ? $('bulletin-list-container') : document.getElementById('bulletin-list-container');
+    if (!container) return;
+    container.innerHTML = `
+      <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+        <div class="w-8 h-8 rounded-full border-2 border-[#2563eb]/40 border-t-[#2563eb] animate-spin"></div>
+        <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Bulletin...</p>
+      </div>`;
+  },
+  showError(info = {}) {
+    const curContainer = typeof $ === 'function' ? $('bulletin-list-container') : document.getElementById('bulletin-list-container');
+    if (!curContainer) return;
+    const errMsg = info.isTimeout ? "通信がタイムアウトしました" : "データ取得に失敗しました";
+    curContainer.innerHTML = `
+      <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+        <span class="text-2xl">⚠️</span>
+        <p class="text-sm font-black text-white/60">${errMsg}</p>
+        <button type="button" onclick="window.fetchBulletinPosts({ force: true })"
+          class="mt-2 px-4 py-1.5 rounded-full text-xs font-bold text-white bg-white/10 hover:bg-white/20 active:scale-95 transition">
+          再読み込み
+        </button>
+      </div>`;
+  }
+};
+
 function renderBulletinList(posts) {
   const container = $('bulletin-list-container');
   if (!container) return;

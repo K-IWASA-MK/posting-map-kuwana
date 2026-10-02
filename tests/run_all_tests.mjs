@@ -27,6 +27,7 @@ const testSuites = [
   'test_step2_step3_verification.mjs',
   'test_step3_rectification.mjs',
   'test_storage_register_lifecycle.mjs',
+  'test_bulletin_module_lifecycle.mjs',
   'test_manager_ui_interaction.mjs',
   'test_line_push_idempotency_audit.mjs',
   'test_contract_expiry.mjs',
