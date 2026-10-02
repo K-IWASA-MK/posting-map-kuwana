@@ -812,6 +812,9 @@ window.initMainMap = function() {
       this.content = content;
       this.onInputClick = onInputClick;
       this.div = null;
+      this.hasPresented = false;
+      this.rafId1 = null;
+      this.rafId2 = null;
       this.setMap(map);
     }
 
@@ -838,16 +841,48 @@ window.initMainMap = function() {
     draw() {
       if (!this.div) return;
       const projection = this.getProjection();
-      if (!projection) return;
+      const map = this.getMap();
+      if (!projection || !map) return;
 
-      const positionPixels = projection.fromLatLngToDivPixel(this.position);
-      // translate(-50%, -100%) を使い、PINの20px上部に中央配置
-      this.div.style.left = positionPixels.x + 'px';
-      this.div.style.top = (positionPixels.y - 20) + 'px';
-      this.div.style.transform = 'translate(-50%, -100%)';
+      const center = map.getCenter();
+      if (!center) return;
+
+      const centerPixels = projection.fromLatLngToDivPixel(center);
+      const pinPixels = projection.fromLatLngToDivPixel(this.position);
+
+      this.div.style.left = centerPixels.x + 'px';
+      this.div.style.top = centerPixels.y + 'px';
+
+      if (!this.hasPresented) {
+        this.hasPresented = true;
+
+        const dx = pinPixels.x - centerPixels.x;
+        const dy = (pinPixels.y - 20) - centerPixels.y;
+
+        this.div.style.transition = 'none';
+        this.div.style.opacity = '0';
+        this.div.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.88)`;
+
+        this.rafId1 = requestAnimationFrame(() => {
+          this.rafId2 = requestAnimationFrame(() => {
+            if (!this.div) return;
+            this.div.style.transition = 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease-out';
+            this.div.style.opacity = '1';
+            this.div.style.transform = 'translate(-50%, -50%) scale(1)';
+          });
+        });
+      }
     }
 
     onRemove() {
+      if (this.rafId1) {
+        cancelAnimationFrame(this.rafId1);
+        this.rafId1 = null;
+      }
+      if (this.rafId2) {
+        cancelAnimationFrame(this.rafId2);
+        this.rafId2 = null;
+      }
       if (this.div) {
         this.div.parentNode.removeChild(this.div);
         this.div = null;
