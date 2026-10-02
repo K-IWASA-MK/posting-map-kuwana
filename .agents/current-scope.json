@@ -1,16 +1,11 @@
 [
   ".agents/current-scope.json",
   ".agents/skills/h-app-auth-boundary/SKILL.md",
-  "active/api/auth/auth.js",
-  "active/api/v2_api.js",
   "active/h-app/modules/api.js",
   "active/h-app/app.js",
-  "active/h-app/db.js",
   "active/h-app/index.html",
   "tests/measure_chrome_real.mjs",
   "tests/test_phase14_performance_verification.mjs",
-  "tests/test_optimistic_startup_safety.mjs",
-  "tests/test_storage_register_lifecycle.mjs",
-  "tests/test_sec001_dashboard_auth_fix.mjs",
-  "docs/architecture/decisions/ADR-017_TESTING_ARCHITECTURE.md"
+  "tests/test_phase16_testing_verification.mjs",
+  "tests/test_optimistic_startup_safety.mjs"
 ]
