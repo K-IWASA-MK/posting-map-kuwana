@@ -14,16 +14,21 @@
 
 ```text
 Composition Root / Boot (active/h-app/app.js)
+       ├── Feature / Lifecycle Modules (active/h-app/modules/)
+       │      ├── api.js ──▶ Backend API
+       │      ├── db.js
+       │      └── device.js
        │
-       ▼
-Feature & Lifecycle Modules (active/h-app/modules/)
-       │
-       ▼
-Presentation & Interaction (active/h-app/render.js) ──▶ Pure Components (active/h-app/components/)
-       │
-       ▼
-Design Tokens (active/h-app/style.css :root)
+       └── Presentation Wiring
+              └── render.js (Presentation Layer)
+                     └── components/ (Pure Components)
+                            │
+                            ▼
+                     Design Tokens (active/h-app/style.css :root)
 ```
+
+> **Target B' Connection Principle**:
+> Feature / Lifecycle Modules と Presentation Layer (render.js) の接続は、Composition Root (`app.js`) による Wiring、Stable Interface、または Dependency Injection を原則とする。`modules/` から `render.js` への固定的な直結・逆依存は要求しない。
 
 1. **`active/h-app/app.js` (Composition Root / Boot Orchestrator)**:
    - 起動順序（Boot sequencing）、グローバルなLifecycle Wiring、および各Feature Moduleの初期化を担う。
