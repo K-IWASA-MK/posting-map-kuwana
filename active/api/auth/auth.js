@@ -13,6 +13,9 @@ function authenticateRequest(payload) {
   if (!payload || !payload.liffToken) {
     return {
       success: false,
+      code: "UNAUTHORIZED",
+      errorType: "PERMANENT",
+      retryable: false,
       message: "Unauthorized: Missing liffToken"
     };
   }
@@ -52,6 +55,9 @@ function authenticateRequest(payload) {
       console.warn("Authentication failed with status " + statusCode + ": " + response.getContentText());
       return {
         success: false,
+        code: "UNAUTHORIZED",
+        errorType: "PERMANENT",
+        retryable: false,
         message: "Unauthorized: Invalid or expired liffToken"
       };
     }
@@ -77,7 +83,10 @@ function authenticateRequest(payload) {
     console.error("Authentication Error: " + err.toString());
     return {
       success: false,
-      message: "Unauthorized: Authentication service error"
+      code: "INTERNAL_ERROR",
+      errorType: "TRANSIENT",
+      retryable: true,
+      message: "Unauthorized: Authentication service error: " + err.toString()
     };
   }
 }

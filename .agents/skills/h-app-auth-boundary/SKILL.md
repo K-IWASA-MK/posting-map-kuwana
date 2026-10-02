@@ -13,59 +13,64 @@ POSTING MAP Hアプリにおける「起動時の可用性」と「重要デー�
 
 ## 絶対ルール
 
-### 1. 無認証で許可するAPIは2つだけ
+### 1. 無認証で許可するAPI (Public Bootstrap)
 
-HアプリのOptimistic Loadにより、LINE/LIFF認証完了前に以下の2 APIが呼ばれるため、無認証アクセスを許可する。
+HアプリのOptimistic Loadおよび初期表示基盤のため、LINE/LIFF認証完了前に以下のPublic APIのみ無認証アクセスを許可する。
+
+- `getMapsApiKey`
+- `getTier1`
+
+この2つ以外（および端末検証等の公開診断API）を「起動のため」という理由で無認証許可してはならない。
+
+### 2. Dual-Audience 業務データ読取API (認証必須)
+
+組織の進捗や在庫、ランキング等の業務データ読取APIは、有効な `dashboardSessionToken` または有効な `liffToken` を必須とする。
 
 - `getSystemSummary`
-- `getMapsApiKey`
-
-この2つ以外を「起動のため」という理由で無認証許可してはならない。
-
-### 2. その他のRead APIはすべて認証必須
-
-特に以下を含む全Read APIは `authenticateRequest` を通過させる。
-
-- `getRoster`
-- `getFlyerStock`
 - `getRanking`
+- `getFlyerStock`
 - `getGlobalPinStatus`
 - `getLatestDistribution`
-- `getTier1`
-- `getSystemInfo`
-- `getDashboardData`
 - `getDeliveryStats`
 - `getAreaDetails`
+- `getBulletinPosts`
 
-### 3. Write APIはすべて認証必須
+※ Hアプリでは `liff.isLoggedIn()` 成立直後に有効な `liffToken` 付きで `fetchSystemSummary()` を非同期発火するため、全面無認証化する必要はない（SEC-001 / API_CONTRACT.md §6）。
 
-以下を含む全Write APIは `authenticateRequest` を必須とする。
+### 3. Identity Bootstrap API (LIFF認証済み・名簿未確定)
+
+LINE認証済みだが名簿照合（Identity確定）前に必要な専用API。
+
+- `getStaffIdentity`
+- `registerStaff`
+
+有効な `liffToken` を必須とし、名簿確定（`_identityVerified`）を待たずに実行する。
+
+### 4. Write API (配布員書き込み・認証＆名簿登録必須)
+
+以下を含む全Write APIは、有効な `liffToken` ＋ 名簿登録済み（`found === true` / `_identityVerified === true`）を必須とする。
 
 - `updateRecordWithGPSPhoto`
-- `registerStaff`
 - `submitDistribution`
 - `setPinInProgress`
 - `updateFlyerStock`
 - `requestFlyerTransfer`
 - `resolveTransferRequest`
-- `resetRoster`
-- `resetDeviceManagement`
+- `createBulletinPost`
+- `sendBulletinContact`
 
-### 4. Provisioning APIは別の保護境界を維持する
+### 5. Provisioning APIは別の保護境界を維持する
 
 Provisioning系APIについては `verifyProvisioningToken` による保護を維持し、Hアプリの公開Bootstrap APIとは混同しない。
 
-### 5. Manager認証とHアプリ認証を混同しない
+### 6. Manager認証とHアプリ認証を混同しない
 
-PC ManagerがLIFF tokenを持たないことを理由として、HアプリAPI全体の認証を緩和してはならない。
+PC ManagerがLIFF tokenを持たないことを理由として、HアプリAPI全体の認証を緩和してはならない。Managerの閲覧認証は、管理者専用認証機構（セッショントークン）として独立して保護する。
 
-Managerの閲覧認証は、管理者専用認証機構として独立したIssueで設計・実装する。
-
-### 6. 認証境界の変更でHアプリのOptimistic Loadを壊さない
+### 7. 認証境界の変更でHアプリのOptimistic Loadを壊さない
 
 HアプリはLINE認証完了を待たずに画面骨格・起動基盤情報を先行取得する設計である。
-
-そのため、`getSystemSummary` と `getMapsApiKey` を認証必須へ変更する「全面認証化」は禁止する。
+そのため、`getMapsApiKey` と `getTier1` を認証必須へ変更する「全面認証化」は禁止する。
 
 ## 実装原則
 
@@ -74,15 +79,18 @@ HアプリはLINE認証完了を待たずに画面骨格・起動基盤情報を
 概念例:
 
 ```javascript
-const isPublicBootstrapAction = [
-  'getSystemSummary',
-  'getMapsApiKey'
+const isPublicAction = [
+  'getMapsApiKey',
+  'getTier1',
+  'registerOrValidateDevice',
+  'getDeviceStatus',
+  'verifyManagerPassword'
 ].includes(action);
 ```
 
-- `isPublicBootstrapAction === true`: tokenなしでも処理を許可
-- それ以外: `authenticateRequest` を必須化
-- 「Read APIだから公開」「Dashboardだから公開」という包括的バイパスは禁止
+- `isPublicAction === true`: tokenなしでも処理を許可
+- `isDualAuthAction === true`: dashboardSessionToken または liffToken を必須化
+- Write / staffDependent: 有効な liffToken ＋ 名簿登録済みを必須化
 
 ## 必須検証ゲート
 
@@ -92,17 +100,18 @@ const isPublicBootstrapAction = [
 
 無認証で:
 
-- `getSystemSummary` → `success: true`
 - `getMapsApiKey` → `success: true`
+- `getTier1` → `success: true`
 
 ### 機密性・完全性ゲート
 
 無認証で:
 
-- `getRoster` → `success: false` / `Unauthorized: Missing liffToken`
-- `updateRecordWithGPSPhoto` → `success: false` / `Unauthorized: Missing liffToken`
+- `getSystemSummary` → `success: false` / `code: "UNAUTHORIZED"`
+- `getRoster` → `success: false` / `code: "UNAUTHORIZED"`
+- `updateRecordWithGPSPhoto` → `success: false` / `code: "UNAUTHORIZED"`
 
-HTTP statusだけで判定せず、GASが返すJSONの `success` と `message` を確認する。
+HTTP statusだけで判定せず、GASが返すJSONの `success` と `code` / `message` を確認する。
 
 ## HアプリRuntime確認
 
@@ -114,20 +123,9 @@ HTTP statusだけで判定せず、GASが返すJSONの `success` と `message` �
 - マップコンテナが生成される
 - マップが正常描画される
 
-OKAYAMA-02 Version @21では `13/508`、`3%`、Maps SDK loaded、Map container生成を確認し、障害復旧を実証した。
-
 ## 他地区展開時の扱い
 
 他地区へ展開する場合、このSkillの認証境界を基準として実装・監査する。
-
-地区固有のAPI追加や変更がある場合は、次の分類を必ず行う。
-
-1. Public Bootstrapに該当するか
-2. Read + 認証必須か
-3. Write + 認証必須か
-4. Provisioning + 専用tokenか
-5. Manager専用機能か
-
 分類が不明なAPIを無認証ホワイトリストへ追加してはならない。
 
 ## 禁止事項
@@ -138,21 +136,3 @@ OKAYAMA-02 Version @21では `13/508`、`3%`、Maps SDK loaded、Map container�
 - `getRoster` 等の重要データAPIをBootstrap扱いする
 - HTTP 200だけを根拠に認証テストをPASSとする
 - 実機Runtime確認なしに「マップ復旧」を宣言する
-
-## 基準実証
-
-基準地区: OKAYAMA-02
-
-実証版本番: GAS Version @21
-
-実証コミット: `4e2493e`
-
-実証結果:
-
-- `getSystemSummary` 無認証 → PASS
-- `getMapsApiKey` 無認証 → PASS
-- `getRoster` 無認証 → Unauthorized
-- `updateRecordWithGPSPhoto` 無認証 → Unauthorized
-- Hアプリ Map / Header → 復旧
-
-この実証結果を、同一アーキテクチャを採用する地区展開時の認証境界確認基準とする。

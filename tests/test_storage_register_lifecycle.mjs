@@ -164,11 +164,19 @@ function applyMyStockToForm(options = {}) {
   const locSelect = $('storage-register-location');
   if (!countInput) return;
 
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const staffId = userInfo.id || '';
-  if (!staffId || !Array.isArray(_stockData) || _stockData.length === 0) return;
-
-  const myStock = _stockData.find(s => String(s.staffId) === String(staffId));
+  // Backend側が判定した myStock または isMe フラグを優先（staffIdによる照合は行わない）
+  let myStock = (typeof window !== 'undefined' && window._myStockData) || null;
+  if (!myStock && Array.isArray(_stockData) && _stockData.length > 0) {
+    myStock = _stockData.find(s => s.isMe === true) || null;
+  }
+  if (!myStock) {
+    // 後方互換性フォールバック
+    const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+    const staffId = userInfo.id || '';
+    if (staffId && Array.isArray(_stockData)) {
+      myStock = _stockData.find(s => String(s.staffId) === String(staffId));
+    }
+  }
   if (!myStock) return;
 
   const isInputActive = document.activeElement === countInput ||
@@ -225,6 +233,26 @@ function initStorageRegisterPage() {
   updateStorageRegisterButtonText();
 }
 
+let renderStorageListCallCount = 0;
+function renderStorageList(data) {
+  renderStorageListCallCount++;
+}
+
+function initStorageListPage() {
+  const listContainer = $('storage-list-container');
+  if (!_stockFetched) {
+    fetchFlyerStock().then(data => {
+      if (data && data.success) {
+        renderStorageList(_stockData);
+      } else if (data === null) {
+        renderStorageList(_stockData);
+      }
+    }).catch(() => {});
+  } else {
+    renderStorageList(_stockData);
+  }
+}
+
 async function submitFlyerStock(location, count) {
   const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
   const staffId = userInfo.id || '';
@@ -238,11 +266,11 @@ async function submitFlyerStock(location, count) {
 
   if (res && res.success) {
     if (!Array.isArray(_stockData)) _stockData = [];
-    const idx = _stockData.findIndex(s => String(s.staffId) === String(staffId));
+    const idx = _stockData.findIndex(s => s.isMe === true || String(s.staffId) === String(staffId));
     if (idx >= 0) {
-      _stockData[idx] = { ..._stockData[idx], location: location, count: count, staffName: staffName };
+      _stockData[idx] = { ..._stockData[idx], location: location, count: count, staffName: staffName, isMe: true };
     } else {
-      _stockData.push({ staffId: staffId, staffName: staffName, location: location, count: count });
+      _stockData.unshift({ staffId: staffId, staffName: staffName, location: location, count: count, isMe: true });
     }
     _stockFetched = true;
 
@@ -407,8 +435,69 @@ async function runTests() {
   assert.equal(finalStock?.count, 500, '遅延した旧GET(1000枚)到着後も500枚が維持されている（上書き破棄成功）');
   console.log('✅ Gate 7 PASS: 世代不一致により旧GET(1000枚)が破棄され、最新値500枚が完全維持された！\n');
 
+  // Gate 8: 在庫登録画面 ↔ 一覧画面の高速往復における In-flight 単一通信検証【一本化検証】
+  console.log('--- Gate 8: 在庫登録画面 ↔ 一覧画面の高速往復における In-flight 単一通信検証 ---');
+  _stockData = [];
+  _stockFetched = false;
+  _activeFlyerStockPromise = null;
+  apiCallCount = 0;
+  mockApiDelayMs = 50;
+
+  // 1. 登録画面で fetchFlyerStock() を発火
+  const p1 = fetchFlyerStock();
+  assert.equal(apiCallCount, 1, '1回目の fetchFlyerStock で API が 1 回呼ばれる');
+
+  // 2. 完了前（通信中）に一覧画面 ↔ 登録画面を高速往復
+  initStorageListPage();
+  initStorageRegisterPage();
+  assert.equal(apiCallCount, 1, '一覧・登録画面を高速往復しても In-flight 共有により API は重複発射されず 1 回のまま');
+
+  // 3. 通信完了待機
+  await p1;
+  assert.equal(apiCallCount, 1, '完了まで合計通信は厳格に 1 回のみ');
+  assert.equal(_stockFetched, true, 'キャッシュが有効化されている');
+
+  // 4. 通信完了後の一覧画面再訪ではキャッシュ有効により API 通信ゼロで即時表示
+  const countBefore = apiCallCount;
+  initStorageListPage();
+  assert.equal(apiCallCount, countBefore, '一覧画面はキャッシュ有効時、追加通信ゼロで即時描画');
+  console.log('✅ Gate 8 PASS: 登録・一覧画面間で fetchFlyerStock が一本化され、同時通信1本＆キャッシュ即時表示を実証！\n');
+
+  // Gate 9: API 失敗後の Promise 解放・次回再試行保証検証【Promise固着防止】
+  console.log('--- Gate 9: API 失敗後の Promise 解放・次回再試行保証検証 ---');
+  _stockData = [];
+  _stockFetched = false;
+  _activeFlyerStockPromise = null;
+  mockApiDelayMs = 10;
+
+  // 1. エラーを投げるモック
+  let shouldFail = true;
+  callApiPost = async function(action, payload) {
+    if (action === 'getFlyerStock' && shouldFail) {
+      throw new Error("NETWORK_FAILURE");
+    }
+    return { success: true, stocks: [{ staffId: 'STAFF_007', count: 300, isMe: true }] };
+  };
+
+  // 2. 1回目: 失敗
+  let caught = false;
+  try {
+    await fetchFlyerStock();
+  } catch (e) {
+    caught = true;
+  }
+  assert.equal(caught, true, '1回目はエラーがスローされる');
+  assert.equal(_activeFlyerStockPromise, null, 'エラー後も finally で _activeFlyerStockPromise が null に解放されている');
+
+  // 3. 2回目: 復旧後の再試行
+  shouldFail = false;
+  const retryData = await fetchFlyerStock();
+  assert.ok(retryData && retryData.success, 'Promise固着なく次回再試行が成功する');
+  assert.equal(_activeFlyerStockPromise, null, '成功後も _activeFlyerStockPromise が null に解放されている');
+  console.log('✅ Gate 9 PASS: API失敗後もPromiseが固着せず、次回取得が正常に再試行可能！\n');
+
   console.log('====================================================');
-  console.log('🎉 ALL 7 GATES PASSED PERFECTLY!');
+  console.log('🎉 ALL 9 GATES PASSED PERFECTLY!');
   console.log('====================================================');
 }
 

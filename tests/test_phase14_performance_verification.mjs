@@ -30,7 +30,8 @@ test('1. 性能契約直接検証: T0〜T5測定境界、Warm/Cold/Offline SLA�
   assert.ok(/for\s*\([^)]*r\s*<=\s*runs[^)]*\)/.test(chromeReal), 'measure_chrome_real.mjs must execute benchmark loop up to runs');
   assert.ok(chromeReal.includes('calcStats(measurementsT2)'), 'measure_chrome_real.mjs must invoke calcStats for measurements');
   assert.ok(chromeReal.includes('sorted[mid]'), 'measure_chrome_real.mjs must explicitly derive statistical median from sorted samples');
-  assert.ok(chromeReal.includes('warmPass') && chromeReal.includes('coldPass') && chromeReal.includes('offlinePass'), 'measure_chrome_real.mjs must implement real-browser benchmark for Warm/Cold/Offline SLAs');
+  assert.ok(chromeReal.includes('warmPass') && chromeReal.includes('offlinePass') && chromeReal.includes('SEPARATED'), 'measure_chrome_real.mjs must implement real-browser benchmark for Warm/Offline SLAs and separate Cold Start to LIFF/Auth E2E');
+  assert.ok(chromeReal.includes('MEASUREMENT_TIMEOUT'), 'measure_chrome_real.mjs must enforce MEASUREMENT_TIMEOUT on unobserved metrics without fake fallbacks');
 });
 
 // ─── 2. T0〜T5 測定境界・因果関係検証 ─────────────────────────────

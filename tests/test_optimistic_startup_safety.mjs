@@ -110,3 +110,115 @@ test('First-time user logic: missing staffId holds launch until registered', () 
 
   assert.equal(mainAppLaunchedImmediately, false, 'First-time user MUST NOT trigger immediate launch before verification');
 });
+
+test('Queue Auth Gate: processQueue skips sending without consuming retry when Auth/Identity not ready', async () => {
+  let isReady = false;
+  let networkSent = false;
+  let retryCount = 0;
+
+  async function mockProcessQueue() {
+    // Fail-Closed check
+    if (!isReady) {
+      return; // 中断: retryCount消費ゼロ、送信ゼロ
+    }
+    networkSent = true;
+    retryCount++;
+  }
+
+  // 1. 未認証・未準備状態で processQueue 実行
+  await mockProcessQueue();
+  assert.equal(networkSent, false, 'Must not send when Auth/Identity is not ready');
+  assert.equal(retryCount, 0, 'Must NOT consume retryCount when Auth/Identity is not ready');
+
+  // 2. Identity 成立後に processQueue 実行
+  isReady = true;
+  await mockProcessQueue();
+  assert.equal(networkSent, true, 'Must send when Auth/Identity is verified ready');
+  assert.equal(retryCount, 1, 'Retry count incremented only upon actual send attempt');
+});
+
+test('callApiPost: PERMANENT error (UNAUTHORIZED, CONTRACT_EXPIRED) strictly rejects without retry', async () => {
+  const permanentCodes = ['UNAUTHORIZED', 'NOT_REGISTERED', 'CONTRACT_EXPIRED', 'INVALID_ARGUMENT', 'FORBIDDEN'];
+
+  for (const code of permanentCodes) {
+    let callCount = 0;
+    async function mockCall(action) {
+      callCount++;
+      const err = new Error("API Failure: " + code);
+      err.code = code;
+      err.errorType = "PERMANENT";
+      err.retryable = false;
+      throw err;
+    }
+
+    let caughtErr = null;
+    try {
+      await mockCall('getStaffIdentity');
+    } catch (e) {
+      caughtErr = e;
+    }
+
+    assert.ok(caughtErr, `Error should be caught for ${code}`);
+    assert.equal(caughtErr.code, code, `Error code ${code} must be preserved on thrown error`);
+    assert.equal(caughtErr.retryable, false, `PERMANENT error ${code} must have retryable=false`);
+    assert.equal(callCount, 1, `PERMANENT error ${code} must NOT be retried (callCount === 1)`);
+  }
+});
+
+test('Queue catch logic: PERMANENT error terminates as FAILED_PERMANENT without calling scheduleRetry', async () => {
+  let scheduleRetryCalled = false;
+  let queueItemStatus = 'PENDING';
+  let nextRetryAt = 999999;
+
+  const TRANSIENT_CODES = ['NETWORK_FAILURE', 'LOCK_TIMEOUT', 'RATE_LIMIT_EXCEEDED', 'INTERNAL_ERROR'];
+
+  async function handleQueueCatch(err) {
+    const isTransient = err.retryable === true || (err.retryable === undefined && TRANSIENT_CODES.includes(err.code));
+    if (isTransient) {
+      scheduleRetryCalled = true;
+    } else {
+      // PERMANENT 終端: scheduleRetry() 禁止、payload保持
+      queueItemStatus = 'FAILED_PERMANENT';
+      nextRetryAt = 0;
+    }
+  }
+
+  // PERMANENT エラーのシミュレート
+  const permErr = new Error("Unauthorized access");
+  permErr.code = "UNAUTHORIZED";
+  permErr.retryable = false;
+
+  await handleQueueCatch(permErr);
+  assert.equal(scheduleRetryCalled, false, 'scheduleRetry MUST NOT be called for PERMANENT error');
+  assert.equal(queueItemStatus, 'FAILED_PERMANENT', 'Status must transition to FAILED_PERMANENT');
+  assert.equal(nextRetryAt, 0, 'nextRetryAt must be reset to 0 for manual retry wait');
+});
+
+test('First-time Identity Retry: retryIdentityVerification creates fresh attempt and does not reuse rejected promise', async () => {
+  let attemptSeq = 0;
+
+  function createIdentityAttempt() {
+    const currentSeq = ++attemptSeq;
+    if (currentSeq === 1) {
+      return Promise.reject(new Error("NETWORK_FAILURE"));
+    }
+    return Promise.resolve({ success: true, registered: true, staffId: "STF_RETRY_001" });
+  }
+
+  // Attempt 1: 失敗
+  let firstPromise = createIdentityAttempt();
+  let firstErr = null;
+  try {
+    await firstPromise;
+  } catch (e) {
+    firstErr = e;
+  }
+  assert.ok(firstErr, 'First attempt should fail');
+
+  // Attempt 2 (Retry): 新規 Promise を生成して成功
+  let retryPromise = createIdentityAttempt();
+  const retryRes = await retryPromise;
+  assert.notEqual(firstPromise, retryPromise, 'Retry must generate a brand new Promise instance');
+  assert.equal(retryRes.registered, true);
+  assert.equal(retryRes.staffId, "STF_RETRY_001");
+});

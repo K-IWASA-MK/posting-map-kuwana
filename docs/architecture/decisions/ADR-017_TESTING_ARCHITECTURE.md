@@ -91,12 +91,12 @@ graph TD
 
     subgraph "2. Chrome Real-Browser (CDP / Blink)"
         PerfWarm[Warm Start SLA: T2 <= 200ms]
-        PerfCold[Cold Start SLA: T2 <= 800ms]
         PerfOffline[Offline Start SLA: T2 <= 200ms]
         WeakNet[Weak Network 3G Observation: No Freeze]
     end
 
-    subgraph "3. Acceptance Protocol (Real Hardware)"
+    subgraph "3. Acceptance Protocol (Real Hardware & Production E2E)"
+        PerfCold[Cold Start SLA: T2 <= 800ms]
         iOS[iOS Safari / Home Screen]
         Android[Android Chrome]
         LINE[LINE In-App Browser / LIFF]
@@ -109,9 +109,11 @@ graph TD
 2. **Chrome Real-Browser (Blink Engine + CDP)**:
    - システムにインストールされた Google Chrome を直接ヘッドレス起動。
    - Chrome DevTools Protocol (CDP) の WebSocket ネイティブ接続により、非侵入型で `Performance API`（`T2`, `FCP`）および `Network.emulateNetworkConditions`（Offline, Weak Network）を実測。
+   - **Local CDP 測定境界**: 純粋なブラウザ描画・ローディング解除・UI展開性能（T2: Warm ≤ 200ms, Offline ≤ 200ms）を直接実測。未観測時は `MEASUREMENT_TIMEOUT` として例外スローし、フォールバック数値代用を厳禁。
+   - **LIFF/Auth 測定境界**: 本番 LINE 認証や Backend Identity Bootstrap を含む Cold Start SLA（≤ 800ms）および最新反映（`T_BACKEND_SYNC`）は Local `file://` で「実測済み」と称さず、実機受入プロトコル（E2E ハーネス）へ明確に分離。
    - ヘビーなテストフレームワーク（Playwright / Puppeteer）のインストールを不要とし、環境汚染を防止。
-3. **実機（スマートフォン・LINE）**:
-   - クラウドファーム等の過剰設計ツールは導入せず、リリース前の「実機受入チェックリスト」として運用。
+3. **実機（スマートフォン・LINE）& 本番 E2E**:
+   - クラウドファーム等の過剰設計ツールは導入せず、リリース前の「実機受入チェックリスト」および E2E ハーネスとして運用。
 
 ---
 

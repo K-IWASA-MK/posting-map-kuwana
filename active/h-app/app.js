@@ -134,6 +134,32 @@ window.fetchGlobalPinStatus = async function() {
   }
 };
 
+// --- Auth Readiness Gate (LIFF認証完了待機) ---
+let _liffAuthReadyResolver = null;
+let _liffAuthReadyRejecter = null;
+const _liffAuthReadyPromise = new Promise((resolve, reject) => {
+  _liffAuthReadyResolver = resolve;
+  _liffAuthReadyRejecter = reject;
+});
+
+function waitForLiffAuthReady() {
+  if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) {
+    const token = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
+    if (typeof token === 'string' && token.trim().length > 0) {
+      return Promise.resolve(true);
+    }
+  }
+  return _liffAuthReadyPromise;
+}
+window.waitForLiffAuthReady = waitForLiffAuthReady;
+
+// 明示的な Read-only Accessor (Fail-Closed)
+window.isLiffAuthReady = function() {
+  if (typeof liff === 'undefined' || !liff.isLoggedIn || !liff.isLoggedIn()) return false;
+  const token = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
+  return typeof token === 'string' && token.trim().length > 0;
+};
+
 // --- Identity Safety Gate (Verified後のみ業務Write許可) ---
 let _identityVerified = false;
 let _identitySyncPromise = null;
@@ -144,6 +170,10 @@ function waitForIdentityVerified() {
   return Promise.reject(new Error("IDENTITY_NOT_INITIALIZED"));
 }
 window.waitForIdentityVerified = waitForIdentityVerified;
+
+window.isIdentityVerifiedReady = function() {
+  return window.isLiffAuthReady() && _identityVerified === true;
+};
 
 let pinActionPromiseChain = Promise.resolve();
 
@@ -1300,10 +1330,11 @@ function initStorageListPage() {
           <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Inventory...</p>
         </div>`;
     }
-    callApiPost('getFlyerStock').then(data => {
+    fetchFlyerStock().then(data => {
       if (data && data.success) {
-        _stockData = data.stocks || [];
-        _stockFetched = true;
+        if (typeof renderStorageList === 'function') renderStorageList(_stockData);
+      } else if (data === null) {
+        // stale response discard: 登録成功等により新世代で上書き済み
         if (typeof renderStorageList === 'function') renderStorageList(_stockData);
       } else {
         if (listContainer) {
@@ -1602,6 +1633,11 @@ async function safeInitApp() {
         logDebug("LOGIN OK");
         sessionStorage.removeItem('liff_initializing');
 
+        // LIFF Ready 成立: Protected Read / Bootstrap API の送信待機を解禁
+        if (typeof _liffAuthReadyResolver === 'function') {
+          _liffAuthReadyResolver(true);
+        }
+
         // ★ MASTER指示 ①: fetchSystemSummary() は liff.isLoggedIn() 成立直後、await liff.getProfile() より前に非同期発火すること。HeaderをProfile取得に依存させない。
         fetchSystemSummary();
 
@@ -1609,6 +1645,8 @@ async function safeInitApp() {
           logDebug("PROFILE START");
           const profile = await liff.getProfile();
           logDebug("PROFILE OK");
+          // 再試行で確実に使用できるよう早期確保
+          window.liffProfile = profile;
 
           try {
             const cleanUrl = window.location.origin + window.location.pathname + window.location.search.replace(/[\?&](code|liff\.state)=[^&]*/g, '');
@@ -1643,6 +1681,11 @@ async function safeInitApp() {
                 }
                 updateBottomNavVisibility();
 
+                // Identity確定に伴う未送信Queue Flush再発火
+                if (typeof processQueue === 'function') {
+                  processQueue();
+                }
+
                 // 初回起動ユーザーの場合はここで画面を表示
                 if (!hasExistingStaffId) {
                   setLoadingProgress(100, 'READY');
@@ -1675,8 +1718,14 @@ async function safeInitApp() {
                   if (!verifiedInfo.id) {
                     throw new Error("Registration finished but staffId is missing in storage");
                   }
-                  setLoadingProgress(100, 'READY');
                   _identityVerified = true;
+
+                  // 登録完了に伴う未送信Queue Flush再発火
+                  if (typeof processQueue === 'function') {
+                    processQueue();
+                  }
+
+                  setLoadingProgress(100, 'READY');
                   showMainApp();
                   return true;
                 }).catch(rErr => {
@@ -1699,6 +1748,8 @@ async function safeInitApp() {
               await _identitySyncPromise;
             } catch (waitErr) {
               console.warn("First-time identity wait encountered error:", waitErr);
+              showIdentityErrorUI(waitErr);
+              return;
             }
           }
         } catch (err) {
@@ -1712,7 +1763,7 @@ async function safeInitApp() {
             return;
           }
 
-          $('loading-status').textContent = "起動エラー: " + err.message;
+          showIdentityErrorUI(err);
         }
       } else {
         // LINEログイン処理中（OAuthコールバックのパラメータがある）なら、手動ログイン画面を出さずに少し待機して再チェックする
@@ -1747,6 +1798,83 @@ async function safeInitApp() {
     $('loading-status').textContent = "エラー: LINEアプリ内から起動してください。";
   }
 }
+
+function showIdentityErrorUI(err) {
+  const statusEl = $('loading-status');
+  if (!statusEl) return;
+  let msg = "初期化エラー: ";
+  if (err && err.code === 'CONTRACT_EXPIRED') {
+    msg = "契約期間が終了しているため利用できません。";
+  } else if (err && err.code === 'UNAUTHORIZED') {
+    msg = "認証エラー: LINEログインの有効期限が切れました。\nタップして再試行";
+  } else {
+    msg += (err ? (err.message || err.code) : "通信エラー") + "\n(タップして再試行)";
+  }
+  statusEl.textContent = msg;
+  statusEl.style.cursor = 'pointer';
+  statusEl.onclick = function() {
+    statusEl.onclick = null;
+    statusEl.style.cursor = 'default';
+    window.retryIdentityVerification();
+  };
+}
+
+window.retryIdentityVerification = function() {
+  const statusEl = $('loading-status');
+  if (statusEl) {
+    statusEl.onclick = null;
+    statusEl.style.cursor = 'default';
+    statusEl.textContent = "アカウント照合を再試行中...";
+  }
+
+  const profile = window.liffProfile || (typeof liff !== 'undefined' && liff.getDecodedIDToken ? {
+    displayName: liff.getDecodedIDToken()?.name || '',
+    userId: liff.getDecodedIDToken()?.sub || '',
+    pictureUrl: liff.getDecodedIDToken()?.picture || ''
+  } : null);
+
+  // 新規 Promise を生成して再試行（reject済みの古いPromiseは再利用しない）
+  _identitySyncPromise = callApiPost('getStaffIdentity', {})
+    .then(identityRes => {
+      if (identityRes && identityRes.success && identityRes.registered && identityRes.staffId && String(identityRes.staffId).trim() !== '') {
+        logDebug("RETRY STAFF IDENTITY VERIFIED: " + identityRes.staffId);
+        const verifiedUserInfo = {
+          last: identityRes.staffName || (profile ? profile.displayName : '') || '',
+          first: '',
+          id: identityRes.staffId,
+          picture: (profile ? profile.pictureUrl : '') || ''
+        };
+        localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
+        _identityVerified = true;
+        if (typeof renderSettings === 'function') renderSettings();
+        updateBottomNavVisibility();
+        if (typeof processQueue === 'function') processQueue();
+        setLoadingProgress(100, 'READY');
+        showMainApp();
+        return true;
+      } else {
+        // 未登録分岐の完結: registerStaff -> 成功 -> staffId確認 -> Verified -> Queue flush -> READY -> showMainApp
+        logDebug("RETRY STAFF NOT REGISTERED. PROCEEDING TO REGISTRATION...");
+        _identityVerified = false;
+        return triggerBackgroundRegistration(profile).then(() => {
+          const verifiedInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+          if (!verifiedInfo.id) {
+            throw new Error("Registration finished but staffId is missing in storage");
+          }
+          _identityVerified = true;
+          if (typeof processQueue === 'function') processQueue();
+          setLoadingProgress(100, 'READY');
+          showMainApp();
+          return true;
+        });
+      }
+    })
+    .catch(err => {
+      console.warn("Retry identity verification failed:", err);
+      _identityVerified = false;
+      showIdentityErrorUI(err);
+    });
+};
 
 if (document.readyState === 'complete') {
   safeInitApp();

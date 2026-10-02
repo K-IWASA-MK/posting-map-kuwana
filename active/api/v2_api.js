@@ -1030,11 +1030,8 @@ function doPost(e) {
         // Dashboardセッションがない場合、Hアプリの LINE 認証を検証
         const auth = authenticateRequest(postData || {});
         if (!auth.success) {
-          return ContentService.createTextOutput(JSON.stringify({
-            success: false,
-            code: "UNAUTHORIZED",
-            message: "Authentication required for this resource."
-          })).setMimeType(ContentService.MimeType.JSON);
+          return ContentService.createTextOutput(JSON.stringify(auth))
+            .setMimeType(ContentService.MimeType.JSON);
         }
         if (postData) postData.user = auth.user;
       }

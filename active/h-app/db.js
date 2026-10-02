@@ -234,6 +234,17 @@ async function processQueue() {
     return;
   }
 
+  // Auth / Identity 準備防壁 (Fail-Closed)
+  // 未準備時は retryCount を消費せず、ネットワーク通信も行わず安全に待機中断
+  const isAuthReady = typeof window !== 'undefined' && typeof window.isIdentityVerifiedReady === 'function'
+    ? window.isIdentityVerifiedReady()
+    : false;
+
+  if (!isAuthReady) {
+    updateUISyncStatus();
+    return;
+  }
+
   isProcessing = true;
   updateUISyncStatus();
 
@@ -359,7 +370,26 @@ async function processQueue() {
 
       } catch (err) {
         console.error(`[Queue] Failed: id=${item.id}`, err.message);
-        const finalStatus = await scheduleRetry(item);
+
+        // TRANSIENT か PERMANENT かを判定
+        const TRANSIENT_CODES = ['NETWORK_FAILURE', 'LOCK_TIMEOUT', 'RATE_LIMIT_EXCEEDED', 'INTERNAL_ERROR'];
+        const isTransient = err.retryable === true || (err.retryable === undefined && TRANSIENT_CODES.includes(err.code));
+
+        let finalStatus;
+        if (isTransient) {
+          // TRANSIENT だけ既存 scheduleRetry() (10s->30s->60s->60s->60s / 最大5回)
+          finalStatus = await scheduleRetry(item);
+        } else {
+          // PERMANENT (UNAUTHORIZED, NOT_REGISTERED, CONTRACT_EXPIRED, INVALID_ARGUMENT 等):
+          // scheduleRetry() 禁止、retryCount を人工的に増やさず即座に FAILED_PERMANENT 終端 (payload保持)
+          finalStatus = 'FAILED_PERMANENT';
+          await updateQueueItem(item.id, {
+            syncStatus: 'FAILED_PERMANENT',
+            nextRetryAt: 0,
+            lastError: err.message,
+            errorCode: err.code || 'PERMANENT_ERROR'
+          });
+        }
 
         // points の syncStatus を rowId 基準で同期
         if (typeof allPoints !== 'undefined' && allPoints) {
