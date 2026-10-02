@@ -1826,9 +1826,11 @@ async function safeInitApp() {
           logDebug("LIFF PROFILE / AUTH ERROR: " + err.message);
 
           if (err.message && err.message.toUpperCase().includes("REVOKED")) {
-            logDebug("Access token revoked detected. Forcing re-login...");
-            liff.logout();
-            liff.login({ redirectUri: window.location.href });
+            logDebug("Access token revoked detected. Routing to standard UNAUTHORIZED flow...");
+            err.code = 'UNAUTHORIZED';
+            err.errorType = 'PERMANENT';
+            err.retryable = false;
+            showIdentityErrorUI(err);
             return;
           }
 

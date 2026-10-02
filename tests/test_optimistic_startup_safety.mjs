@@ -400,7 +400,7 @@ test('app.js [Source-Bound]: showIdentityErrorUI hides #app, shows #loading, and
   assert.equal(r4.reloadCalled(), false, 'Must NOT reload on TRANSIENT tap');
 });
 
-test('app.js [Source-Bound Static]: safeInitApp identity sync error handling eliminated unhandled rethrows', () => {
+test('app.js [Source-Bound]: safeInitApp identity sync error handling eliminated unhandled rethrows', () => {
   // Verify that _identitySyncPromise catch block invokes showIdentityErrorUI and sets _identityLastError
   assert.ok(appJs.includes('_identityLastError = err;'), 'Must record _identityLastError on failure');
   assert.ok(appJs.includes('showIdentityErrorUI(err);'), 'Must call showIdentityErrorUI on failure');
@@ -410,6 +410,84 @@ test('app.js [Source-Bound Static]: safeInitApp identity sync error handling eli
     appJs.includes("_liffAuthState = 'FAILED';\n      _liffAuthError = err;\n      if (typeof _liffAuthReadyRejecter === 'function') {\n        _liffAuthReadyRejecter(err);\n      }\n      showIdentityErrorUI(err);"),
     'LIFF init error block must call showIdentityErrorUI'
   );
+});
+
+test('app.js [Source-Bound]: REVOKED error routes to standard UNAUTHORIZED flow without direct liff.login', () => {
+  // 1. Static block inspection of the actual REVOKED block in appJs
+  const revokedBlockMatch = appJs.match(/if\s*\([^{]*REVOKED[^{]*\)\s*\{[\s\S]*?\n\s*\}/);
+  assert.ok(revokedBlockMatch, 'REVOKED error handling block must exist in app.js');
+
+  const revokedBlock = revokedBlockMatch[0];
+  assert.ok(revokedBlock.includes("err.code = 'UNAUTHORIZED'"), "REVOKED block must set err.code = 'UNAUTHORIZED'");
+  assert.ok(revokedBlock.includes("err.errorType = 'PERMANENT'"), "REVOKED block must set err.errorType = 'PERMANENT'");
+  assert.ok(revokedBlock.includes('err.retryable = false'), 'REVOKED block must set err.retryable = false');
+  assert.ok(revokedBlock.includes('showIdentityErrorUI(err)'), 'REVOKED block must call showIdentityErrorUI(err)');
+  assert.ok(!revokedBlock.includes('liff.login('), 'REVOKED block must NOT contain direct liff.login(');
+  assert.ok(!revokedBlock.includes('liff.logout('), 'REVOKED block must NOT contain direct liff.logout(');
+
+  // 2. Behavioral verification using the extracted showIdentityErrorUI
+  const fnSource = extractFunction(appJs, 'showIdentityErrorUI');
+  assert.ok(fnSource, 'showIdentityErrorUI must exist in app.js');
+
+  let appHidden = false;
+  let loadingShown = false;
+  let statusOnclick = null;
+  let loginCount = 0;
+  let sessionFlag = null;
+
+  const mockApp = { classList: { add: (c) => { if (c === 'hidden') appHidden = true; } } };
+  const mockLoading = { classList: { remove: (c) => { if (c === 'hidden') loadingShown = true; } } };
+  const mockStatus = {
+    set textContent(_) {},
+    set onclick(fn) { statusOnclick = fn; },
+    style: {}
+  };
+  const mockSessionStorage = {
+    setItem: (k, v) => { if (k === 'liff_initializing') sessionFlag = v; },
+    getItem: (k) => (k === 'liff_initializing' ? sessionFlag : null)
+  };
+  const mockLiff = {
+    logout: () => {},
+    login: () => { loginCount++; }
+  };
+
+  const sandbox = {
+    $: (id) => (id === 'app' ? mockApp : id === 'loading' ? mockLoading : id === 'loading-status' ? mockStatus : null),
+    mainAppVisible: true,
+    window: {
+      location: { reload: () => {}, href: 'https://kuwana.postingmap.jp' },
+      sessionStorage: mockSessionStorage,
+      liff: mockLiff
+    },
+    sessionStorage: mockSessionStorage,
+    setSyncStatus: () => {},
+    _liffAuthState: 'READY',
+    liff: mockLiff
+  };
+
+  const showUiFn = new Function('sandbox', `with(sandbox) { return (${fnSource}); }`)(sandbox);
+
+  // Simulate error passed to showIdentityErrorUI after REVOKED conversion
+  const revokedErr = new Error("Access token REVOKED");
+  revokedErr.code = 'UNAUTHORIZED';
+  revokedErr.errorType = 'PERMANENT';
+  revokedErr.retryable = false;
+
+  showUiFn(revokedErr);
+
+  // Prior to user tapping: App must be blocked, loading visible, but NO liff.login() triggered
+  assert.equal(appHidden, true, 'App must be hidden on REVOKED UNAUTHORIZED flow');
+  assert.equal(loadingShown, true, 'Loading must be shown on REVOKED UNAUTHORIZED flow');
+  assert.equal(loginCount, 0, 'Prior to user tap, liff.login() call count must be strictly 0');
+  assert.equal(sessionFlag, null, 'Prior to user tap, liff_initializing must not be set');
+  assert.ok(typeof statusOnclick === 'function', 'Must attach tap-to-relogin onclick handler');
+
+  // Trigger user tap
+  statusOnclick();
+
+  // After user tap: sessionStorage flag set AND liff.login() triggered
+  assert.equal(sessionFlag, 'true', 'After user tap, sessionStorage liff_initializing must be true');
+  assert.equal(loginCount, 1, 'After user tap, liff.login() call count must be exactly 1');
 });
 
 // ============================================================================
