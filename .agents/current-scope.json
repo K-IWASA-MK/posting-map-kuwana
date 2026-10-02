@@ -1,11 +1,7 @@
 [
   ".agents/current-scope.json",
-  ".agents/skills/h-app-auth-boundary/SKILL.md",
-  "active/h-app/modules/api.js",
   "active/h-app/app.js",
+  "active/h-app/modules/api.js",
   "active/h-app/index.html",
-  "tests/measure_chrome_real.mjs",
-  "tests/test_phase14_performance_verification.mjs",
-  "tests/test_phase16_testing_verification.mjs",
   "tests/test_optimistic_startup_safety.mjs"
 ]
