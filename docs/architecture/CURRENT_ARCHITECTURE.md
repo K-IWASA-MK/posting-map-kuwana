@@ -66,16 +66,43 @@
 
 ### 1. Hアプリ (配布員用モバイルUI: `active/h-app/`)
 - LINE LIFF または スマートフォンWebブラウザ上で動作するポスティング配布員専用のUI。
-- 地区の町丁目ピン、境界ポリゴン、配布進捗ステータスを `data/` および GAS API から動的取得して描画。
-- 接続情報は `data/config.js` を唯一の参照先とし、コード内にURL等のハードコードを持たない。
+
+#### 【Current Runtime (現在の実稼働状態)】
+- `app.js` が Domain State（キャッシュ等）、一部APIのWorkflow、およびHTML文字列（`innerHTML`）の直接生成を抱え込んでいる状態。
+- `render.js` が Presentation だけでなく、一部のドメイン処理を担っている。
+
+#### 【Approved Target Architecture B' (承認済・段階移行先)】
+- `active/h-app/app.js`
+  - **Composition Root / Boot Orchestrator**
+  - 起動順序の統制、Global Lifecycle Wiring、および Feature Module の初期化のみを担当。
+- `active/h-app/modules/`
+  - **Browser-side Frontend Feature / Lifecycle Modules**
+  - Feature State、キャッシュ、in-flight lifecycle、Workflow Coordination、API Coordination を Private State として所有。
+  - ※注意: `active/business/**`（GAS上の Backend Business Domain）とは明確に異なる、ブラウザ側のフロントエンド層である。
+- `active/h-app/render.js`
+  - **Presentation Layer**
+  - Map / Page rendering、Visual interaction、および Presentation-local state（UI開閉など）のみを担当。Domain State を所有しない。
+- `active/h-app/components/`
+  - **Pure Rendering**
+  - API通信禁止、Domain State所有禁止。同一入力に対して常に同一のHTMLを返す。
+- **Target Dependency Direction (依存方向)**
+  - `app.js` ─▶ initializes Feature/Lifecycle Modules, wires Presentation
+  - `Feature/Lifecycle Modules` ─▶ `api.js` (Backend通信) / `db.js` / `device.js`
+  - `render.js` ─▶ `components/`
+  - **Feature ↔ Presentation 間** は Stable Interface / DI を原則とし、固定的な逆依存を新設しない。
+
+#### 【Deferred Migration Gaps (保留中の移行課題)】
+- 現行の `modules/api.js` 等から、`app.js` 内部の Auth/Identity 状態（`window.waitForLiffAuthReady` 等）への逆依存が存在する。
+- 該当部分は、今後の実装Wave（後期）にて Dependency Injection または Stable Interface を通じて解消予定である。
 
 ### 2. Dashboard (統括管理者用UI: `active/manager/`)
 - PC/タブレット向けの進捗管理・チラシ在庫・配布員名簿・受渡要請の統括管理画面。
 - `data/address_master.csv`、`data/municipality_master.csv`、`data/boundaries.geojson` を動的解析して表示。
 - 接続情報は `data/config.js` を唯一の参照先とする。
 
-### 3. API (共通バックエンドロジック: `active/api/`, `active/business/`)
+### 3. API & Backend Business Domain (`active/api/`, `active/business/`)
 - Standalone GAS 上で稼働する共通REST/RPC風APIサーバー。
+- `active/business/` は **Backend Business Domain** であり、フロントエンド側の `active/h-app/modules/` (Browser-side Feature Module) とは明確に区別される。
 - 認証、進捗集計、受渡要請、在庫管理、名簿管理を実行し、Spreadsheet（Pure DB）へアクセス。
 
 ### 4. Spreadsheet = Pure DB (純粋データベース)

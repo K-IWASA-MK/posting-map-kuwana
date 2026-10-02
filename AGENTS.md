@@ -91,7 +91,24 @@
 - 機密設定の存在確認や検証が必要な場合は、生テキストを展開せず、キー存在有無判定（`EXISTS / SECURED / OK`）や完全マスク処理（`[REDACTED]`）のみにとどめること。
 - 機密ファイルはプロジェクト直下の `.secrets/` 等に配置し、必ず `.gitignore` で除外した上で最小権限（`chmod 600`）でローカル管理すること。
 
-## 11. Detailed Rules & Workflows
+## 11. Architecture Gate — Target Rule (Target Architecture B') — ABSOLUTE
+本Gateは、既存のCurrent Treeに対する遡及的なFAILではなく、**新規差分（Net-New Diff）を対象としたprospectiveな制約** である。
+AI社員は以下の条件に抵触する変更を新規にコミットしてはならない。
+
+1. **【HARD FAIL】（絶対禁止・即時停止）**
+   - `app.js` への新規 Domain / Feature function の追加
+   - `app.js` への新規 Domain / Feature state の追加
+   - `app.js` への新規 `innerHTML` / DOM-string 生成の追加
+   - `app.js` から `window.*` への新規 state/function 露出
+   - Feature Module の private state の新規 global 露出
+   - Feature / API / Presentation レイヤーから `app.js` 内部 state への新規の逆依存追加
+2. **【REVIEW】（MASTER Architecture Review 必須）**
+   - `app.js` への新規 `callApiPost()` 呼び出し追加（Boot/Bootstrap上不可避な場合のみ承認対象とする）
+3. **【WARN】（警告・説明責任）**
+   - `app.js` の行数が直前の Approved HEAD より増加すること
+   - ※2,688行は Historical Starting Baseline として記録するものであり、永久閾値ではない。Baseline は分割縮小後に随時ラチェットダウン（ratchet down）する。
+
+## 12. Detailed Rules & Workflows
 AI社員は作業フェーズに応じて、必ず以下の詳細規程・ワークフローを参照・遵守すること。
 - 最高位設計契約 (Supreme Design Contract): [docs/architecture/01_DESIGN_CONTRACT.md](docs/architecture/01_DESIGN_CONTRACT.md)
 - 現行アーキテクチャ定義: [docs/architecture/CURRENT_ARCHITECTURE.md](docs/architecture/CURRENT_ARCHITECTURE.md)

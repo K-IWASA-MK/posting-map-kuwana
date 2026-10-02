@@ -76,8 +76,8 @@
 | `active/h-app/index.html` | 354 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 618 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 2,278 | 🟡 再構築 | アプリ起動・Optimistic First Paint・地図制御・イベント管理。長大かつ一部管理思想が混在しているため、モジュール分割再構築が必要。 |
-| `active/h-app/render.js` | 1,129 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
+| `active/h-app/app.js` | 2,688 | 🟡 再構築 | 【Current Fact】現在、ドメインステートやイベント管理が混在している。Target B'（Boot Orchestratorへの純化）へ段階移行予定。 |
+| `active/h-app/render.js` | 1,327 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
 | `active/h-app/db.js` | 321 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。現場作業継続の重要基盤。 |
 | `active/h-app/components/navigation.js` | 52 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
 | `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |

@@ -13,25 +13,33 @@
 ## 1. Design System Architecture & 責務境界
 
 ```text
-Design Tokens (active/h-app/style.css :root ※H-App)
+Composition Root / Boot (active/h-app/app.js)
        │
        ▼
-Components (active/h-app/components/ : JS Functions)
+Feature & Lifecycle Modules (active/h-app/modules/)
        │
        ▼
-Pages (Composition / render.js)
+Presentation & Interaction (active/h-app/render.js) ──▶ Pure Components (active/h-app/components/)
+       │
+       ▼
+Design Tokens (active/h-app/style.css :root)
 ```
 
-1. **Design Tokens (`active/h-app/style.css` `:root`)**:
+1. **`active/h-app/app.js` (Composition Root / Boot Orchestrator)**:
+   - 起動順序（Boot sequencing）、グローバルなLifecycle Wiring、および各Feature Moduleの初期化を担う。
+   - Domain StateやDomain/Feature Logic（固有のビジネスロジック・ステート管理）は一切持たない。
+2. **`active/h-app/modules/` (Feature / Lifecycle Modules)**:
+   - **Foundation Modules** (`api.js`, `device.js`, `navigation.js`)
+   - **Feature / Lifecycle Modules** (`storage.js`, `bulletin.js`, `activity.js`, `pin-status.js`, および後期候補の `auth.js`, `identity.js` 等)
+   - Feature State（ドメイン特有の状態）、キャッシュ、in-flight lifecycle、Workflow coordination、API Coordinationをprivate stateとして所有する層。
+3. **`active/h-app/render.js` (Presentation Layer)**:
+   - Map / Page presentation、レンダリング、Visual interactionを担当する。
+   - Presentation-local state（UIの開閉状態など）は許容されるが、Domain State（ドメインキャッシュ）や Domain API Workflow の Canonical 所有権は持たない。
+4. **`active/h-app/components/` (Pure Rendering Components)**:
+   - 再利用可能な純粋な UI レンダリングコンポーネント。API通信やDomain Stateの所有は禁止され、同一の入力に対して常に同一のHTMLを返す。
+5. **Design Tokens (`active/h-app/style.css` `:root`)**:
    - 見た目の設計変数（色、余白、角丸、シャドウ）の正本。
-   - **H-App（現場配布員UI: `active/h-app/`）のトークン SSOT** であり、CSS カスタムプロパティとして一元管理される。
-   - ※なお、**Manager Dashboard（統括管理者UI: `active/manager/index.html`）** は、現行 Runtime において Tailwind CSS CDN およびインラインの `tailwind.config` カラーパレット（`brand: '#EA5F08'`, `appBg: '#0B1019'` 等）を独自に使用しており、別個のスタイル体系を持つ（現行アーキテクチャ境界の客観的事実）。
-2. **Components (`active/h-app/components/`)**:
-   - 再利用可能な UI レンダリングコンポーネント。
-   - 入力データから純粋に HTML 文字列を構築して返却する。
-3. **Pages (`render.js`)**:
-   - 画面の合成（Composition）および状態管理（State Management）の所有者。
-   - API 通信、イベントリスナー登録、タブ切り替え、各コンポーネントへのデータ配分を担当する。
+   - **H-App（現場配布員UI）のトークン SSOT** であり、CSS カスタムプロパティとして一元管理される。
 
 ---
 
