@@ -1,1 +1,7 @@
-[]
+[
+  ".agents/current-scope.json",
+  "AGENTS.md",
+  "docs/architecture/DESIGN_SYSTEM.md",
+  "docs/architecture/CURRENT_ARCHITECTURE.md",
+  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
+]
