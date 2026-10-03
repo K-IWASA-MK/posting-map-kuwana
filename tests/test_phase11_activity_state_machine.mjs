@@ -130,13 +130,13 @@ test('4. 完了確定条件: 写真撮影・キュー投入・送信中は COMPL
 test('5. 業務ルール1: 完了確定地区は当月再操作不可であること (UI・ロジック二重防護)', () => {
   // 1. submitMissionComplete 先頭ガード
   assert.ok(
-    appJs.includes('const isAlreadyCompleted = (window.globalPinStatus && Array.isArray(window.globalPinStatus.completed) && window.globalPinStatus.completed.includes(Number(rowId))) ||\n                             (p.isDone && !p.isReadyToSubmit);'),
+    appJs.includes('const isAlreadyCompleted = PinStatusModule.isCompleted(rowId) ||\n                             (p.isDone && !p.isReadyToSubmit);'),
     'submitMissionComplete で完了済み地区の再提出をガード'
   );
   assert.ok(appJs.includes('alert("この地区は既に今月の配布が完了しています。再操作はできません。");'), '再操作ブロックアラートが存在すること');
 
   // 2. render.js バブルでのロック表示
-  assert.ok(renderJs.includes('const isCompleted = window.globalPinStatus?.completed?.includes(row.rowId);'), 'globalPinStatus.completed でピン状態判定');
+  assert.ok(renderJs.includes('const isCompleted = PinStatusModule.isCompleted(row.rowId);'), 'PinStatusModule.isCompleted でピン状態判定');
   assert.ok(renderJs.includes('<div class="premium-glass-badge badge-completed">\n                  配布済み 🔒\n                </div>'), '完了ピンには配布開始ボタンを出さず配布済みバッジを表示');
 
   // 3. render.js モーダル内での再操作不可バッジ表示

@@ -28,6 +28,7 @@ export const REQUIRED_LOCAL_CODE_ASSETS = [
   './modules/api.js',
   './modules/device.js',
   './modules/navigation.js',
+  './modules/pin-status.js',
   './db.js',
   './components/navigation.js',
   './components/staff.js',

@@ -327,12 +327,7 @@ async function processQueue() {
           }
 
           // 4. ローカル completed 状態反映 (表示条件非依存)
-          if (window.globalPinStatus && Array.isArray(window.globalPinStatus.completed)) {
-            const numericRowId = Number(item.rowId);
-            if (!isNaN(numericRowId) && !window.globalPinStatus.completed.includes(numericRowId)) {
-              window.globalPinStatus.completed.push(numericRowId);
-            }
-          }
+          PinStatusModule.reflectCompleted(item.rowId);
 
           // 5. COMPLETED 確定 & p.isDone = true (rowId基準で直接同期)
           if (typeof allPoints !== 'undefined' && allPoints) {

@@ -1183,7 +1183,7 @@ window.initMainMap = function() {
 
   const revertActiveMarkerColor = () => {
     if (activeMarker) {
-      const isCompleted = window.globalPinStatus?.completed?.includes(activeMarker.rowId);
+      const isCompleted = PinStatusModule.isCompleted(activeMarker.rowId);
       const isRemoteView = !!activeMarker.isRemoteView;
       const prevIcon = activeMarker.getIcon();
 
@@ -1213,8 +1213,8 @@ window.initMainMap = function() {
   window.refreshMainMapPins = function() {
     if (!window.masterMarkers) return;
     window.masterMarkers.forEach(marker => {
-      const isCompleted = window.globalPinStatus?.completed?.includes(marker.rowId);
-      const isInProgress = window.globalPinStatus?.inProgress?.includes(marker.rowId);
+      const isCompleted = PinStatusModule.isCompleted(marker.rowId);
+      const isInProgress = PinStatusModule.isInProgress(marker.rowId);
       const isMine = activeMarker && activeMarker.rowId === marker.rowId;
 
       const currentIcon = marker.getIcon();
@@ -1455,8 +1455,8 @@ window.initMainMap = function() {
               return;
             }
 
-            const isCompleted = window.globalPinStatus?.completed?.includes(row.rowId);
-            const isRemoteInProgress = window.globalPinStatus?.inProgress?.includes(row.rowId);
+            const isCompleted = PinStatusModule.isCompleted(row.rowId);
+            const isRemoteInProgress = PinStatusModule.isInProgress(row.rowId);
             const isLocked = isCompleted || isRemoteInProgress;
 
             // タップされたPINのアイコン色変更 (自端末選択表示のため青へ変更 / PinStatus追加なし)

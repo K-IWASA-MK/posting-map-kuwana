@@ -49,8 +49,7 @@ let _rankingFetched = false;  // ランキング遅延取得済みフラグ
 
 let currentCity = null;
 window.activeRankingPromise = null;
-window.globalPinStatus = { inProgress: [], completed: [] };
-window.lastPinStatusSync = 0;
+
 
 // ─── グローバル・ローディング二重制御ヘルパー ─────────────────────
 let _loadingCount = 0;
@@ -109,28 +108,19 @@ function removePressed() {
 }
 
 // =====================================
-// Phase 4-B: Global Pin Status Sync
+// Phase 4-B: Global Pin Status Sync (Thin Wiring Wrapper)
 // =====================================
 window.fetchGlobalPinStatus = async function() {
-  const now = Date.now();
-  if (now - window.lastPinStatusSync < 10000) {
-    // スロットリング：10秒以内の連続フェッチをスキップ
-    return;
-  }
-  window.lastPinStatusSync = now;
-  try {
-    const res = await callApiPost('getGlobalPinStatus');
-    if (res && res.success) {
-      window.globalPinStatus.inProgress = res.inProgress || [];
-      window.globalPinStatus.completed = res.completed || [];
-      // 必要に応じて画面再描画
+  return PinStatusModule.fetchStatus({
+    onStatusUpdated: () => {
       if (typeof window.refreshMainMapPins === 'function') {
         window.refreshMainMapPins();
       }
+    },
+    onError: (err) => {
+      logDebug(`[fetchGlobalPinStatus] Error: ${err.message}`);
     }
-  } catch (err) {
-    logDebug(`[fetchGlobalPinStatus] Error: ${err.message}`);
-  }
+  });
 };
 
 // --- Auth Readiness Gate (LIFF認証完了待機: PENDING / READY / FAILED) ---
@@ -213,31 +203,16 @@ window.isIdentityVerifiedReady = function() {
   return window.isLiffAuthReady() && _identityVerified === true;
 };
 
-let pinActionPromiseChain = Promise.resolve();
-
+// =====================================
+// Phase 4-B: Pin In-Progress Control (Thin Wiring Wrapper)
+// =====================================
 window.setPinInProgress = function(rowId, action) {
-  const numericRowId = parseInt(rowId, 10);
-  if (!isNaN(numericRowId) && window.globalPinStatus && Array.isArray(window.globalPinStatus.inProgress)) {
-    if (action === "remove") {
-      window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== numericRowId);
-    } else if (action === "add") {
-      if (!window.globalPinStatus.inProgress.includes(numericRowId)) {
-        window.globalPinStatus.inProgress.push(numericRowId);
-      }
-    }
-  }
-
-  // Promise Chain によるFIFO直列通信制御
-  pinActionPromiseChain = pinActionPromiseChain.then(async () => {
-    try {
-      await waitForIdentityVerified();
-      await callApiPost('setPinInProgress', { rowId: rowId, pinAction: action });
-    } catch (err) {
+  return PinStatusModule.setInProgress(rowId, action, {
+    authorize: () => waitForIdentityVerified(),
+    onError: (err) => {
       logDebug(`[setPinInProgress] Error/Blocked: ${err.message}`);
     }
   });
-
-  return pinActionPromiseChain;
 };
 
 let appStartupTriggered = false;
@@ -592,12 +567,7 @@ window.triggerUISyncRefresh = async function() {
           delete p.isReadyToSubmit;
           delete p.tempPhotoUrl;
           delete p.syncStatus;
-          if (window.globalPinStatus) {
-            if (!window.globalPinStatus.completed.includes(p.rowId)) {
-              window.globalPinStatus.completed.push(p.rowId);
-            }
-            window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== p.rowId);
-          }
+          PinStatusModule.reflectCompleted(p.rowId);
           if (typeof window.lockActivePinAndBubble === 'function') {
             window.lockActivePinAndBubble(p.rowId);
           }
@@ -758,7 +728,7 @@ async function submitMissionComplete(areaName, rowId) {
   if (!p) return;
 
   // Phase 11 ガード: 完了確定した地区は当月再操作不可 (既存業務ルール維持)
-  const isAlreadyCompleted = (window.globalPinStatus && Array.isArray(window.globalPinStatus.completed) && window.globalPinStatus.completed.includes(Number(rowId))) ||
+  const isAlreadyCompleted = PinStatusModule.isCompleted(rowId) ||
                              (p.isDone && !p.isReadyToSubmit);
   if (isAlreadyCompleted) {
     alert("この地区は既に今月の配布が完了しています。再操作はできません。");
@@ -877,12 +847,8 @@ async function submitMissionComplete(areaName, rowId) {
             return; // 重要：後段の「送信処理中です」へ落ちずに即時終了
           }
 
-          // 正常完了判定: Queue消滅かつ (db.js により p.isDone === true 確定 または globalPinStatus.completed 反映済み)
-          const isCompletedInPinStatus = Boolean(
-            window.globalPinStatus &&
-            Array.isArray(window.globalPinStatus.completed) &&
-            window.globalPinStatus.completed.includes(Number(rowId))
-          );
+          // 正常完了判定: Queue消滅かつ (db.js により p.isDone === true 確定 または PinStatusModule.isCompleted 反映済み)
+          const isCompletedInPinStatus = Boolean(PinStatusModule.isCompleted(rowId));
           if (isCompletedInPinStatus) {
             p.isDone = true;
           }
@@ -891,12 +857,7 @@ async function submitMissionComplete(areaName, rowId) {
             p.isDone = true;
             delete p.isReadyToSubmit;
             p.syncStatus = 'synced';
-            if (window.globalPinStatus) {
-              if (!window.globalPinStatus.completed.includes(rowId)) {
-                window.globalPinStatus.completed.push(rowId);
-              }
-              window.globalPinStatus.inProgress = window.globalPinStatus.inProgress.filter(id => id !== rowId);
-            }
+            PinStatusModule.reflectCompleted(rowId);
             if (typeof window.lockActivePinAndBubble === 'function') {
               window.lockActivePinAndBubble(rowId);
             }

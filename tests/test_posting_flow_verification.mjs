@@ -151,19 +151,19 @@ test('5. Backend受理成功 = COMPLETED: accepted 成功時のみ isDone=true �
 // 6. Backend成功前の completed 配列追加なし & ピンロックなしの検証
 // ----------------------------------------------------------------------------
 test('6. Backend成功前の completed 追加なし & ピンロックなし', () => {
-  // globalPinStatus.completed.push(rowId) および lockActivePinAndBubble(rowId) が
+  // PinStatusModule.reflectCompleted(rowId) および lockActivePinAndBubble(rowId) が
   // status === null のブロック内にのみ存在することの検証
   const statusNullIndex = appJs.indexOf('if (status === null) {');
   assert.ok(statusNullIndex > 0, 'status === null ブロックが存在すること');
 
   const statusNullBlock = appJs.substring(statusNullIndex, appJs.indexOf('break;', statusNullIndex));
-  assert.ok(statusNullBlock.includes('globalPinStatus.completed.push(rowId)'), 'status === null 内で completed に追加されること');
+  assert.ok(statusNullBlock.includes('PinStatusModule.reflectCompleted(rowId)'), 'status === null 内で completed に追加されること');
   assert.ok(statusNullBlock.includes('lockActivePinAndBubble(rowId)'), 'status === null 内で lockActivePinAndBubble が呼ばれること');
 
-  // submitMissionComplete の開始から status === null の前までに completed.push や lock が存在しないこと
+  // submitMissionComplete の開始から status === null の前までに reflectCompleted や lock が存在しないこと
   const submitFunctionStart = appJs.indexOf('async function submitMissionComplete');
   const preStatusNullSection = appJs.substring(submitFunctionStart, statusNullIndex);
-  assert.ok(!preStatusNullSection.includes('globalPinStatus.completed.push'), 'status === null 前に completed.push が存在してはならない');
+  assert.ok(!preStatusNullSection.includes('PinStatusModule.reflectCompleted'), 'status === null 前に reflectCompleted が存在してはならない');
   assert.ok(!preStatusNullSection.includes('lockActivePinAndBubble'), 'status === null 前に lockActivePinAndBubble が存在してはならない');
 });
 
