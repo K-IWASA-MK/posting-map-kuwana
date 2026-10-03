@@ -1,15 +1,17 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/modules/pin-status.js",
+  "active/h-app/modules/activity.js",
   "active/h-app/app.js",
   "active/h-app/render.js",
   "active/h-app/db.js",
   "active/h-app/index.html",
   "scripts/stamp-h-app-token.mjs",
+  "scripts/test_browser_h_app_activity.mjs",
+  "tests/test_activity_module_lifecycle.mjs",
+  "tests/test_posting_flow_verification.mjs",
+  "tests/test_phase11_activity_state_machine.mjs",
+  "tests/test_durable_queue_verification.mjs",
   "tests/test_pin_status_module_lifecycle.mjs",
   "tests/run_all_tests.mjs",
-  "tests/test_phase11_activity_state_machine.mjs",
-  "scripts/test_browser_h_app_pin_status.mjs",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
-  "tests/test_posting_flow_verification.mjs"
+  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
 ]
