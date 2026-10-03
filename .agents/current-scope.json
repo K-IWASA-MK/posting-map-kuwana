@@ -10,5 +10,6 @@
   "tests/run_all_tests.mjs",
   "tests/test_phase11_activity_state_machine.mjs",
   "scripts/test_browser_h_app_pin_status.mjs",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
+  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
+  "tests/test_posting_flow_verification.mjs"
 ]
