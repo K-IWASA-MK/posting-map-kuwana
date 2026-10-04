@@ -1090,10 +1090,10 @@ window.initMainMap = function() {
         });
       }
 
-      // ユーザ指定のoverlayMouseTargetに格納し、クリックを有効にする
+      // floatPane（InfoWindow と同じ最前面ペイン）に格納し、マーカーのタップ判定より前面でクリックを有効にする
       const panes = this.getPanes();
       google.maps.OverlayView.preventMapHitsAndGesturesFrom(div);
-      panes.overlayMouseTarget.appendChild(div);
+      panes.floatPane.appendChild(div);
     }
 
     draw() {
