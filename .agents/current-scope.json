@@ -1,5 +1,4 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/render.js",
-  "active/h-app/index.html"
+  "scripts/test_browser_h_app_storage.mjs"
 ]
