@@ -220,6 +220,29 @@ async function scheduleRetry(item) {
 
 // ── メイン同期処理 ────────────────────────────────────────────
 
+// Activity Feature Module 連携用固定 Hooks (Generic Event Bus 禁止)
+let _activityQueueHooks = null;
+
+/**
+ * Activity Feature Module との固定連携 Hooks を設定
+ * 4本すべての Hook が function であることを厳格に検証 (Partial Fail-Open 禁止)
+ * @param {Object} hooks
+ * @param {Function} hooks.onRejectedBeforeDequeue - async (item, res) => void
+ * @param {Function} hooks.onAcceptedAfterDequeue - async (item, res) => void
+ * @param {Function} hooks.onFailedAfterQueueUpdate - async (item, finalStatus, err) => void
+ * @param {Function} hooks.onManualRetryReset - (item) => void
+ */
+function configureActivityQueueHooks(hooks) {
+  if (!hooks ||
+      typeof hooks.onRejectedBeforeDequeue !== 'function' ||
+      typeof hooks.onAcceptedAfterDequeue !== 'function' ||
+      typeof hooks.onFailedAfterQueueUpdate !== 'function' ||
+      typeof hooks.onManualRetryReset !== 'function') {
+    throw new Error("[Queue] Invalid Activity Queue Hooks: All 4 hooks must be provided as functions.");
+  }
+  _activityQueueHooks = hooks;
+}
+
 /**
  * キュー内の送信待ちアイテムを順次送信する
  * - 多重実行防止（isProcessing フラグ）
@@ -230,6 +253,14 @@ async function scheduleRetry(item) {
 async function processQueue() {
   if (isProcessing) return;
   if (!navigator.onLine) {
+    updateUISyncStatus();
+    return;
+  }
+
+  // Activity Queue Hooks 準備防壁 (Fail-Closed: 契約 Gate 37)
+  // Hooks 未設定時は API通信・dequeue・retryCount消費を一切行わず安全に待機
+  if (!_activityQueueHooks) {
+    console.warn("[Queue] Activity Queue Hooks not configured. Fail-Closed guard activated.");
     updateUISyncStatus();
     return;
   }
@@ -297,65 +328,27 @@ async function processQueue() {
         const res = await callApiPost('updateRecordWithGPSPhoto', payload);
 
         if (res && res.success) {
-          // ── STALE_MONTH 等の非受諾終端処理 ──────────────────────
+          // ── STALE_MONTH 等の非受諾終端処理 (Race防止: dequeue前にHook発火) ──
           if (res.accepted === false) {
             console.warn(`[Queue] Item rejected without retry: id=${item.id}, code=${res.code}`);
 
-            // 対象pointの syncStatus = 'REJECTED'（app.js 側で非完了認識用、rowId基準で特定）
-            if (typeof allPoints !== 'undefined' && allPoints) {
-              const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
-              if (p) {
-                p.syncStatus = 'REJECTED';
-                delete p.tempPhotoUrl;
-                delete p.isReadyToSubmit;
-              }
-            }
+            // 1. REJECTED Hook を dequeue 前に同期呼出 (ポーリングとの Race を完全遮断、直接呼出)
+            await _activityQueueHooks.onRejectedBeforeDequeue(item, res);
 
+            // 2. Queue から削除
             await dequeueSync(item.id);
             anySuccess = true; // loadData(true) でCurrent Sheet再読込
             continue;
           }
 
-          // ── 因果関係の絶対順序 ──────────────────────────────────
+          // ── 因果関係の絶対順序 (正常受諾) ─────────────────────────
           // 1. Backend persistence confirmed (res.success === true && res.accepted !== false)
           // 2. dequeueSync()
           await dequeueSync(item.id);
 
-          // 3. 正規発火点: Backend受諾確認後に PinStatus remove を単一発火 (表示条件非依存)
-          if (typeof window.setPinInProgress === 'function') {
-            window.setPinInProgress(item.rowId, "remove");
-          }
-
-          // 4. ローカル completed 状態反映 (表示条件非依存)
-          PinStatusModule.reflectCompleted(item.rowId);
-
-          // 5. COMPLETED 確定 & p.isDone = true (rowId基準で直接同期)
-          if (typeof allPoints !== 'undefined' && allPoints) {
-            const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
-            if (p) {
-              p.photoUrl = res.photoUrl || '';
-              if (item.latitude && item.longitude) {
-                p.gps = `${item.latitude},${item.longitude}`;
-              }
-              p.syncStatus = undefined;
-              p.isDone = true;
-              delete p.tempPhotoUrl;
-              delete p.isReadyToSubmit;
-            }
-
-            // 完了ピン・ロック (UI描画)
-            if (typeof window.lockActivePinAndBubble === 'function') {
-              window.lockActivePinAndBubble(item.rowId);
-            }
-
-            if (window.currentPointDetailRowId === item.rowId) {
-              const mc = document.getElementById('detail-modal-content');
-              if (mc && typeof renderDetailModalContent === 'function') {
-                const updatedPoint = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
-                if (updatedPoint) mc.innerHTML = renderDetailModalContent(updatedPoint);
-              }
-            }
-          }
+          // 3. onAcceptedAfterDequeue Hook 呼出 (直接呼出)
+          // (PinStatus remove ➔ reflectCompleted ➔ applyQueueOutcome ACCEPTED ➔ lockPin ➔ rerender)
+          await _activityQueueHooks.onAcceptedAfterDequeue(item, res);
 
           console.log(`[Queue] Synced: id=${item.id}, rowId=${item.rowId}, reqId=${item.requestId || 'legacy'}`);
           anySuccess = true; // 1件でも成功 → 後でまとめてUI更新
@@ -386,13 +379,8 @@ async function processQueue() {
           });
         }
 
-        // points の syncStatus を rowId 基準で同期
-        if (typeof allPoints !== 'undefined' && allPoints) {
-          const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
-          if (p) {
-            p.syncStatus = finalStatus;
-          }
-        }
+        // FAILED Hook 呼出 (ActivityModule.applyQueueOutcome(point, FAILED) へ委譲、直接呼出)
+        await _activityQueueHooks.onFailedAfterQueueUpdate(item, finalStatus, err);
       }
     }
 
@@ -457,11 +445,12 @@ async function manualRetrySync(rowId) {
     nextRetryAt: 0
   });
 
-  // allPoints の同期 (rowId 基準)
-  if (typeof allPoints !== 'undefined' && allPoints) {
-    const p = allPoints.find(pt => Number(pt.rowId) === Number(item.rowId));
-    if (p) p.syncStatus = 'PENDING';
+  // onManualRetryReset Hook 呼出 (ActivityModule.applyQueueOutcome(point, RETRY_RESET) へ委譲、直接呼出)
+  if (!_activityQueueHooks) {
+    console.warn("[Queue] Activity Queue Hooks not configured. manualRetrySync aborted.");
+    return;
   }
+  _activityQueueHooks.onManualRetryReset(item);
 
   updateUISyncStatus();
   processQueue();

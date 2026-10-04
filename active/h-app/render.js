@@ -410,31 +410,18 @@ function closeDetailModal() {
 window.cancelMissionComplete = function(rowId) {
   const numericRowId = parseInt(rowId, 10);
 
-  // 1. 対象ポイントの一時下書きデータを完全破棄
-  const resetPointData = (p) => {
-    p.isDone = false;
-    p.count = 0;
-    p.staffName = '';
-    p.staffId = '';
-    p.completedAt = '';
-    p.syncStatus = '';
-    p.photoStatus = 'NONE';
-    p.gpsStatus = 'NO';
-    p.gps = '';
-    p.latitude = '';
-    p.longitude = '';
-    p.accuracy = null;
-    delete p.tempPhotoUrl;
-    delete p.photoBase64;
+  // 1. 対象ポイントの一時下書きデータを完全破棄 (ActivityModule へ単一委譲)
+  const resetPoint = (p) => {
+    ActivityModule.resetDraft(p);
   };
 
   if (typeof allPoints !== 'undefined' && Array.isArray(allPoints)) {
     const p = allPoints.find(point => point.rowId === numericRowId || point.rowId === rowId);
-    if (p) resetPointData(p);
+    if (p) resetPoint(p);
   }
   if (typeof window.allPoints !== 'undefined' && Array.isArray(window.allPoints)) {
     const p = window.allPoints.find(point => point.rowId === numericRowId || point.rowId === rowId);
-    if (p) resetPointData(p);
+    if (p) resetPoint(p);
   }
 
   // 2. モーダルを閉じる
@@ -625,6 +612,22 @@ function renderDetailModalContent(p) {
       `}
     </div>
   `;
+}
+
+/**
+ * 開いている詳細モーダルを再描画（旧 db.js の accepted 処理副作用を維持）
+ * @param {number|string} rowId
+ */
+function rerenderDetailModalIfOpen(rowId) {
+  if (typeof currentPointDetailRowId !== 'undefined' && currentPointDetailRowId === rowId) {
+    const mc = $('detail-modal-content');
+    if (mc && typeof renderDetailModalContent === 'function' && typeof allPoints !== 'undefined' && Array.isArray(allPoints)) {
+      const updatedPoint = allPoints.find(pt => Number(pt.rowId) === Number(rowId));
+      if (updatedPoint) {
+        mc.innerHTML = renderDetailModalContent(updatedPoint);
+      }
+    }
+  }
 }
 
 function renderSettings() {

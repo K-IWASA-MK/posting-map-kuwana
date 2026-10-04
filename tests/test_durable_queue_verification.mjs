@@ -24,6 +24,7 @@ import path from 'node:path';
 const rootDir = process.cwd();
 
 const dbJsPath = path.join(rootDir, 'active/h-app/db.js');
+const activityJsPath = path.join(rootDir, 'active/h-app/modules/activity.js');
 const appJsPath = path.join(rootDir, 'active/h-app/app.js');
 const renderJsPath = path.join(rootDir, 'active/h-app/render.js');
 const designContractPath = path.join(rootDir, 'docs/architecture/01_DESIGN_CONTRACT.md');
@@ -33,6 +34,7 @@ const gpsServicePath = path.join(rootDir, 'active/business/gps/gps_service.js');
 const gpsRepositoryPath = path.join(rootDir, 'active/business/gps/gps_repository.js');
 
 const dbJs = fs.readFileSync(dbJsPath, 'utf8');
+const activityJs = fs.readFileSync(activityJsPath, 'utf8');
 const appJs = fs.readFileSync(appJsPath, 'utf8');
 const renderJs = fs.readFileSync(renderJsPath, 'utf8');
 const designContract = fs.readFileSync(designContractPath, 'utf8');
@@ -142,16 +144,15 @@ test('3. オフライン提出: while(true)無限待機が撤廃され、オフ�
   const submitIndex = appJs.indexOf('async function submitMissionComplete(areaName, rowId)');
   assert.ok(submitIndex !== -1, 'submitMissionComplete が存在すること');
 
-  const submitBody = appJs.substring(submitIndex, submitIndex + 6000);
-
   // while(true) が存在しないこと
-  assert.ok(!submitBody.includes('while (true)'), 'submitMissionComplete に while (true) 無限待機が存在してはならない');
+  assert.ok(!appJs.includes('while (true)'), 'app.js に while (true) 無限待機が存在してはならない');
+  assert.ok(!activityJs.includes('while (true)'), 'activity.js に while (true) 無限待機が存在してはならない');
 
-  // オフライン判定と即時モーダルクローズ
-  assert.ok(submitBody.includes('if (!navigator.onLine) {'), 'navigator.onLine によるオフライン判定が存在すること');
-  assert.ok(submitBody.includes('closeDetailModal();'), 'オフライン時に closeDetailModal() が呼ばれること');
-  assert.ok(submitBody.includes("p.syncStatus = 'pending';"), 'オフライン時に p.syncStatus = pending が設定されること');
-  assert.ok(submitBody.includes('p.isDone = false;'), 'オフライン時に p.isDone = false が維持されること');
+  // オフライン判定と即時モーダルクローズ (app.js のフック + activity.js の判定)
+  assert.ok(appJs.includes('isOnline: () => navigator.onLine,'), 'navigator.onLine によるオフライン判定フックが存在すること');
+  assert.ok(appJs.includes('onOfflineQueued: () => {') && appJs.includes('closeDetailModal();'), 'オフライン時に closeDetailModal() が呼ばれること');
+  assert.ok(activityJs.includes("point.syncStatus = 'pending';"), 'オフライン時に point.syncStatus = pending が設定されること');
+  assert.ok(activityJs.includes('point.isDone = false;'), 'オフライン時に point.isDone = false が維持されること');
 
   // 実動シミュレーション: オフライン時の挙動
   let modalClosed = false;
@@ -177,12 +178,10 @@ test('3. オフライン提出: while(true)無限待機が撤廃され、オフ�
 // 4. オンライン時タイムアウト（最大15秒待機）とバックグラウンド継続
 // ----------------------------------------------------------------------------
 test('4. オンライン提出: 最大15秒待機タイムアウトが存在し、タイムアウト時も画面解放してバックグラウンド継続すること', () => {
-  const submitIndex = appJs.indexOf('async function submitMissionComplete(areaName, rowId)');
-  const submitBody = appJs.substring(submitIndex, submitIndex + 6000);
-
   // タイムアウト設定確認 (maxWaitMs = 15000)
-  assert.ok(submitBody.includes('const maxWaitMs = 15000;'), '15000ms の最大待機時間が定義されていること');
-  assert.ok(submitBody.includes('while (Date.now() - startTime < maxWaitMs)'), 'タイムアウト上限付きループであること');
+  assert.ok(activityJs.includes('15000'), '15000ms の最大待機時間が定義されていること');
+  assert.ok(activityJs.includes('while (Date.now() - startTime < maxWaitMs)'), 'タイムアウト上限付きループであること');
+  assert.ok(appJs.includes('onTimeout: () => {') && appJs.includes('closeDetailModal();'), 'タイムアウト時に画面解放されること');
 
   // 実動シミュレーション: 15秒タイムアウト時の画面解放
   let modalClosed = false;
@@ -211,9 +210,10 @@ test('5. requestId: generateRequestId で発番され、enqueueSync → IndexedD
   assert.ok(dbJs.includes('function generateRequestId(prefix = \'req\')'), 'generateRequestId 関数が定義されていること');
   assert.ok(dbJs.includes('window.generateRequestId = generateRequestId;'), 'window.generateRequestId が公開されていること');
 
-  // app.js の submitMissionComplete で requestId を発番して enqueueSync に渡していること
-  assert.ok(appJs.includes('const requestId = (typeof window.generateRequestId === \'function\')'), 'submitMissionComplete で requestId が発番されていること');
-  assert.ok(appJs.includes('requestId,\n        areaName,'), 'enqueueSync に requestId が渡されていること');
+  // app.js の submitMissionComplete で requestId を発番して ActivityModule に渡し、enqueueSync に渡していること
+  assert.ok(appJs.includes('generateRequestId: (prefix) =>'), 'submitMissionComplete で generateRequestId が定義されていること');
+  assert.ok(activityJs.includes('const requestId = (typeof currentHooks.generateRequestId === \'function\')'), 'activity.js で requestId が発番されていること');
+  assert.ok(activityJs.includes('requestId,\n        areaName:'), 'activity.js の enqueue に requestId が渡されていること');
 
   // dbJs の processQueue で payload に requestId が含められていること
   assert.ok(dbJs.includes('requestId:') && dbJs.includes('item.requestId'), 'processQueue の payload に requestId が含まれていること');

@@ -285,6 +285,70 @@ async function startApp() {
   if (appStartupTriggered) return;
   appStartupTriggered = true;
 
+  // Wave 4: Activity Queue Hooks Wiring (Composition Root) - MissingならBoot時に明示failure
+  configureActivityQueueHooks({
+    onRejectedBeforeDequeue(item, res) {
+      const pt = Array.isArray(allPoints) ? allPoints.find(p => Number(p.rowId) === Number(item.rowId)) : null;
+      if (pt) {
+        ActivityModule.applyQueueOutcome(pt, {
+          type: 'REJECTED',
+          item,
+          res
+        });
+      }
+    },
+    onAcceptedAfterDequeue(item, res) {
+      // 1. window.setPinInProgress(item.rowId, "remove") - Current Runtime同様、awaitしない
+      if (typeof window.setPinInProgress === 'function') {
+        window.setPinInProgress(item.rowId, "remove");
+      }
+
+      // 2. PinStatusModule.reflectCompleted(item.rowId) - 必須直接呼出
+      PinStatusModule.reflectCompleted(item.rowId);
+
+      // 3. ActivityModule.applyQueueOutcome(point, ACCEPTED)
+      // → ここで初めて p.isDone = true
+      const pt = Array.isArray(allPoints) ? allPoints.find(p => Number(p.rowId) === Number(item.rowId)) : null;
+      if (pt) {
+        ActivityModule.applyQueueOutcome(pt, {
+          type: 'ACCEPTED',
+          item,
+          res
+        });
+      }
+
+      // 4. lockActivePinAndBubble(rowId)
+      if (typeof window.lockActivePinAndBubble === 'function') {
+        window.lockActivePinAndBubble(item.rowId);
+      }
+
+      // 5. current detail modal rerender if applicable
+      if (typeof rerenderDetailModalIfOpen === 'function') {
+        rerenderDetailModalIfOpen(item.rowId);
+      }
+    },
+    onFailedAfterQueueUpdate(item, finalStatus, err) {
+      const pt = Array.isArray(allPoints) ? allPoints.find(p => Number(p.rowId) === Number(item.rowId)) : null;
+      if (pt) {
+        ActivityModule.applyQueueOutcome(pt, {
+          type: 'FAILED',
+          finalStatus,
+          item,
+          error: err
+        });
+      }
+    },
+    onManualRetryReset(item) {
+      const pt = Array.isArray(allPoints) ? allPoints.find(p => Number(p.rowId) === Number(item.rowId)) : null;
+      if (pt) {
+        ActivityModule.applyQueueOutcome(pt, {
+          type: 'RETRY_RESET',
+          item
+        });
+      }
+    }
+  });
+
   try {
     loadGoogleMapsApi();
 
@@ -461,12 +525,7 @@ async function loadData(skipSync = false) {
     try {
       const queueRowIds = await window.getSyncQueueRowIds();
       if (queueRowIds && queueRowIds.length > 0 && Array.isArray(allPoints)) {
-        queueRowIds.forEach(rowId => {
-          const pt = allPoints.find(p => Number(p.rowId) === Number(rowId));
-          if (pt && !pt.isDone) {
-            pt.syncStatus = 'pending';
-          }
-        });
+        ActivityModule.restorePendingState(allPoints, queueRowIds);
       }
     } catch (qErr) {
       console.warn("[loadData] Failed to restore pending queue pins:", qErr);
@@ -542,37 +601,27 @@ window.triggerUISyncRefresh = async function() {
     const dNow = new Date(nowTs + (9 * 60 * 60 * 1000));
     const currentJstMonth = `${dNow.getUTCFullYear()}-${String(dNow.getUTCMonth() + 1).padStart(2, '0')}`;
 
-    allPoints.forEach(p => {
-      // submitting（提出処理中）の場合はキュー状態での上書きを防止
-      if (p.syncStatus === 'submitting') return;
+    // 当月キューアイテムの抽出
+    const currentMonthQueue = (queue || []).filter(q => {
+      const qTs = Number(q.timestamp) || nowTs;
+      const qD = new Date(qTs + (9 * 60 * 60 * 1000));
+      const qM = `${qD.getUTCFullYear()}-${String(qD.getUTCMonth() + 1).padStart(2, '0')}`;
+      return qM === currentJstMonth;
+    });
 
-      const found = queue.find(q => {
-        if (Number(q.rowId) !== Number(p.rowId)) return false;
-        const qTs = Number(q.timestamp) || nowTs;
-        const qD = new Date(qTs + (9 * 60 * 60 * 1000));
-        const qM = `${qD.getUTCFullYear()}-${String(qD.getUTCMonth() + 1).padStart(2, '0')}`;
-        return qM === currentJstMonth;
-      });
-      if (found) {
-        p.syncStatus = found.syncStatus || found.status; // 'pending' | 'sending' | 'failed'
-      } else {
-        // キューに存在しない場合（Queue消滅だけを根拠にCOMPLETEDへ新規昇格させることは絶対禁止）
-        if (p.syncStatus === 'REJECTED') {
-          // STALE_MONTH 等の非受諾終端: COMPLETED に昇格させず未完了へ戻す（submitMissionComplete の判定のため消去しない）
-          p.isDone = false;
-          delete p.isReadyToSubmit;
-          delete p.tempPhotoUrl;
-        } else if (p.isDone === true) {
-          // Backend正常受諾済み（db.js により p.isDone = true 確定済み）の場合のみ完了状態・ピンロックを維持
-          delete p.isReadyToSubmit;
-          delete p.tempPhotoUrl;
-          delete p.syncStatus;
+    // ActivityModule へ状態調停を委譲 (直接呼出)
+    ActivityModule.reconcileQueueState(allPoints, currentMonthQueue);
+
+    // UI・PinStatus 副作用の調停 (Composition Root)
+    allPoints.forEach(p => {
+      if (p.syncStatus === 'submitting') return;
+      const inQueue = currentMonthQueue.some(q => Number(q.rowId) === Number(p.rowId));
+      if (!inQueue) {
+        if (p.isDone === true) {
           PinStatusModule.reflectCompleted(p.rowId);
           if (typeof window.lockActivePinAndBubble === 'function') {
             window.lockActivePinAndBubble(p.rowId);
           }
-        } else if (!p.isDone) {
-          delete p.syncStatus;
         }
       }
     });
@@ -646,19 +695,15 @@ function pressNum(key) {
 
       // 3. 写真確定後に状態を更新し、即座にMISSION COMPLETED画面を生成（GPSは待たない）
       if (p) {
-        // Phase 9: 写真・GPS取得完了は DRAFT (READY_TO_SUBMIT) であり、Backend永続化成功前の COMPLETED 確定ではない
-        p.isDone = false;
-        p.isReadyToSubmit = true;
-        p.count = valNum;
-        p.staffName = staffName;
-        p.staffId = staffId; // Payload用に保持
-        p.completedAt = timeStr;
-        p.syncStatus = 'pending';
-        p.gpsStatus = 'pending';
-        p.photoStatus = 'OK';
-
-        p.tempPhotoUrl = URL.createObjectURL(imageBlob);
-        p.photoBase64 = photoBase64;
+        const tempPhotoUrl = URL.createObjectURL(imageBlob);
+        ActivityModule.createDraft(p, {
+          valNum,
+          staffName,
+          staffId,
+          timeStr,
+          tempPhotoUrl,
+          photoBase64
+        });
 
         // モーダルを再描画（提出前プレビュー画面として表示するため isDone: true のプロパティを渡す）
         const modalContent = $('detail-modal-content');
@@ -669,33 +714,13 @@ function pressNum(key) {
 
       // 4. バックグラウンドでGPS結果を待機
       let gps = await gpsPromise;
-      if (!gps.latitude || !gps.longitude) {
+      if (!gps || !gps.latitude || !gps.longitude) {
         console.log("GPS empty after camera, retrying...");
         gps = await getGPSLocation();
       }
 
-      // GPS判定
-      const latNum = Number(gps?.latitude);
-      const lngNum = Number(gps?.longitude);
-      const hasValidGps =
-        Number.isFinite(latNum) &&
-        Number.isFinite(lngNum) &&
-        latNum !== 0 &&
-        lngNum !== 0 &&
-        latNum >= -90 && latNum <= 90 &&
-        lngNum >= -180 && lngNum <= 180;
-
       if (p) {
-        if (!hasValidGps) {
-          console.warn("GPS acquisition failed or out of range.");
-          p.gpsStatus = 'NO';
-        } else {
-          p.gpsStatus = 'OK';
-          p.gps = `${gps.latitude},${gps.longitude}`;
-          p.latitude = gps.latitude;
-          p.longitude = gps.longitude;
-          p.accuracy = gps.accuracy || null;
-        }
+        ActivityModule.applyGpsResult(p, gps);
 
         // GPS状態が確定したのでモーダルのみ再描画（提出処理中はUIを上書きしない）
         const modalContent = $('detail-modal-content');
@@ -737,174 +762,107 @@ async function submitMissionComplete(areaName, rowId) {
   }
 
   if (p.syncStatus === 'submitting') return;
-  p.syncStatus = 'submitting';
-
-  if (p.photoStatus !== 'OK' || !p.photoBase64) {
-    p.syncStatus = 'pending';
-    return;
-  }
 
   const submitBtn = $('submit-mission-btn');
   const cancelBtn = $('cancel-mission-btn');
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = '⏳ 提出中...';
-  }
-  if (cancelBtn) {
-    cancelBtn.disabled = true;
-  }
 
-  await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-
-  try {
-    while (p.gpsStatus === 'pending') {
-      await new Promise(r => setTimeout(r, 200));
-    }
-
-    // Safety Gate: Identity Verified を確認
-    try {
+  const hooks = {
+    isAlreadyCompleted: (rid) => PinStatusModule.isCompleted(rid) || (p.isDone && !p.isReadyToSubmit),
+    onSubmitting: async () => {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ 提出中...';
+      }
+      if (cancelBtn) {
+        cancelBtn.disabled = true;
+      }
+      // 基準コードと同一の提出開始時描画待ちを実行
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    },
+    waitGps: async () => {
+      while (p.gpsStatus === 'pending') {
+        await new Promise(r => setTimeout(r, 200));
+      }
+    },
+    authorize: async () => {
       await waitForIdentityVerified();
-    } catch (authErr) {
-      alert("スタッフ認証が完了していないため、配布完了を送信できません。再起動してください。");
-      p.syncStatus = 'failed';
-      p.isDone = false; // Phase 9: 認証失敗時は配布完了としない
+    },
+    getVerifiedUser: () => {
+      const verifiedUserInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+      return {
+        staffId: verifiedUserInfo.id || p.staffId || '',
+        staffName: `${verifiedUserInfo.last || ''} ${verifiedUserInfo.first || ''}`.trim() || p.staffName || ''
+      };
+    },
+    generateRequestId: (prefix) => {
+      return (typeof window.generateRequestId === 'function')
+        ? window.generateRequestId(prefix)
+        : ('req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+    },
+    enqueue: async (payload) => {
+      return await enqueueSync(payload);
+    },
+    isOnline: () => navigator.onLine,
+    onOfflineQueued: () => {
+      alert("電波が圏外のため、端末内に安全に保存しました。\n電波が回復次第、自動で送信されます。");
+      if (typeof closeDetailModal === 'function') {
+        closeDetailModal();
+      }
+    },
+    getRowStatus: async (rid) => {
+      if (typeof window.getRowStatus !== 'function') {
+        throw new Error("Sync check mechanism is missing.");
+      }
+      return await window.getRowStatus(Number(rid));
+    },
+    isPinCompleted: (rid) => Boolean(PinStatusModule.isCompleted(rid)),
+    getBranchCode: () => localStorage.getItem('branch_name') || '',
+    onAccepted: (res) => {
+      PinStatusModule.reflectCompleted(rowId);
+      if (typeof window.lockActivePinAndBubble === 'function') {
+        window.lockActivePinAndBubble(rowId);
+      }
+      alert("✓ 提出致しました");
+      if (typeof closeDetailModal === 'function') {
+        closeDetailModal();
+      }
+    },
+    onRejected: (res) => {
+      alert("旧月の配布操作のため、当月シートには反映されませんでした。");
+      if (typeof closeDetailModal === 'function') {
+        closeDetailModal();
+      }
+    },
+    onTimeout: () => {
+      alert("送信処理中です。バックグラウンドで送信を継続します。");
+      if (typeof closeDetailModal === 'function') {
+        closeDetailModal();
+      }
+    },
+    onError: (err, type) => {
+      if (type === 'AUTH_FAILED') {
+        alert("スタッフ認証が完了していないため、配布完了を送信できません。再起動してください。");
+      } else {
+        alert("提出に失敗しました: " + (err.message || "エラー"));
+      }
+    },
+    onFinally: () => {
+      const submitBtn = $('submit-mission-btn');
+      const cancelBtn = $('cancel-mission-btn');
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = '🚀 この内容で提出する';
       }
-      if (cancelBtn) cancelBtn.disabled = false;
-      return;
-    }
-
-    // 最新の認証済み user_info を再取得して staffId / staffName を確定
-    const verifiedUserInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-    const finalStaffId = verifiedUserInfo.id || p.staffId || '';
-    const finalStaffName = `${verifiedUserInfo.last || ''} ${verifiedUserInfo.first || ''}`.trim() || p.staffName || '';
-
-    // クライアント不変操作識別子 (requestId) を発番
-    const requestId = (typeof window.generateRequestId === 'function')
-      ? window.generateRequestId('req')
-      : ('req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
-
-    // 原本仕様: 活動送信ごとに一意の clientEventId (冪等性キー) を対応付け (ADR-013)
-    const clientEventId = requestId;
-
-    if (typeof enqueueSync === 'function') {
-      // 1. IndexedDB 送信キューに永続化
-      await enqueueSync({
-        requestId,
-        areaName,
-        clientEventId,
-        rowId: Number(rowId),
-        isDone:     true,
-        count:      p.count || 0,
-        latitude:   p.gpsStatus === 'OK' ? (p.latitude || '') : '',
-        longitude:  p.gpsStatus === 'OK' ? (p.longitude || '') : '',
-        accuracy:   p.gpsStatus === 'OK' ? (p.accuracy || null) : null,
-        gpsTimestamp: p.gpsStatus === 'OK' ? (p.gpsTimestamp || '') : '',
-        gpsStatusReason: p.gpsStatus || 'NO',
-        branchCode: localStorage.getItem('branch_name') || '',
-        areaId:     String(rowId),
-        photoBase64: p.photoBase64 || '',
-        staffName:  finalStaffName,
-        staffId:    finalStaffId
-      });
-
-      // 2. オフライン判定：オフライン時は即時モーダルを閉じて画面を解放（UIフリーズを完全阻止）
-      if (!navigator.onLine) {
-        p.syncStatus = 'pending';
-        p.isDone = false;
-        alert("電波が圏外のため、端末内に安全に保存しました。\n電波が回復次第、自動で送信されます。");
-        if (typeof closeDetailModal === 'function') {
-          closeDetailModal();
-        }
-        return;
-      }
-
-      // 3. オンライン時：最大15秒間の待機（while(true)無限待機を撤廃しタイムアウト上限を設定）
-      const maxWaitMs = 15000;
-      const startTime = Date.now();
-      let isPersisted = false;
-
-      while (Date.now() - startTime < maxWaitMs) {
-        if (typeof window.getRowStatus !== 'function') {
-          throw new Error("Sync check mechanism is missing.");
-        }
-        const status = await window.getRowStatus(Number(rowId));
-
-        if (status === null) {
-          // キューから消滅
-          if (p.syncStatus === 'REJECTED') {
-            // STALE_MONTH 等の非受諾終端: COMPLETED に昇格させず通常未完了へ復帰
-            p.isDone = false;
-            delete p.isReadyToSubmit;
-            delete p.tempPhotoUrl;
-            delete p.syncStatus;
-            alert("旧月の配布操作のため、当月シートには反映されませんでした。");
-            if (typeof closeDetailModal === 'function') {
-              closeDetailModal();
-            }
-            return; // 重要：後段の「送信処理中です」へ落ちずに即時終了
-          }
-
-          // 正常完了判定: Queue消滅かつ (db.js により p.isDone === true 確定 または PinStatusModule.isCompleted 反映済み)
-          const isCompletedInPinStatus = Boolean(PinStatusModule.isCompleted(rowId));
-          if (isCompletedInPinStatus) {
-            p.isDone = true;
-          }
-
-          if (p.isDone === true) {
-            p.isDone = true;
-            delete p.isReadyToSubmit;
-            p.syncStatus = 'synced';
-            PinStatusModule.reflectCompleted(rowId);
-            if (typeof window.lockActivePinAndBubble === 'function') {
-              window.lockActivePinAndBubble(rowId);
-            }
-            isPersisted = true;
-            break;
-          }
-
-          // status === null かつ p.isDone !== true かつ p.syncStatus !== 'REJECTED' の場合:
-          // Queue消滅だけから成功を推定せず、待機ループ内で受諾結果確定（p.isDone または REJECTED）を待つ
-        }
-        if (status === 'RETRY') {
-          throw new Error("GAS Save Failed");
-        }
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      // 4. 完了または待機完了後の画面解放
-      if (isPersisted) {
-        alert("✓ 提出致しました");
-      } else {
-        // 15秒経過後もバックグラウンドで継続中：通常操作へ復帰
-        p.syncStatus = 'pending';
-        p.isDone = false;
-        alert("送信処理中です。バックグラウンドで送信を継続します。");
-      }
-
-      if (typeof closeDetailModal === 'function') {
-        closeDetailModal();
+      if (cancelBtn) {
+        cancelBtn.disabled = false;
       }
     }
-  } catch (err) {
-    console.error("Submission failed:", err);
-    alert("提出に失敗しました: " + (err.message || "エラー"));
-    p.syncStatus = 'pending';
-    // Phase 9: Backend永続化が成功していないため、配布完了を確定させない (COMPLETED = false)
-    p.isDone = false;
-  } finally {
-    const submitBtn = $('submit-mission-btn');
-    const cancelBtn = $('cancel-mission-btn');
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = '🚀 この内容で提出する';
-    }
-    if (cancelBtn) {
-      cancelBtn.disabled = false;
-    }
-  }
+  };
+
+  await ActivityModule.submitActivity(p, {
+    areaName,
+    rowId
+  }, hooks);
 }
 
 window.addEventListener('online', () => {

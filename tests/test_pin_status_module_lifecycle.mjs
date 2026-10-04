@@ -492,18 +492,27 @@ await runGate(18, 'Popup cancel/close remove integration', async () => {
 });
 
 // ============================================================================
-// Gate 19: Backend 受諾パス（db.js）からの remove が Exactly Once であること
+// Gate 19: Backend 受諾パスからの remove が Exactly Once であること
 // ============================================================================
 await runGate(19, 'Backend accepted path remove = exactly once', async () => {
   const env = createPinStatusContext();
   const mod = vm.runInContext('PinStatusModule', env.context);
 
-  // 1. Production code wiring static verification (Single-Fire point in db.js)
+  // 1. Production code wiring static verification (Single-Fire point via Queue Hook)
   const dbJs = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/db.js'), 'utf8');
+  const appJs = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/app.js'), 'utf8');
+
+  // db.js: dequeueSync 直後に onAcceptedAfterDequeue Hook が呼ばれること
   const dequeueIdx = dbJs.lastIndexOf('await dequeueSync(item.id);');
   assert.ok(dequeueIdx > 0, 'db.js contains dequeueSync accepted path');
   const postDequeueBlock = dbJs.substring(dequeueIdx, dequeueIdx + 300);
-  assert.ok(postDequeueBlock.includes('window.setPinInProgress(item.rowId, "remove")'), 'db.js fires window.setPinInProgress remove right after dequeueSync');
+  assert.ok(postDequeueBlock.includes('onAcceptedAfterDequeue'), 'db.js fires onAcceptedAfterDequeue right after dequeueSync');
+
+  // app.js: onAcceptedAfterDequeue Hook 内部で window.setPinInProgress(item.rowId, "remove") が呼ばれること
+  const hookIdx = appJs.indexOf('onAcceptedAfterDequeue');
+  assert.ok(hookIdx > 0, 'app.js defines onAcceptedAfterDequeue');
+  const hookBlock = appJs.substring(hookIdx, appJs.indexOf('onFailedAfterQueueUpdate', hookIdx));
+  assert.ok(hookBlock.includes('window.setPinInProgress(item.rowId, "remove")'), 'app.js fires window.setPinInProgress remove inside onAcceptedAfterDequeue');
 
   // 2. Dynamic execution
   let removeCount = 0;
@@ -515,10 +524,10 @@ await runGate(19, 'Backend accepted path remove = exactly once', async () => {
     });
   };
 
-  // db.js の dequeueSync シミュレーション
+  // onAcceptedAfterDequeue の dequeueSync 後呼出シミュレーション
   await setPinInProgress(1101, 'remove');
 
-  assert.strictEqual(removeCount, 1, 'db.js sends exactly one remove');
+  assert.strictEqual(removeCount, 1, 'accepted hook sends exactly one remove');
 });
 
 // ============================================================================

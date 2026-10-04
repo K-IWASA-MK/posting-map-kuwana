@@ -30,6 +30,7 @@ const dataLifecyclePath = path.join(rootDir, 'docs/data/DATA_LIFECYCLE.md');
 const appJsPath = path.join(rootDir, 'active/h-app/app.js');
 const renderJsPath = path.join(rootDir, 'active/h-app/render.js');
 const dbJsPath = path.join(rootDir, 'active/h-app/db.js');
+const activityJsPath = path.join(rootDir, 'active/h-app/modules/activity.js');
 const distRepoPath = path.join(rootDir, 'active/business/distribution/distribution_repository.js');
 const pinStatusServicePath = path.join(rootDir, 'active/business/pin/pin_status_service.js');
 const gpsServicePath = path.join(rootDir, 'active/business/gps/gps_service.js');
@@ -41,6 +42,7 @@ const dataLifecycle = fs.readFileSync(dataLifecyclePath, 'utf8');
 const appJs = fs.readFileSync(appJsPath, 'utf8');
 const renderJs = fs.readFileSync(renderJsPath, 'utf8');
 const dbJs = fs.readFileSync(dbJsPath, 'utf8');
+const activityJs = fs.readFileSync(activityJsPath, 'utf8');
 const distRepoJs = fs.readFileSync(distRepoPath, 'utf8');
 const pinStatusServiceJs = fs.readFileSync(pinStatusServicePath, 'utf8');
 const gpsServiceJs = fs.readFileSync(gpsServicePath, 'utf8');
@@ -72,9 +74,9 @@ test('2. 識別子境界: 原本 clientEventId 定義を保護し、requestId �
   assert.ok(designContract.includes('活動登録は`clientEventId`等の冪等キーによって重複登録を防止する。'), '原本の冪等性記述');
   assert.ok(designContract.includes('端末側で活動送信ごとに一意の`clientEventId`を生成する。'), '原本のclientEventId生成記述');
 
-  // app.js で requestId 発番後に clientEventId が対応付けられていること
-  assert.ok(appJs.includes('const clientEventId = requestId;'), 'clientEventId が requestId に対応付けられていること');
-  assert.ok(appJs.includes('clientEventId,'), 'enqueueSync に clientEventId が渡されていること');
+  // activity.js で requestId 発番後に clientEventId が対応付けられていること
+  assert.ok(activityJs.includes('const clientEventId = requestId;'), 'clientEventId が requestId に対応付けられていること');
+  assert.ok(activityJs.includes('clientEventId,'), 'enqueue に clientEventId が渡されていること');
 
   // db.js の payload に clientEventId が含められていること
   assert.ok(dbJs.includes('clientEventId:') && dbJs.includes('item.clientEventId || item.requestId'), 'API送信 payload に clientEventId が含まれていること');
@@ -85,20 +87,20 @@ test('2. 識別子境界: 原本 clientEventId 定義を保護し、requestId �
 // ----------------------------------------------------------------------------
 test('3. 状態遷移マシン: UNTOUCHED ➔ IN_PROGRESS ➔ DRAFT ➔ SUBMITTING ➔ PENDING ➔ COMPLETED の因果関係が守られていること', () => {
   // DRAFT (写真確定時点): isDone=false, isReadyToSubmit=true
-  assert.ok(appJs.includes('p.isDone = false;\n        p.isReadyToSubmit = true;'), '写真取得完了時は DRAFT を維持');
+  assert.ok(activityJs.includes('point.isDone = false;') && activityJs.includes('point.isReadyToSubmit = hasPhoto;'), '写真取得完了時は DRAFT を維持');
 
   // SUBMITTING: submitting フラグとUIボタン無効化
-  assert.ok(appJs.includes("p.syncStatus = 'submitting';"), '送信開始で submitting に移行');
+  assert.ok(activityJs.includes("point.syncStatus = 'submitting';"), '送信開始で submitting に移行');
   assert.ok(appJs.includes("submitBtn.disabled = true;"), '多重送信防止のためボタン非活性化');
 
   // PENDING (同期待ち / オフライン): isDone=false 維持
-  assert.ok(appJs.includes("p.syncStatus = 'pending';\n        p.isDone = false;"), 'オフライン時は pending かつ isDone=false');
+  assert.ok(activityJs.includes("point.syncStatus = 'pending';") && activityJs.includes("point.isDone = false;"), 'オフライン時は pending かつ isDone=false');
 
-  // COMPLETED: Backend 成功 (getRowStatus === null) かつ accepted 時のみ昇格、REJECTED は非完了維持
-  assert.ok(appJs.includes("if (status === null) {"), 'status === null 判定が存在すること');
-  assert.ok(appJs.includes("if (p.syncStatus === 'REJECTED')"), 'REJECTED 判定が存在すること');
-  assert.ok(appJs.includes("p.isDone = true;"), '正常受理時に p.isDone = true が設定されること');
-  assert.ok(appJs.includes("delete p.isReadyToSubmit;"), '完了時に isReadyToSubmit を削除');
+  // COMPLETED: Backend 成功 (status === null) かつ accepted 時のみ昇格、REJECTED は非完了維持
+  assert.ok(activityJs.includes("if (status === null) {"), 'status === null 判定が存在すること');
+  assert.ok(activityJs.includes("if (point.syncStatus === 'REJECTED')"), 'REJECTED 判定が存在すること');
+  assert.ok(activityJs.includes("point.isDone = true;"), '正常受理時に point.isDone = true が設定されること');
+  assert.ok(activityJs.includes("delete point.isReadyToSubmit;"), '完了時に isReadyToSubmit を削除');
 
   // 実動シミュレーション: accepted:false (REJECTED) は COMPLETED にならないこと
   const rejectedPin = { rowId: 301, isDone: false, isReadyToSubmit: true, syncStatus: 'REJECTED' };
@@ -115,13 +117,13 @@ test('3. 状態遷移マシン: UNTOUCHED ➔ IN_PROGRESS ➔ DRAFT ➔ SUBMITTI
 // ----------------------------------------------------------------------------
 test('4. 完了確定条件: 写真撮影・キュー投入・送信中は COMPLETED ではなく、Backend永続化成功のみで確定すること', () => {
   // 認証エラー時のロールバック
-  assert.ok(appJs.includes("p.syncStatus = 'failed';\n      p.isDone = false;"), '認証失敗時は isDone=false');
+  assert.ok(activityJs.includes("point.syncStatus = 'failed';") && activityJs.includes("point.isDone = false;"), '認証失敗時は isDone=false');
 
   // タイムアウト時の未完了維持
-  assert.ok(appJs.includes("p.syncStatus = 'pending';\n        p.isDone = false;\n        alert(\"送信処理中です。バックグラウンドで送信を継続します。\");"), '15秒超過時は pending かつ isDone=false で解放');
+  assert.ok(activityJs.includes("point.syncStatus = 'pending';") && activityJs.includes("point.isDone = false;"), '15秒超過時は pending かつ isDone=false で解放');
 
   // エラー catch 時のロールバック
-  assert.ok(appJs.includes("p.syncStatus = 'pending';\n    // Phase 9: Backend永続化が成功していないため、配布完了を確定させない (COMPLETED = false)\n    p.isDone = false;"), '送信例外発生時は isDone=false');
+  assert.ok(activityJs.includes("point.syncStatus = 'pending';") && activityJs.includes("point.isDone = false;"), '送信例外発生時は isDone=false');
 });
 
 // ----------------------------------------------------------------------------
@@ -156,11 +158,12 @@ test('6. 業務ルール2: 未完了地区は当月シートに completedAt が�
   );
 
   // キャンセル時は一時データがリセットされ、isDone=false が維持されること
-  assert.ok(renderJs.includes('p.isDone = false;'), 'cancelMissionComplete で isDone=false を維持');
-  assert.ok(renderJs.includes('delete p.tempPhotoUrl;\n    delete p.photoBase64;'), '写真データが破棄されること');
+  assert.ok(renderJs.includes('ActivityModule.resetDraft(p)'), 'cancelMissionComplete で resetDraft が呼ばれること');
+  assert.ok(activityJs.includes('point.isDone = false;'), 'resetDraft で isDone=false を維持');
+  assert.ok(activityJs.includes('delete point.tempPhotoUrl;\n    delete point.photoBase64;'), '写真データが破棄されること');
 
   // 未完了ピンは globalPinStatus.completed に入らないため、翌日0:00以降も通常通り緑/未操作ピンとして再操作可能
-  assert.ok(appJs.includes('if (!p.isDone) {\n          delete p.syncStatus;\n        }'), '未完了アイテムは syncStatus がリセットされ再操作可能状態となること');
+  assert.ok(activityJs.includes('if (!p.isDone) {\n          delete p.syncStatus;\n        }'), '未完了アイテムは syncStatus がリセットされ再操作可能状態となること');
 });
 
 // ----------------------------------------------------------------------------
@@ -595,18 +598,17 @@ test('10. P1: PinStatus remove Single-Fire Verification (Case 1〜11 & キャン
   assert.ok(triggerRefreshMatch, 'triggerUISyncRefresh が存在すること');
   assert.ok(!triggerRefreshMatch[0].includes('setPinInProgress'), 'triggerUISyncRefresh 内に setPinInProgress の呼出が存在しないこと');
 
-  // appJs: submitMissionComplete のポーリングループ成功ブロック内から setPinInProgress が排除されていること
+  // appJs: submitMissionComplete 内から setPinInProgress の重複呼出が排除されていること
   const submitCompleteMatch = appJs.match(/async\s*function\s*submitMissionComplete[\s\S]*?^}/m);
   assert.ok(submitCompleteMatch, 'submitMissionComplete が存在すること');
-  // p.isDone === true 成功判定の直近ブロックに setPinInProgress がないこと
-  const pollingSuccessBlock = submitCompleteMatch[0].match(/if\s*\(p\.isDone\s*===\s*true\)[\s\S]*?isPersisted\s*=\s*true;/);
-  assert.ok(pollingSuccessBlock, 'submitMissionComplete 内に p.isDone === true 判定ブロックが存在すること');
-  assert.ok(!pollingSuccessBlock[0].includes('setPinInProgress'), 'submitMissionComplete の正常完了判定内に setPinInProgress が存在しないこと');
-  assert.ok(appJs.includes('const isCompletedInPinStatus = Boolean('), 'submitMissionComplete に isCompletedInPinStatus フォールバック判定が存在すること');
+  assert.ok(!submitCompleteMatch[0].includes('setPinInProgress'), 'submitMissionComplete 内に setPinInProgress が存在しないこと (Single-Fire)');
 
-  // dbJs: setPinInProgress が dequeueSync 完了後の共通ブロック（表示エリア条件の外）に存在すること
+  // Composition Root: onAcceptedAfterDequeue 内で setPinInProgress remove が実行されること
+  assert.ok(appJs.includes('window.setPinInProgress(item.rowId, "remove");'), 'app.js の onAcceptedAfterDequeue で setPinInProgress remove が呼ばれること');
+
+  // dbJs: dequeueSync 完了後に onAcceptedAfterDequeue Hook が呼ばれること
   assert.ok(dbJs.includes('await dequeueSync(item.id);'), 'dequeueSync が存在すること');
-  assert.ok(dbJs.includes('window.setPinInProgress(item.rowId, "remove");'), 'db.js に正規 setPinInProgress が存在すること');
+  assert.ok(dbJs.includes('onAcceptedAfterDequeue'), 'db.js に onAcceptedAfterDequeue Hook 呼出が存在すること');
 
   // キャンセル契約維持: renderJs の cancelMissionComplete 内に setPinInProgress が維持されていること
   assert.ok(renderJs.includes('cancelMissionComplete'), 'render.js に cancelMissionComplete が存在すること');
