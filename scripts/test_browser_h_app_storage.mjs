@@ -8,8 +8,8 @@ const rootDir = process.cwd();
 
 let mockGetFlyerStockDelay = 300;
 let mockStocksData = [
-  { staffId: 'U_TEST_USER_001', staffName: 'テストスタッフ', location: '桑名市', count: 1200 },
-  { staffId: 'OTHER_STAFF', staffName: '別府 二郎', location: '四日市市', count: 500 }
+  { staffId: 'U_TEST_USER_001', staffName: 'テストスタッフ', location: '桑名市', count: 1200, isMe: true },
+  { staffId: 'OTHER_STAFF', staffName: '別府 二郎', location: '四日市市', count: 500, isMe: false }
 ];
 let getFlyerStockCallCount = 0;
 
@@ -131,11 +131,13 @@ async function runStorageE2ETests() {
       if (mockGetFlyerStockDelay > 0) {
         await new Promise(r => setTimeout(r, mockGetFlyerStockDelay));
       }
+      const my = mockStocksData.find(s => s.isMe === true);
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
+          myStock: my ? { count: my.count, location: my.location, updatedAt: 'たった今' } : null,
           stocks: mockStocksData
         })
       });
@@ -148,12 +150,25 @@ async function runStorageE2ETests() {
         mockStocksData[idx].location = location;
         mockStocksData[idx].count = count;
       } else {
-        mockStocksData.push({ staffId, staffName, location, count });
+        mockStocksData.push({ staffId, staffName, location, count, isMe: (staffId === 'U_TEST_USER_001') });
       }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ success: true, message: 'Updated' })
+      });
+    }
+
+    if (action === 'getStaffIdentity' || action === 'verifyLineUser') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          registered: true,
+          staffId: 'U_TEST_USER_001',
+          staffName: 'テストスタッフ'
+        })
       });
     }
 
