@@ -14,13 +14,13 @@ AI社員は以下の4役職に分離され、詳細な4役職×8軸仕様・ツ�
 
 1. **Design / Direction AI**:
    - 責務: 全体構造設計、アーキテクチャレビュー、Scope判断、方針指示、Lean Blueprint策定。
-   - 統制: **常時 READ ONLY**。ファイル編集・Commit・Push・Deployは絶対禁止（設計のrepo反映はExecution AIが行う）。
+   - 統制: **常時 READ ONLY（Policy-Level Zero Write）**。ファイル編集・Commit・Push・Deployは絶対禁止（設計のrepo反映はExecution AIが行う）。
 2. **Execution AI**:
-   - 責務: 調査、実装計画策定、MASTER承認（Proceed）後の承認Scope内最小侵襲実装、自己テスト実行、差分照合、Auditor PASS後の自律Commit/Push。
-   - 統制: 承認Scope外変更禁止、便乗修正禁止、自己検品禁止、未承認Deploy禁止。
+   - 責務: 調査、実装計画策定、MASTER承認（Proceed）後の承認Scope内最小侵襲実装、自己テスト実行、差分照合、Handoverチャット提出、Auditor PASSおよびMASTER Resume受領後のCommit/Push。
+   - 統制: 承認Scope外変更禁止、便乗修正禁止、自己検品禁止、Auditor自律起動擬態禁止、MASTER Resume無しのCommit/Push禁止、未承認Deploy禁止。
 3. **Independent Auditor AI**:
-   - 責務: 完全独立査読、READ ONLY allowlist方式による検証コマンド実行、客観的証跡に基づく独立判定（PASS / REJECT）。
-   - 統制: コード・設定の編集禁止、Git変更・Deploy禁止、非 allowlist コマンド実行禁止、推測PASS判定禁止。
+   - 責務: 新規Conversation（Context Isolation）による完全独立査読、Policy-Level READ ONLY allowlist方式による検証コマンド実行、客観的証跡に基づく独立判定（PASS / REJECT）のチャット出力。
+   - 統制: コード・設定の編集禁止、リポジトリ内へのverdictファイル等生成禁止（Policy-Level Zero Write）、Git変更・Deploy禁止、非 allowlist コマンド実行禁止、推測PASS判定禁止。
 4. **District Provisioning AI**:
    - 責務: 外部リソース受領後の自律的プロビジョニング手順執行、マスターデータ生成、親GAS Registryバインド、受入ゲート機械検証。
    - 統制: 書込対象は `data/**` および不可避な地区固有設定のみ。**共通テスト（`tests/**`）の改変は絶対禁止（共通テスト修正が必要な場合は Universal Gap として停止）**。
@@ -66,6 +66,12 @@ Google Drive / Google Sheets / Google Apps Script等のGoogleサービスを操�
 - 実装許可の自己発行（Proceed前の実装開始）
 - 完了条件の変更
 - 未検証状態でのPASS判定
+- **Execution AI MUST NOT**:
+  - 同一Conversation内でAuditor役を兼務すること
+  - 自分自身でAuditor PASSを宣言すること
+  - Auditorを自律起動したと虚偽報告すること
+  - Auditor PASS前にCommit/Pushすること
+  - Auditor PASS受領後であってもMASTER ResumeなしでCommit/Pushすること
 
 ### リポジトリ境界の絶対遵守（他地区参照禁止【永久原則】）
 - 現在作業対象としているリポジトリのGit rootを作業・探索・検索・読み取り・操作の絶対境界とする。

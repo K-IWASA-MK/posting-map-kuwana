@@ -22,21 +22,31 @@ AI社員の作業は、必ず以下の「8-Stage Execution Protocol」と「Veri
 - **指示外変更の即時停止（発見 ➔ 報告 ➔ STOP）**: 作業中に別機能や他ファイルの改善点・問題を発見した場合、勝手に修正コードを追加してはならない。
 - **失敗時の自己拡張禁止**: テスト失敗時に自己判断でScope外ファイルへ修正を拡大してはならない。Scope外が必要な場合は作業をSTOPして追加指示を仰ぐ。
 
-### Stage 4: Self Verify & Auditor Gate (自己検証 & 独立検品) — [主担当: Execution AI ➔ Auditor AI]
-1. **Execution AI 自己検証**:
-   - V1 Static Verification: `git diff`, `git diff --check`, Scope確認, Dead Code確認。
-   - V2 Runtime Verification: 実機起動、DOM/Console/Network、Google Maps 実描画確認（`.gm-style`）。
-   - V3 Regression Verification: 全テストスイート実行（`npm test`）。
-   - Mechanical Governance Gate: `npm run audit:gate`（Scope Guard通過）。
-2. **Auditor Gate (独立検品 Handoff)**:
-   - Execution AI は検品依頼パッケージ（Handover Package）を作成し、Independent Auditor AI（`.agents/agents/auditor/agent.md`）へ提示。
-   - Auditor は 5大固定観点（最上位原則、Scope厳守、No Evidence No PASS、Zero Avoidable Manual、公式データゲート ※N/A+理由認容）で査読し、**PASS** を判定する。
+### Stage 4: Self Verify & Independent Audit (自己検証 & 独立検品) — [主担当: Execution AI / MASTER / Auditor AI]
+- **Stage 4A: Execution Self Verify**:
+  - V1 Static Verification: `git diff`, `git diff --check`, Scope確認, Dead Code確認。
+  - V2 Runtime Verification: 実機起動、DOM/Console/Network、Google Maps 実描画確認（`.gm-style`）。
+  - V3 Regression Verification: 全テストスイート実行（`npm test`）。
+  - Mechanical Governance Gate: `npm run audit:gate`（Scope Guard通過）。
+- **Stage 4B: Execution Handover & HARD STOP**:
+  - Execution AI はリポジトリにファイルを生成せず、チャット画面に `[EXECUTION HANDOVER]` を出力。
+  - 🛑 **HARD STOP**: 出力完了後、直ちに作業を完全停止する。Execution AI によるコミット執行やAuditor自律起動擬態は絶対禁止。
+- **Stage 4C: MASTER-orchestrated Independent Auditor**:
+  - MASTER が Antigravity IDE 上で新規 Conversation を起動し、会話履歴を完全に遮断（Context Isolation）。
+  - Independent Auditor AI が起動し、Execution の記述を鵜呑みにせず、自ら独立検証コマンド（`git status`, `git diff`, `npm test`, `npm run audit:gate` 等）を実行。
+  - 5大固定観点（最上位原則、Scope厳守、No Evidence No PASS、Zero Avoidable Manual、公式データゲート）で冷徹査読。
+- **Stage 4D: Auditor PASS / REJECT & HARD STOP**:
+  - Auditor はチャット画面に `[AUDITOR VERDICT]` を出力（PASS または REJECT + 指摘事項）。
+  - 🛑 **HARD STOP**: 判定出力完了後、Auditor は直ちに作業を完全停止する。リポジトリへのファイル書込（verdictファイル等）およびコミット・Git変更はPolicy上厳禁。
 
-### Stage 5: Commit Gate (自律コミット) — [主担当: Execution AI]
-- V1〜V3自己検証PASS、Mechanical Governance Gate通過、および Auditor AI の **PASS** を受領した場合、Execution AI は **追加MASTER承認なしで自律的に `git commit` を執行** する。
+### Stage 5: Commit Gate (MASTER Resume 執行関門) — [主担当: Execution AI]
+- **Commit 条件**:
+  1. Independent Auditor AI によるチャット上の **PASS** 判定
+  2. MASTER による PASS 目視確認および明示的な **Resume / Commit Proceed** 発令
+  ※上記 **両方が揃った場合のみ**、Execution AI は作業を再開し `git commit` を執行する。Auditor PASS のみによる自律コミット再開は廃止・禁止。
 
 ### Stage 6: Push Gate (自律プッシュ) — [主担当: Execution AI]
-- Commit存在確認、Scope確認を完了後、Execution AI は **追加MASTER承認なしで自律的に `git push` を執行** する（Stage 2 の Scope Commit を含めて一括プッシュ）。
+- Stage 5 の MASTER Resume を受けた同一 Execution session において、Commit存在確認、Scope確認を完了後、Execution AI は `git push` を執行する（Stage 2 の Scope Commit を含めて一括プッシュ）。
 
 ### Stage 7: Crisp Deployment Gate — [主担当: Execution AI]
 - Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）である場合のみ、独立工程として実際の稼働環境へのデプロイを実施する。

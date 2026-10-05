@@ -18,21 +18,49 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 ### V3 Regression Verification
 - 既存機能への副作用がないことの確認。
 
-### Auditor Subagent Verification (独立検品関門)
-- Independent Auditor AI（`.agents/agents/auditor/agent.md`）へ検品依頼パッケージ（Handover Package）を提示し、以下の5大固定観点に基づく独立判定（PASS）を取得する（詳細仕様は Canonical SSOT [docs/ai-foundation.md](../../docs/ai-foundation.md) §2・§5 参照）。
+### Independent Auditor Gate (独立検品関門 — Context Isolation)
+- Execution AI による自己検品（同一セッション内でのAuditor自称・PASS偽装）は絶対禁止とする。
+- 正式Gateフロー:
+  ```text
+  Execution V1〜V3自己検証
+         ↓
+  [EXECUTION HANDOVER] チャット提出
+         ↓
+  Execution HARD STOP (完全停止・自律コミット禁止)
+         ↓
+  MASTER が新規 Conversation で Independent Auditor AI を起動 (Context Isolation)
+         ↓
+  Auditor による独立再検証 (Executionの報告を鵜呑みにせず自らコマンド実行)
+         ↓
+  [AUDITOR VERDICT] チャット出力 (PASS / REJECT)
+         ↓
+  Auditor HARD STOP (完全停止・ファイル書込禁止)
+         ↓
+  MASTER が PASS を目視確認し Resume / Commit Proceed を発令
+  ```
+- **Auditor必須独立再確認コマンド**:
+  Auditor は Execution AI の Handover 記述を証拠として鵜呑みにせず、自ら以下のコマンドを実行して独立検証しなければならない：
+  - `git status`
+  - `git diff`
+  - `git rev-parse HEAD`
+  - `.agents/current-scope.json`
+  - タスク対象テスト（該当スクリプト等）
+  - `npm test`
+  - `npm run audit:gate`
+  ※タスク特性に応じて不要な項目は `N/A + その客観的理由` を明記すること。
+- **5大固定観点**:
   1. **観点①: 最上位絶対原則**（Universal Engine非侵襲・コピー原則の遵守）
-  2. **観点②: Scope厳守・余計な差分の排除**（Staged Diff と current-scope.json の完全一致）
-  3. **観点③: No Evidence No PASS**（客観的証跡の真偽・網羅性）
+  2. **観点②: Scope厳守・余計な差分の排除**（Staged/Working Diff と current-scope.json の完全一致）
+  3. **観点③: No Evidence No PASS**（独立再実行による客観的証跡の真偽・網羅性）
   4. **観点④: Zero Avoidable Manual**（可避な手作業要求の排除・コピー耐性）
   5. **観点⑤: 公式データ確定品質ゲート**（一次資料整合・不純物排除）
-  ※当該タスクに該当しない観点については、Auditor が `N/A + その客観的理由` を明記して判定することを認容する。
 
 ### Mechanical Governance Gate
 - `npm run audit:gate` を実行し、Scope Guard（`scripts/check-scope.mjs`）による機械監査を通過する。
 
-### Commit Gate & Push Gate (自律実行関門)
-- **Commit Gate**: V1〜V3自己検証のPASS、Auditor SubagentのPASS、Mechanical Governance Gateの通過、Scope監査がすべて完了した場合、Execution AI は追加MASTER承認なしで自律的に Commit を執行する。
-- **Push Gate**: Commit存在確認、Scope確認、必要な自動監査を通過した場合、Execution AI は追加MASTER承認なしで自律的に Push を執行する（特別Governance Transactionである Scope Commit を含めて最終Pushとする）。
+### Commit Gate & Push Gate (MASTER Resume 執行関門)
+- **Commit Gate**: V1〜V3自己検証のPASS、Handoverチャット提出、Independent Auditor によるチャット上の PASS 判定、および **MASTER からの明示的 Resume / Commit Proceed 受領** のすべてが揃った場合のみ、Execution AI は Commit を執行する。Auditor PASS のみによる自動コミット再開は禁止する。
+- **Push Gate**: Commit存在確認、Scope確認、必要な自動監査を通過した場合、Execution AI は Push を執行する（特別Governance Transactionである Scope Commit を含めて最終Pushとする）。
 
 ### Crisp Deployment Gate & V4 Deployment Verification
 - **Crisp Deployment Gate**: Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）である場合のみ、独立工程として実際の稼働環境へのデプロイを実施する。実環境への反映を必要としない変更は「Deployment対象外 (N/A)」と明示的に判定・記録すること。対象外であることを根拠なく推測してはならない。
