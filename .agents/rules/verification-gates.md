@@ -28,7 +28,7 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
          ↓
   Execution HARD STOP (完全停止・自律コミット禁止)
          ↓
-  MASTER が新規 Conversation で Independent Auditor AI を起動 (Context Isolation)
+  窓口AIが分離された文脈で Independent Auditor AI へ査読依頼 (Context Isolation)
          ↓
   Auditor による独立再検証 (Executionの報告を鵜呑みにせず自らコマンド実行)
          ↓
@@ -56,7 +56,8 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
   5. **観点⑤: 公式データ確定品質ゲート**（一次資料整合・不純物排除）
 
 ### Mechanical Governance Gate
-- `npm run audit:gate` を実行し、Scope Guard（`scripts/check-scope.mjs`）による機械監査を通過する。
+- `npm run audit:gate` を実行し、Scope Guard（`scripts/check-scope.mjs`）による機械監査を通過する（既存ゲートとして完全維持・必須）。
+- ※PoC実証で開発された4観点並列Scope監査およびHook判定機構は、実証資産（`docs/research/parallel_orchestration_poc/`）として保全されており、通常の必須ゲートからは除外されている。
 
 ### Commit Gate & Push Gate (MASTER Resume 執行関門)
 - **Commit Gate**: V1〜V3自己検証のPASS、Handoverチャット提出、Independent Auditor によるチャット上の PASS 判定、および **MASTER からの明示的 Resume / Commit Proceed 受領** のすべてが揃った場合のみ、Execution AI は Commit を執行する。Auditor PASS のみによる自動コミット再開は禁止する。
@@ -113,6 +114,12 @@ AI社員自身がローカルで起動・操作し、DOM/Console/Networkなど�
 
 ### 直ちに作業をSTOPする条件（Commit/Push/Deploy絶対禁止）
 以下の場合は直ちに作業をSTOPし、勝手に解決策を作らず報告すること：
+- **未承認差分・Git内部refs変動の検知（変更検出と原因特定の分離）**:
+  原因が外部ツールか内部処理か未確定であっても、承認Scope外の差分や予期せぬrefs変動が検出された場合は直ちに作業を停止（HARD STOP）する。AIが推測で原因を断定したり、自律的に修復・除外して作業を続行してはならない。
+- **安全ロック検知時の停止**:
+  `.agents/.safety-lock` が生成された場合、新規ディスパッチ・ファイル編集・Git操作を即時停止する。実行中Workerの停止（`kill` / `kill_all`）を要求・確認し、停止失敗または未確認の場合はそのまま報告して HARD STOP とする（自動解除・自動再開の絶対禁止）。
+- **規程と機械的強制の区別**:
+  Markdown / YAML frontmatter の構文パース成功をもって、実行環境への権限設定反映が証明されたとみなしてはならない。実際の制御能力は Phase 3 以降の機械的検証によって実証される。
 - 検証不能、実環境確認不能、必要Evidence取得不能な場合
 - Console Error、Network/API Error、UI異常、Runtime異常が残存する場合
 - Regression影響を否定できない場合

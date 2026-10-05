@@ -1,10 +1,24 @@
 [
   ".agents/current-scope.json",
-  "AGENTS.md",
   "docs/ai-foundation.md",
   ".agents/rules/agent-authority.md",
   ".agents/rules/verification-gates.md",
   ".agents/workflows/development/workflow.md",
   ".agents/agents/execution/agent.md",
-  ".agents/agents/auditor/agent.md"
+  ".agents/agents/worker/agent.md",
+  ".agents/agents/auditor/agent.md",
+  ".agents/agents/architect/agent.md",
+  ".agents/agents/deployer/agent.md",
+  "docs/research/parallel_orchestration_poc/README.md",
+  "docs/research/parallel_orchestration_poc/artifacts/evidence_hashes.json",
+  "docs/research/parallel_orchestration_poc/artifacts/integration_test.mjs",
+  "docs/research/parallel_orchestration_poc/artifacts/verify_worker_a.mjs",
+  "docs/research/parallel_orchestration_poc/artifacts/verify_worker_b.mjs",
+  "docs/research/parallel_orchestration_poc/artifacts/worker_a_metric.mjs",
+  "docs/research/parallel_orchestration_poc/artifacts/worker_b_report.mjs",
+  "docs/research/parallel_orchestration_poc/artifacts/worker_registry.json",
+  "docs/research/parallel_orchestration_poc/governance/check-parallel-scope.mjs",
+  "docs/research/parallel_orchestration_poc/governance/hooks.json.archive",
+  "docs/research/parallel_orchestration_poc/governance/parallel_guard.mjs",
+  "docs/research/parallel_orchestration_poc/governance/test_parallel_governance.mjs"
 ]

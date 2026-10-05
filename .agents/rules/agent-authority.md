@@ -9,19 +9,22 @@ AI社員は、以下の役割分担、権限制約、Scope制御ルールに従�
 ### MASTER側 (ユーザー / Human)
 - 「何を作るか」「なぜ作るか」「Scope決定」「上位原則」「完了条件」「着手承認 (Proceed)」「紛争調停」を担う。
 
-### AI役職体系 (4 AI Roles)
-AI社員は以下の4役職に分離され、詳細な4役職×8軸仕様・ツール統制マトリクス・Handoff規程は **Canonical SSOT である [docs/ai-foundation.md](../../docs/ai-foundation.md)** を唯一の正本とする。
+### AI役職体系 (AI Roles)
+AI社員は以下の役職に分離され、詳細な仕様・ツール統制マトリクス・Handoff規程は **Canonical SSOT である [docs/ai-foundation.md](../../docs/ai-foundation.md)** を唯一の正本とする。
 
 1. **Design / Direction AI**:
    - 責務: 全体構造設計、アーキテクチャレビュー、Scope判断、方針指示、Lean Blueprint策定。
    - 統制: **常時 READ ONLY（Policy-Level Zero Write）**。ファイル編集・Commit・Push・Deployは絶対禁止（設計のrepo反映はExecution AIが行う）。
-2. **Execution AI**:
-   - 責務: 調査、実装計画策定、MASTER承認（Proceed）後の承認Scope内最小侵襲実装、自己テスト実行、差分照合、Handoverチャット提出、Auditor PASSおよびMASTER Resume受領後のCommit/Push。
-   - 統制: 承認Scope外変更禁止、便乗修正禁止、自己検品禁止、Auditor自律起動擬態禁止、MASTER Resume無しのCommit/Push禁止、未承認Deploy禁止。
-3. **Independent Auditor AI**:
-   - 責務: 新規Conversation（Context Isolation）による完全独立査読、Policy-Level READ ONLY allowlist方式による検証コマンド実行、客観的証跡に基づく独立判定（PASS / REJECT）のチャット出力。
+2. **Execution AI (Orchestrator / 窓口AI)**:
+   - 責務: 調査、実装計画策定、事前Scope固定、並列Workerの起動・排他割当、異常時のWorker停止執行、成果回収・統合検証、分離文脈での監査AIへの査読依頼、MASTERへの報告・Commit承認要請、MASTER Resume受領後のCommit/Push執行。
+   - 統制: 承認Scope外変更禁止、子Workerへの勝手なScope拡張許可禁止、自己検品禁止（監査AI査読のバイパス禁止）、ロック中の変更系ツール呼出し禁止、MASTER Resume無しのCommit/Push禁止、未承認Deploy禁止。
+3. **Parallel Worker AI (Subagent)**:
+   - 責務: 親Flashから割り当てられた排他的単一ファイルのみの実装・編集、親指定固定単体テストの実行、成果報告（`[WORKER REPORT]`）。
+   - 統制: 担当外ファイルの編集禁止、任意シェルコマンド実行禁止、共有設定ファイルの改変禁止、Git操作禁止、**再委任（`invoke_subagent`, `manage_subagents`）の絶対禁止**、他Workerとの直接通信禁止、自律Scope拡張禁止。
+4. **Independent Auditor AI**:
+   - 責務: 実装担当とは分離された文脈（Context Isolation）で依頼を受領し、客観的証跡に基づく独立査読、Policy-Level READ ONLY allowlist方式による検証コマンド実行、独立判定（PASS / REJECT）の出力。
    - 統制: コード・設定の編集禁止、リポジトリ内へのverdictファイル等生成禁止（Policy-Level Zero Write）、Git変更・Deploy禁止、非 allowlist コマンド実行禁止、推測PASS判定禁止。
-4. **District Provisioning AI**:
+5. **District Provisioning AI**:
    - 責務: 外部リソース受領後の自律的プロビジョニング手順執行、マスターデータ生成、親GAS Registryバインド、受入ゲート機械検証。
    - 統制: 書込対象は `data/**` および不可避な地区固有設定のみ。**共通テスト（`tests/**`）の改変は絶対禁止（共通テスト修正が必要な場合は Universal Gap として停止）**。
 
@@ -67,11 +70,41 @@ Google Drive / Google Sheets / Google Apps Script等のGoogleサービスを操�
 - 完了条件の変更
 - 未検証状態でのPASS判定
 - **Execution AI MUST NOT**:
-  - 同一Conversation内でAuditor役を兼務すること
-  - 自分自身でAuditor PASSを宣言すること
-  - Auditorを自律起動したと虚偽報告すること
-  - Auditor PASS前にCommit/Pushすること
-  - Auditor PASS受領後であってもMASTER ResumeなしでCommit/Pushすること
+  - 同一コンテキスト内で Auditor 役を自作自演（兼務）すること
+  - 監査AIの査読を経ずに自分自身で Auditor PASS を宣言すること（自己検品）
+  - Auditor PASS 前に Commit/Push すること
+  - Auditor PASS 受領後であっても MASTER Resume（明示的な Commit Proceed）なしで Commit/Push すること
+
+### 並列実装における排他原則 (File Exclusion Principle — ABSOLUTE)
+- 同一ファイルを同時に複数の Worker に担当させることを絶対禁止とする。
+- 共通設定ファイル（`package.json`, `.agents/current-scope.json` 等）は子Workerに触らせず、親Flashが直列に管理する。
+- 各 Worker は親Flashから排他的に割り当てられた単一ファイルのみを編集対象とし、他ファイルへの侵入は即座に VIOLATION とする。
+
+### Git操作の親Flashへの一本化
+- `git add`, `git commit`, `git push`, `git reset`, `git checkout` 等のGit状態変更操作は、親Flash（Orchestrator）のみに許可される。
+- 並列WorkerによるGit操作は固く禁止する。
+
+### 子WorkerからのScope拡張要求の調停手順
+- Workerが作業中に他ファイルの変更が必要と判断した場合、自律的に編集範囲を拡大してはならない。
+- Workerは直ちに作業を停止し、親Flashへ `SCOPE_EXPANSION_REQUEST` を返却する。
+- 親Flashは自己判断でこれを許可してはならず、必ず MASTER へエスカレーションして再承認（Proceed）を仰がなければならない。
+
+### 安全ロック時の行動規程 & MASTER承認復旧プロトコル (Safety Lock & Recovery Protocol — MASTER条件反映)
+- **主体識別の先行化（Fail-Closed 原則）**:
+  - すべてのツール実行において、許可判定に先立ち「登録済み親・Worker・Auditor」の厳格な主体識別を行う。自己申告の `payload.role` 単体では権限を付与せず、未登録者を親扱いすることは絶対禁止とする。未登録者は即時 `deny` とする。
+- **サブエージェント停止統制**:
+  - `manage_subagents`（`kill` / `kill_all`）は登録済み親のみに許可される。Worker からの再委任（起動・定義）および他 Worker の停止操作は即時 `deny` とする。
+- **ロック中の厳格な読取り許可**:
+  - `.agents/.safety-lock` 存在時であっても、登録済み親および独立Auditorによる非破壊・安全な読取り監査コマンド（作業ディレクトリがリポジトリルートと一致し、シェルメタ文字・連結・リダイレクトを含まない完全一致コマンド: `git status`, `git diff`, `git rev-parse HEAD`, `git for-each-ref`, `node scripts/check-parallel-scope.mjs --check-only` 等）は許可される。
+  - `npm test` や通常のスコープ検査（ロック書き込みを伴うもの）は読取り許可から除外する。
+- **安全ロックの自動解除・自動再開の絶対禁止**:
+  - AI社員が自己判断でロックファイルを削除したり、フックを迂回・無力化して作業を再開することは絶対禁止とする。
+- **MASTER承認後の正規復旧手順（厳格限定）**:
+  - 復旧は常に **「MASTERが承認し、AIが限定された復旧を実行する」** 構造を厳格に前提とする。
+  - 復旧コマンドは、登録済み親による固定された改名元（`.agents/.safety-lock`）から固定された改名先（`.agents/.safety-lock.evidence-<timestamp>`）への証跡保存（`mv -n`）のみを `force_ask` プロンプトの対象とする。任意の `mv` や復旧スクリプト実行は一切許可しない。
+  - 既存証跡への上書きは機械的に防止し、改名先が既に存在する場合は即座に `deny` とする。
+  - MASTER による承認取消（Cancel/Deny）時は、ロック状態をそのまま保持して完全停止する。
+  - 復旧実行後は、元の `.safety-lock` の不在および退避先証跡の内容を確認し、静止状態（Working Tree の不変性）を確認して HARD STOP する。追加開発・Worker新規起動・Commit/Push/Deploy は MASTER の明示的再開指示があるまで執行してはならない。
 
 ### リポジトリ境界の絶対遵守（他地区参照禁止【永久原則】）
 - 現在作業対象としているリポジトリのGit rootを作業・探索・検索・読み取り・操作の絶対境界とする。
