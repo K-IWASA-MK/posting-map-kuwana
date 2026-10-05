@@ -1,4 +1,10 @@
 [
   ".agents/current-scope.json",
-  "scripts/test_browser_h_app_storage.mjs"
+  "AGENTS.md",
+  "docs/ai-foundation.md",
+  ".agents/rules/agent-authority.md",
+  ".agents/rules/verification-gates.md",
+  ".agents/workflows/development/workflow.md",
+  ".agents/agents/execution/agent.md",
+  ".agents/agents/auditor/agent.md"
 ]
