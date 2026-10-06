@@ -104,13 +104,22 @@ assert.equal(textEl.textContent, '再接続待機中', "テキストが '再接�
 console.log("  ✅ PASS: No.1 同期時計の成功更新・失敗保持・初期未同期表示確認");
 
 // ----------------------------------------------------
-// 【No.5 検証】部分取得失敗 (PARTIAL_SUCCESS) 検知
+// 【No.5 検証】部分取得失敗 (PARTIAL_SUCCESS) 検知 & No.1 是正検証 (PARTIAL時は時計非更新)
 // ----------------------------------------------------
-console.log("▶ [TEST 4] No.5: 部分取得失敗 (PARTIAL_SUCCESS) 検知チェック");
+console.log("▶ [TEST 4] No.5: 部分取得失敗 (PARTIAL_SUCCESS) 検知 & 時計非更新チェック");
 sandbox.setSyncStatus('PARTIAL');
 assert.equal(textEl.textContent, '一部データ遅延', "PARTIAL 時は '一部データ遅延' と表示されること");
 assert.ok(getOrCreateEl('live-dot').className.includes('bg-statusYellow'), "PARTIAL 時は黄ドットであること");
-console.log("  ✅ PASS: No.5 部分取得失敗検知確認");
+assert.equal(clockEl.textContent, successTime, "PARTIAL 時は時計が更新されず前回の成功時刻を保持すること");
+
+// 初期未同期状態での PARTIAL テスト
+sandbox.window.DashboardState.lastSuccessfulSyncTime = null;
+clockEl.textContent = '初期値';
+sandbox.setSyncStatus('PARTIAL');
+assert.equal(clockEl.textContent, '未同期', "一度も成功していない状態で PARTIAL になった場合は '未同期' と表示されること");
+// 元に戻す
+sandbox.setSyncStatus(true);
+console.log("  ✅ PASS: No.5 部分取得失敗検知 & No.1是正(PARTIAL時時計非更新・保持)確認");
 
 // ----------------------------------------------------
 // 【No.3 実描画検証】0枚の正当値保持 & 未取得ピンの '--' 表示

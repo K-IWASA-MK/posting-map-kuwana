@@ -2638,7 +2638,7 @@ function setSyncStatus(status) {
     else text.textContent = '再接続待機中';
   }
 
-  if (isSuccess || isPartial) {
+  if (isSuccess) {
     const now = new Date();
     DashboardState.lastSuccessfulSyncTime = now;
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
@@ -2647,7 +2647,7 @@ function setSyncStatus(status) {
     if (clock) clock.textContent = timeStr;
     if (mClock) mClock.textContent = shortTimeStr;
   } else {
-    // 同期失敗時: 最終成功時刻を保持し、未成功なら「未同期」と表示
+    // 部分取得失敗(PARTIAL)または同期失敗(FAILED): 最終成功時刻を保持し、未成功なら「未同期」と表示
     if (DashboardState.lastSuccessfulSyncTime) {
       const last = DashboardState.lastSuccessfulSyncTime;
       const timeStr = `${String(last.getHours()).padStart(2, '0')}:${String(last.getMinutes()).padStart(2, '0')}:${String(last.getSeconds()).padStart(2, '0')}`;
