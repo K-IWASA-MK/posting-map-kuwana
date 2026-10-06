@@ -395,11 +395,16 @@ const ActivityModule = (() => {
    * @param {Object} hooks - { isSessionValid, blobToBase64, createObjectURL, getGPSLocationRetry, onDraftReady, onGpsReady, onFinally }
    */
   async function startDraftWorkflow(point, options, hooks) {
-    if (!point || !options || !hooks) return;
+    if (!options || !hooks) return;
     const { valNum, staffName, staffId, timeStr, cameraPromise, gpsPromise } = options;
     const { isSessionValid, blobToBase64, createObjectURL, getGPSLocationRetry, onDraftReady, onGpsReady, onFinally } = hooks;
 
     try {
+      if (!point) {
+        console.warn("Target point is missing. Draft creation aborted.");
+        return;
+      }
+
       let imageBlob = null;
       try {
         if (cameraPromise) {
@@ -463,10 +468,8 @@ const ActivityModule = (() => {
       // 非同期処理完了後の有効性確認 3 (GPS完了後)
       if (typeof isSessionValid === 'function' && !isSessionValid()) return;
 
-      // 5. GPS 結果を適用
-      if (gps) {
-        applyGpsResult(point, gps);
-      }
+      // 5. GPS 結果を適用（空結果・測位失敗時も applyGpsResult に渡し、従来の gpsStatus = 'NO' 遷移を維持）
+      applyGpsResult(point, gps);
 
       // 再描画通知 2 (GPS 確定)
       if (typeof onGpsReady === 'function') {

@@ -1174,39 +1174,137 @@ test('Gate 47: startDraftWorkflow セッション無効化時の早期遮断 (�
     assert.equal(draftReadyCalled, false, 'Base64後無効時は onDraftReady が呼ばれないこと');
     assert.equal(finallyCalled, true, '中断時も onFinally は必ず呼ばれること');
   }
+
+  // Case 3: GPS再取得完了後にセッション無効化
+  {
+    const point = { rowId: 204 };
+    let checkCount = 0;
+    let gpsReadyCalled = false;
+    let finallyCalled = false;
+
+    await ActivityModule.startDraftWorkflow(point, {
+      valNum: 25,
+      cameraPromise: Promise.resolve({ size: 50 }),
+      gpsPromise: Promise.resolve(null)
+    }, {
+      isSessionValid: () => {
+        checkCount++;
+        // 1回目(写真後): true, 2回目(Base64後): true, 3回目(GPS再取得後): false
+        return checkCount < 3;
+      },
+      blobToBase64: async () => 'base64',
+      getGPSLocationRetry: async () => ({ latitude: 35.1, longitude: 136.6 }),
+      onDraftReady: () => {},
+      onGpsReady: () => { gpsReadyCalled = true; },
+      onFinally: () => { finallyCalled = true; }
+    });
+
+    assert.equal(gpsReadyCalled, false, 'GPS再取得後無効時は applyGps / onGpsReady が呼ばれないこと');
+    assert.equal(point.gpsStatus, 'pending', 'セッション無効化時はGPS状態が確定されずpendingのままであること');
+    assert.equal(finallyCalled, true, '中断時も onFinally は必ず呼ばれること');
+  }
 });
 
 test('Gate 48: startDraftWorkflow GPS空時の再取得 (getGPSLocationRetry) および onFinally 確実実行', async () => {
   const ActivityModule = createActivityModule();
-  const point = { rowId: 204 };
 
-  let retryCalled = false;
+  // Case 1: 初回GPS空 ➔ 再取得成功
+  {
+    const point = { rowId: 205 };
+    let retryCalled = false;
+    let finallyCalled = false;
+
+    await ActivityModule.startDraftWorkflow(point, {
+      valNum: 30,
+      staffName: 'リトライ花子',
+      cameraPromise: Promise.resolve({ size: 50 }),
+      gpsPromise: Promise.resolve(null)
+    }, {
+      isSessionValid: () => true,
+      blobToBase64: async () => 'base64_ok',
+      getGPSLocationRetry: async () => {
+        retryCalled = true;
+        return { latitude: 35.22, longitude: 136.77, accuracy: 20 };
+      },
+      onDraftReady: () => {},
+      onGpsReady: (p) => {
+        assert.equal(p.gpsStatus, 'OK');
+        assert.equal(p.gps, '35.22,136.77');
+      },
+      onFinally: () => {
+        finallyCalled = true;
+      }
+    });
+
+    assert.equal(retryCalled, true, '初回GPSが空の場合は getGPSLocationRetry が呼ばれること');
+    assert.equal(finallyCalled, true, 'onFinally が確実に呼ばれること');
+  }
+
+  // Case 2: 初回GPS空 ➔ 再取得も空 (applyGpsResult へ渡され gpsStatus: 'NO' への失敗遷移を維持)
+  {
+    const point = { rowId: 206 };
+    let retryCalled = false;
+    let gpsReadyCalled = false;
+    let finallyCalled = false;
+
+    await ActivityModule.startDraftWorkflow(point, {
+      valNum: 35,
+      staffName: '再試行空太郎',
+      cameraPromise: Promise.resolve({ size: 50 }),
+      gpsPromise: Promise.resolve(null)
+    }, {
+      isSessionValid: () => true,
+      blobToBase64: async () => 'base64_ok',
+      getGPSLocationRetry: async () => {
+        retryCalled = true;
+        return null;
+      },
+      onDraftReady: () => {},
+      onGpsReady: (p) => {
+        gpsReadyCalled = true;
+        assert.equal(p.gpsStatus, 'NO', '再取得後も空の場合は applyGpsResult により gpsStatus が NO に遷移すること');
+      },
+      onFinally: () => {
+        finallyCalled = true;
+      }
+    });
+
+    assert.equal(retryCalled, true, '再取得が試みられること');
+    assert.equal(gpsReadyCalled, true, '空結果適用後も onGpsReady が呼ばれること');
+    assert.equal(point.gpsStatus, 'NO', 'point.gpsStatus が NO であること');
+    assert.equal(finallyCalled, true, 'onFinally が確実に呼ばれること');
+  }
+});
+
+test('Gate 49: startDraftWorkflow 対象ポイント不在時も onFinally を確実に実行し世代確認付きロック解除を通すこと', async () => {
+  const ActivityModule = createActivityModule();
   let finallyCalled = false;
 
-  await ActivityModule.startDraftWorkflow(point, {
-    valNum: 30,
-    staffName: 'リトライ花子',
-    cameraPromise: Promise.resolve({ size: 50 }),
-    gpsPromise: Promise.resolve(null)
+  const sessionId = 'session-point-missing-999';
+  const numpadContext = {
+    sessionId: 'session-point-missing-999',
+    isStarting: true
+  };
+
+  await ActivityModule.startDraftWorkflow(null, {
+    valNum: 50,
+    cameraPromise: Promise.resolve({ size: 100 }),
+    gpsPromise: Promise.resolve({ latitude: 35, longitude: 136 })
   }, {
     isSessionValid: () => true,
-    blobToBase64: async () => 'base64_ok',
-    getGPSLocationRetry: async () => {
-      retryCalled = true;
-      return { latitude: 35.22, longitude: 136.77, accuracy: 20 };
-    },
+    blobToBase64: async () => 'base64',
     onDraftReady: () => {},
-    onGpsReady: (p) => {
-      assert.equal(p.gpsStatus, 'OK');
-      assert.equal(p.gps, '35.22,136.77');
-    },
+    onGpsReady: () => {},
     onFinally: () => {
       finallyCalled = true;
+      if (numpadContext && numpadContext.sessionId === sessionId) {
+        numpadContext.isStarting = false;
+      }
     }
   });
 
-  assert.equal(retryCalled, true, '初回GPSが空の場合は getGPSLocationRetry が呼ばれること');
-  assert.equal(finallyCalled, true, 'onFinally が確実に呼ばれること');
+  assert.equal(finallyCalled, true, 'point不在時も onFinally が確実に実行されること');
+  assert.equal(numpadContext.isStarting, false, '世代確認付きロック解除が実行されロックが残らないこと');
 });
 
 test('Architecture Gate: Public API exactly 8 methods & no globals', () => {
@@ -1225,5 +1323,5 @@ test('Architecture Gate: Public API exactly 8 methods & no globals', () => {
   assert.deepEqual(keys, expected, 'Public API は厳密に承認された8メソッドのみであること');
 });
 
-console.log('✅ ALL 48 ACTIVITY LIFECYCLE GATES DEFINED SUCCESSFULLY.\n');
+console.log('✅ ALL 49 ACTIVITY LIFECYCLE GATES DEFINED SUCCESSFULLY.\n');
 

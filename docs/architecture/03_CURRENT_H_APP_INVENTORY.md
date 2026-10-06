@@ -88,7 +88,7 @@
 | `active/h-app/modules/storage.js` | 120 | 🟢 継承 | チラシ在庫・保管場所データアクセスおよびキャッシュ管理。Wave 1でapp.jsから分離。 |
 | `active/h-app/modules/bulletin.js` | 193 | 🟢 継承 | 掲示板Feature/Lifecycle Module（投稿取得・作成・検証・ライフサイクル調整）。Wave 2でapp.jsから分離。 |
 | `active/h-app/modules/pin-status.js` | 142 | 🟢 継承 | Pin Status Feature Module（作業中・完了ピンの排他制御・キャッシュ管理）。Wave 3でapp.jsから分離。 |
-| `active/h-app/modules/activity.js` | 494 | 🟢 継承 | Activity Feature / Lifecycle Module（活動ログライフサイクル、Draft作成・破棄、提出調整、Queue調停、下書き開始非同期フロー調整）。Wave 4でapp.jsおよびdb.jsから純粋分離。Wave 7で下書き開始非同期フロー（startDraftWorkflow）を集約し、端末API/DOM/Storage非依存の純粋オーケストレータとして拡充。 |
+| `active/h-app/modules/activity.js` | 497 | 🟢 継承 | Activity Feature / Lifecycle Module（活動ログライフサイクル、Draft作成・破棄、提出調整、Queue調停、下書き開始非同期フロー調整）。Wave 4でapp.jsおよびdb.jsから純粋分離。Wave 7で下書き開始非同期フロー（startDraftWorkflow）を集約し、端末API/DOM/Storage非依存の純粋オーケストレータとして拡充。 |
 | `active/h-app/modules/transfer.js` | 228 | 🟢 継承 | Flyer Transfer Request Feature / Lifecycle Module（受渡要請セッション世代管理、連絡先バリデーション、Pre-Auth送信前ロック、API送信調整）。Wave 5でapp.jsから純粋分離。 |
 | `active/h-app/assets/icon180-v2.png` | 31KB | 🟢 継承 | PWA / LIFF 用公式アプリアイコン。 |
 
