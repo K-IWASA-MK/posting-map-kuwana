@@ -80,3 +80,175 @@ window.renderStaffCard = function(userInfo, options = {}) {
     </div>
   `;
 };
+
+/**
+ * POSTING MAP Component: StaffIdInfoView (ID情報モーダル Presentation View - Wave 8)
+ * デジタル配布員証に付随する規約・プライバシー・ライセンスモーダルの表示および開閉制御を担当。
+ * 外部ストレージへの直接依存は持たず、地区名は上位から受領する。
+ */
+window.StaffIdInfoView = (() => {
+  // 規約・ライセンスデータ (View内部にカプセル化保持)
+  const ID_INFO_DATA = {
+    terms: {
+      title: 'Terms of Service',
+      body: `
+      <div class="space-y-4 text-[11px] leading-relaxed text-white/50 select-none">
+        <p>POSTING MAP は、<br>認証された配布員・管理者向けの<br><span class="text-white font-bold">FIELD OPERATIONS SYSTEM</span> です。</p>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">本システムは：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・配布進捗</div>
+            <div>・エリア管理</div>
+            <div>・GPSログ</div>
+            <div>・活動データ</div>
+            <div>・ランキング</div>
+          </div>
+          <p class="text-white/40">をリアルタイム管理します。</p>
+        </div>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">本システムの：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・無断複製</div>
+            <div>・再配布</div>
+            <div>・不正利用</div>
+            <div>・地域外利用</div>
+          </div>
+          <p class="text-white/40">を禁止します。</p>
+        </div>
+
+        <p class="text-white/40 pt-2 border-t border-white/5">各地域ライセンスは、<br>契約支部・契約組織にのみ付与されます。</p>
+      </div>
+    `
+    },
+    privacy: {
+      title: 'Privacy Policy',
+      body: `
+      <div class="space-y-4 text-[11px] leading-relaxed text-white/50 select-none">
+        <p>POSTING MAP は、<br>FIELD OPERATIONS SYSTEM として、<br>以下の情報を取得・管理します。</p>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">【取得・管理する情報】</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・LINE認証情報</div>
+            <div>・配布員ID</div>
+            <div>・エリア進捗</div>
+            <div>・配布ログ</div>
+            <div>・GPS位置情報</div>
+            <div>・写真エビデンス</div>
+            <div>・デバイス情報</div>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">【取得データの利用目的】</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・配布進捗管理</div>
+            <div>・エリア統制</div>
+            <div>・FIELD OPERATIONS分析</div>
+            <div>・不正防止</div>
+            <div>・リアルタイム同期</div>
+          </div>
+        </div>
+
+        <p class="text-white/40 pt-2 border-t border-white/5">GPSおよび写真情報は、<br>FIELD OPERATIONS の活動証跡として利用されます。</p>
+      </div>
+    `
+    },
+    license: {
+      title: 'License',
+      body: `
+      <div class="space-y-4 text-[11px] leading-relaxed text-white/50 select-none">
+        <p class="text-white font-bold">FIELD OPERATIONS LICENSE</p>
+
+        <p class="text-white/60 font-black">LICENSED ORGANIZATION<br>【__BRANCH_NAME__】</p>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">AUTHORIZED SYSTEMS：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・STAFF APP</div>
+            <div>・ADMIN CONTROL</div>
+            <div>・HQ MONITORING</div>
+            <div>・REALTIME FIELD SYNC</div>
+          </div>
+        </div>
+
+        <p class="text-white/60 font-black">LICENSE STATUS:<br><span class="text-emerald-500/80 font-black">ACTIVE</span></p>
+
+        <p class="text-white/40">本ライセンスは、契約地域内のみ有効です。<br>地域外利用・再配布は禁止します。</p>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">POSTING MAP は：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・LINE認証</div>
+            <div>・STAFF ID</div>
+            <div>・ライセンス管理</div>
+            <div>・権限制御</div>
+          </div>
+          <p class="text-white/40">により、FIELD OPERATIONS を保護します。</p>
+        </div>
+
+        <p class="text-white/40 pt-2 border-t border-white/5">LICENSED FIELD OPERATIONS SYSTEM<br>© POSTING MAP</p>
+      </div>
+    `
+    }
+  };
+
+  /**
+   * モーダル表示
+   * @param {string} type - 'terms' | 'privacy' | 'license'
+   * @param {Object} [options] - { branchName, event }
+   */
+  function open(type, options = {}) {
+    const { branchName = '', event = null } = options;
+    if (event && typeof event.stopPropagation === 'function') {
+      event.stopPropagation(); // イベントのバブリング防止
+    }
+
+    const modal = document.getElementById('id-info-modal');
+    if (!modal) return;
+
+    const data = ID_INFO_DATA[type];
+    if (!data) return;
+
+    const titleEl = document.getElementById('id-info-title');
+    const bodyEl = document.getElementById('id-info-body');
+
+    if (titleEl) titleEl.textContent = data.title;
+    if (bodyEl) {
+      let bodyText = data.body;
+
+      // ライセンス表示時のみ、地区名を動的に差し替える (必ず escapeHtml を通す)
+      if (type === 'license') {
+        const escaped = escapeHtml(branchName || '');
+        bodyText = bodyText.replace('__BRANCH_NAME__', escaped);
+      }
+
+      bodyEl.innerHTML = bodyText;
+    }
+
+    modal.classList.remove('pointer-events-none', 'opacity-0');
+    if (modal.firstElementChild) {
+      modal.firstElementChild.classList.remove('translate-y-full');
+    }
+  }
+
+  /**
+   * モーダル非表示
+   */
+  function close() {
+    const modal = document.getElementById('id-info-modal');
+    if (!modal) return;
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    if (modal.firstElementChild) {
+      modal.firstElementChild.classList.add('translate-y-full');
+    }
+  }
+
+  return {
+    open,
+    close,
+    getRawData: (type) => (type ? ID_INFO_DATA[type] : ID_INFO_DATA)
+  };
+})();

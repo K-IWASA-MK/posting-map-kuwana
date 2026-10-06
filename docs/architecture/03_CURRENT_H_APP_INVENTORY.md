@@ -76,12 +76,12 @@
 | `active/h-app/index.html` | 367 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 700 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 2,075 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)により2,075行へ縮小。テンキー入力後の下書き開始非同期フロー（写真変換・Draft生成・空GPS再取得・セッション世代確認）をActivityModule.startDraftWorkflowへ集約・純粋分離。app.jsは同期呼出し配線および再描画通知・ロック解除のComposition Root責務へ純化。 |
+| `active/h-app/app.js` | 1,949 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)・ID情報モーダル分離(Wave 8)により1,949行へ縮小。ID情報モーダル（Terms/Privacy/License）の文面データ・DOM操作・アニメーションをcomponents/staff.js（StaffIdInfoView）へ集約・純粋分離。app.jsは同期呼出し配線およびLicense時のみの地区名優先解決のComposition Root責務へ純化。 |
 | `active/h-app/render.js` | 1,829 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。Storage/BulletinView/ActivityDraft/TransferView/NumpadViewのPresentation集約により1,829行へ。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
 | `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
 | `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |
-| `active/h-app/components/staff.js` | 82 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）。 |
+| `active/h-app/components/staff.js` | 254 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）およびID情報モーダル（StaffIdInfoView: Terms/Privacy/License）。Wave 8でapp.jsからID情報モーダル文面・開閉Presentationを純粋集約。 |
 | `active/h-app/modules/api.js` | 232 | 🟡 再構築 | `PMS_CLIENT_CONFIG.api.gasWebAppUrl` 経由のPOST通信。認証ヘッダー・共通エラーハンドリングの標準化が必要。 |
 | `active/h-app/modules/device.js` | 122 | 🟢 継承 | 高精度GPS取得（`getGPSLocation`）および写真撮影・クライアント側画像圧縮（`compressImage`）。 |
 | `active/h-app/modules/navigation.js` | 124 | 🟢 継承 | 画面遷移（`switchPage`）・スクロール位置保持・ナビ切り替え。 |
