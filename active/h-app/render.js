@@ -1722,3 +1722,108 @@ const TransferView = (function() {
   };
 })();
 
+// --- Numpad Presentation View ---
+const NumpadView = (function() {
+  let context = null;
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function getElements() {
+    const display = $('numpad-display');
+    const modal = $('numpad-modal');
+    const content = modal ? modal.firstElementChild : null;
+    return { display, modal, content };
+  }
+
+  function open({ areaName, rowId, initialCount = 0, isDoneToggle = false, checkbox = null, onConfirm = null, onCancel = null }) {
+    context = {
+      areaName,
+      rowId,
+      isDoneToggle,
+      checkbox,
+      currentVal: initialCount ? String(initialCount) : '0',
+      onConfirm,
+      onCancel
+    };
+
+    const { display, modal, content } = getElements();
+    if (display) display.textContent = context.currentVal;
+    if (modal) modal.classList.remove('pointer-events-none', 'opacity-0');
+    if (content) content.classList.remove('translate-y-full');
+  }
+
+  function hide() {
+    // 確定後の非表示: セッションを破棄せず画面のみ閉じる
+    const { modal, content } = getElements();
+    if (modal) modal.classList.add('opacity-0', 'pointer-events-none');
+    if (content) content.classList.add('translate-y-full');
+  }
+
+  function close() {
+    // ユーザー明示的キャンセル / 閉じる操作
+    if (!context) return;
+    const ctx = context;
+    if (ctx.isDoneToggle && ctx.checkbox) {
+      ctx.checkbox.checked = false;
+    }
+    const { modal, content } = getElements();
+    if (modal) modal.classList.add('opacity-0', 'pointer-events-none');
+    if (content) content.classList.add('translate-y-full');
+
+    context = null;
+    if (typeof ctx.onCancel === 'function') {
+      ctx.onCancel();
+    }
+  }
+
+  function pressKey(key) {
+    if (!context) return null;
+
+    if (key === 'C') {
+      context.currentVal = '0';
+    } else if (key === 'OK') {
+      const valNum = parseFloat(context.currentVal) || 0;
+      const { areaName, rowId, onConfirm } = context;
+      if (context.isDoneToggle) {
+        context.isDoneToggle = false;
+      }
+      if (typeof onConfirm === 'function') {
+        onConfirm({ valNum, areaName, rowId });
+      }
+      return { action: 'confirm', valNum, areaName, rowId };
+    } else {
+      if (context.currentVal === '0') {
+        context.currentVal = String(key);
+      } else {
+        if (context.currentVal.length < 5) {
+          context.currentVal += String(key);
+        }
+      }
+    }
+
+    const { display } = getElements();
+    if (display) display.textContent = context.currentVal;
+    return { action: 'update', currentVal: context.currentVal };
+  }
+
+  function getContext() {
+    return context;
+  }
+
+  function isOpen() {
+    const { modal } = getElements();
+    return !!(modal && !modal.classList.contains('pointer-events-none'));
+  }
+
+  return {
+    open,
+    hide,
+    close,
+    pressKey,
+    getContext,
+    isOpen
+  };
+})();
+

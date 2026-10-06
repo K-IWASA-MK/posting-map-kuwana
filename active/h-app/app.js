@@ -559,35 +559,36 @@ function prefetchRanking() {
 let numpadContext = null;
 
 function openNumpad(areaName, rowId, initialCount, isDoneToggle = false, checkbox = null) {
-  numpadContext = {
+  if (numpadContext) numpadContext.aborted = true;
+  const sessionId = (numpadContext ? numpadContext.sessionId : 0) + 1;
+  numpadContext = { sessionId, areaName, rowId, isDoneToggle, checkbox, aborted: false, isStarting: false };
+  NumpadView.open({
     areaName,
     rowId,
+    initialCount,
     isDoneToggle,
     checkbox,
-    currentVal: initialCount ? String(initialCount) : '0'
-  };
-
-  $('numpad-display').textContent = numpadContext.currentVal;
-
-  const modal = $('numpad-modal');
-  modal.classList.remove('pointer-events-none', 'opacity-0');
-  const content = modal.firstElementChild;
-  content.classList.remove('translate-y-full');
+    onCancel: () => {
+      if (numpadContext) {
+        numpadContext.aborted = true;
+        numpadContext.isStarting = false;
+      }
+    }
+  });
 }
 
 function closeNumpad() {
-  if (!numpadContext) return;
-
-  if (numpadContext.isDoneToggle && numpadContext.checkbox) {
-    numpadContext.checkbox.checked = false;
+  if (numpadContext) {
+    if (numpadContext.isStarting) {
+      // 確定後の非表示: セッション世代を維持して画面のみ隠す
+      NumpadView.hide();
+      return;
+    }
+    // ユーザー明示的キャンセル
+    numpadContext.aborted = true;
+    numpadContext.isStarting = false;
   }
-
-  const modal = $('numpad-modal');
-  modal.classList.add('opacity-0', 'pointer-events-none');
-  const content = modal.firstElementChild;
-  content.classList.add('translate-y-full');
-
-  numpadContext = null;
+  NumpadView.close();
 }
 
 
@@ -643,107 +644,82 @@ window.triggerUISyncRefresh = async function() {
 function pressNum(key) {
   if (!numpadContext) return;
 
-  if (key === 'C') {
-    numpadContext.currentVal = '0';
-  } else if (key === 'OK') {
-    const valNum = parseFloat(numpadContext.currentVal) || 0;
-    const { areaName, rowId } = numpadContext;
+  if (key === 'OK') {
+    if (numpadContext.isStarting) return; // OK連打防止
+    numpadContext.isStarting = true;
 
-    const p = allPoints.find(point => point.rowId === rowId);
+    // GPS・カメラを先に開始（ユーザーのタップジェスチャーが生きている間に呼ぶ）
+    const gpsPromise = getGPSLocation();
+    const cameraPromise = capturePhoto();
+    closeNumpad(); // カメラ起動後にテンキーを閉じる (確定後の非表示: isStartingによりセッション維持)
+
+    const sessionId = numpadContext.sessionId;
+    const { areaName, rowId } = numpadContext;
+    const numpadResult = NumpadView.pressKey('OK');
+    const valNum = numpadResult ? numpadResult.valNum : 0;
+
+    const p = (allPoints && allPoints.find(point => point.rowId === rowId)) ||
+              (typeof window.allPoints !== 'undefined' && Array.isArray(window.allPoints) && window.allPoints.find(point => point.rowId === rowId));
     const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
     const staffName = `${userInfo.last || ''} ${userInfo.first || ''}`.trim();
     const staffId = userInfo.id || '';
     const now = new Date();
     const timeStr = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    numpadContext.isDoneToggle = false;
-
-    // GPS・カメラを先に開始（ユーザーのタップジェスチャーが生きている間に呼ぶ）
-    const gpsPromise = getGPSLocation();
-    // capturePhoto()内のinput.click()はここで同期的に実行される
-    // → テンキーを閉じる前にカメラが起動するため、裏画面が一瞬見える現象を防ぐ
-    const cameraPromise = capturePhoto();
-
-    closeNumpad(); // カメラ起動後にテンキーを閉じる
-
-    // 2. バックグラウンドで写真取得完了とGPS結果を待つ
     (async () => {
-      let imageBlob = null;
       try {
-        imageBlob = await cameraPromise;
-      } catch (err) {
-        console.error("Camera activation failed:", err);
-      }
-
-      // カメラがキャンセルされた場合は処理を中断
-      if (!imageBlob || typeof window.blobToBase64 !== 'function') {
-        console.warn("Photo capture cancelled or failed. Mission completion aborted.");
-        return;
-      }
-
-      let photoBase64 = '';
-      try {
-        photoBase64 = await window.blobToBase64(imageBlob);
-      } catch (err) {
-        console.warn("Photo Base64 conversion threw an error.", err);
-      }
-
-      if (!photoBase64) {
-        console.warn("Photo Base64 conversion returned empty data. Mission completion aborted.");
-        return;
-      }
-
-      // 3. 写真確定後に状態を更新し、即座にMISSION COMPLETED画面を生成（GPSは待たない）
-      if (p) {
-        const tempPhotoUrl = URL.createObjectURL(imageBlob);
-        ActivityModule.createDraft(p, {
-          valNum,
-          staffName,
-          staffId,
-          timeStr,
-          tempPhotoUrl,
-          photoBase64
-        });
-
-        // モーダルを再描画（提出前プレビュー画面として表示するため isDone: true のプロパティを渡す）
-        const modalContent = $('detail-modal-content');
-        if (modalContent) {
-          modalContent.innerHTML = renderDetailModalContent({ ...p, isDone: true });
+        let imageBlob = null;
+        try {
+          imageBlob = await cameraPromise;
+        } catch (err) {
+          console.error("Camera activation failed:", err);
         }
-      }
 
-      // 4. バックグラウンドでGPS結果を待機
-      let gps = await gpsPromise;
-      if (!gps || !gps.latitude || !gps.longitude) {
-        console.log("GPS empty after camera, retrying...");
-        gps = await getGPSLocation();
-      }
+        if (!numpadContext || numpadContext.sessionId !== sessionId || numpadContext.aborted) return;
+        if (!imageBlob || typeof window.blobToBase64 !== 'function') return;
 
-      if (p) {
-        ActivityModule.applyGpsResult(p, gps);
-
-        // GPS状態が確定したのでモーダルのみ再描画（提出処理中はUIを上書きしない）
-        const modalContent = $('detail-modal-content');
-        if (modalContent && p.syncStatus !== 'submitting') {
-          modalContent.innerHTML = renderDetailModalContent(p.isDone ? p : { ...p, isDone: true });
+        let photoBase64 = '';
+        try {
+          photoBase64 = await window.blobToBase64(imageBlob);
+        } catch (err) {
+          console.warn("Photo Base64 conversion threw an error.", err);
         }
+
+        if (!numpadContext || numpadContext.sessionId !== sessionId || numpadContext.aborted || !photoBase64) return;
+
+        if (p) {
+          const tempPhotoUrl = URL.createObjectURL(imageBlob);
+          ActivityModule.createDraft(p, { valNum, staffName, staffId, timeStr, tempPhotoUrl, photoBase64 });
+          const modalContent = $('detail-modal-content');
+          if (modalContent && window.currentPointDetailRowId === rowId) {
+            modalContent.innerHTML = renderDetailModalContent({ ...p, isDone: true });
+          }
+        }
+
+        let gps = await gpsPromise;
+        if (!gps || !gps.latitude || !gps.longitude) gps = await getGPSLocation();
+        if (!numpadContext || numpadContext.sessionId !== sessionId || numpadContext.aborted) return;
+
+        if (p) {
+          ActivityModule.applyGpsResult(p, gps);
+          const modalContent = $('detail-modal-content');
+          if (modalContent && window.currentPointDetailRowId === rowId && p.syncStatus !== 'submitting') {
+            modalContent.innerHTML = renderDetailModalContent(p.isDone ? p : { ...p, isDone: true });
+          }
+        }
+      } catch (err) {
+        console.error("Async sync background task failed:", err);
+      } finally {
+        if (numpadContext && numpadContext.sessionId === sessionId) numpadContext.isStarting = false;
       }
     })().catch(err => {
       console.error("Async sync background task failed:", err);
     });
 
     return;
-  } else {
-    if (numpadContext.currentVal === '0') {
-      numpadContext.currentVal = String(key);
-    } else {
-      if (numpadContext.currentVal.length < 5) {
-        numpadContext.currentVal += String(key);
-      }
-    }
   }
 
-  $('numpad-display').textContent = numpadContext.currentVal;
+  NumpadView.pressKey(key);
 }
 
 // モーダルの「この内容で提出する」ボタン押下時に呼ばれる

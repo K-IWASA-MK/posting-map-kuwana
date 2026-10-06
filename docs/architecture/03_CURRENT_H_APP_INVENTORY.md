@@ -76,8 +76,8 @@
 | `active/h-app/index.html` | 366 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 700 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 2,117 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)により2,117行へ縮小。引き続きBoot Orchestratorへの純化を進める。 |
-| `active/h-app/render.js` | 1,724 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。Storage分離・BulletinView追加・ActivityDraft委譲・TransferView追加に伴うPresentation責務集約により1,724行へ。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
+| `active/h-app/app.js` | 2,093 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)により2,093行へ縮小。テンキー表示・入力状態をNumpadViewへ分離。下書き作成フロー（写真変換・Draft生成・GPS反映・再描画）はComposition Rootに暫定残存（Provisional in Composition Root - Pending Future Workflow Separation）として記録し、引き続きBoot Orchestratorへの純化を進める。 |
+| `active/h-app/render.js` | 1,829 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。Storage/BulletinView/ActivityDraft/TransferView/NumpadViewのPresentation集約により1,829行へ。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
 | `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
 | `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |
