@@ -1,12 +1,10 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/modules/transfer.js",
   "active/h-app/render.js",
   "active/h-app/app.js",
   "active/h-app/index.html",
-  "scripts/stamp-h-app-token.mjs",
-  "tests/test_transfer_module_lifecycle.mjs",
-  "scripts/test_browser_h_app_transfer.mjs",
+  "tests/test_numpad_view_lifecycle.mjs",
+  "scripts/test_browser_h_app_numpad.mjs",
   "tests/run_all_tests.mjs",
   "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
 ]
