@@ -14,7 +14,7 @@ const renderCode = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/render.js'
 const appCode = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/app.js'), 'utf8');
 
 function createTestEnvironment(options = {}) {
-  const { mockApiResponse = null, mockApiError = null } = options;
+  let { mockApiResponse = null, mockApiError = null } = options;
 
   const storage = {};
   const elements = {};
@@ -53,7 +53,7 @@ function createTestEnvironment(options = {}) {
   let lastAction = null;
   let lastPayload = null;
 
-  const callApiPost = async (action, payload) => {
+  const callApiPost = (action, payload) => {
     apiCallCount++;
     lastAction = action;
     lastPayload = payload;
@@ -66,17 +66,17 @@ function createTestEnvironment(options = {}) {
     }
 
     if (typeof mockApiResponse === 'function') {
-      return mockApiResponse(action, payload, apiCallCount);
+      return Promise.resolve(mockApiResponse(action, payload, apiCallCount));
     }
 
-    return mockApiResponse || {
+    return Promise.resolve(mockApiResponse || {
       success: true,
       ranking: [
         { rank: 1, staffId: 'S001', count: 1500, isMe: true },
         { rank: 2, staffId: 'S002', count: 1200, isMe: false }
       ],
       mySummary: { rank: 1, count: 1500 }
-    };
+    });
   };
 
   const sandbox = {
@@ -251,10 +251,14 @@ async function runTests() {
     assert.strictEqual(retryResult.ranking[0].staffId, 'S_RETRY');
     assert.strictEqual(env.getApiCallCount(), 2, '再試行でAPI呼出しが再度実行されたこと');
 
-    // 同期例外時の安全性検証: callApiPost が同期例外を投げても解放されること
+    // 同期例外時の安全性検証: callApiPost が通常関数から同期例外を投げても解放され再試行可能なこと
+    let shouldSyncThrow = true;
     const syncEnv = createTestEnvironment({
       mockApiError: () => {
-        throw new Error('SYNC_EXCEPTION');
+        if (shouldSyncThrow) {
+          throw new Error('SYNC_EXCEPTION');
+        }
+        return null;
       }
     });
     const syncRm = syncEnv.sandbox.RankingModule;
@@ -263,9 +267,25 @@ async function runTests() {
       await syncRm.fetchRanking();
     } catch (e) {
       syncErrorCaught = true;
+      assert.strictEqual(e.message, 'SYNC_EXCEPTION');
     }
-    assert.strictEqual(syncErrorCaught, true);
+    assert.strictEqual(syncErrorCaught, true, '同期例外が呼出し元で捕捉されること');
     assert.strictEqual(syncRm.getSnapshot().fetched, false, '同期例外時も fetched === false');
+    assert.strictEqual(syncEnv.getApiCallCount(), 1, '初回呼出しは1回');
+
+    // 再試行: 同期例外を解除して正常応答を設定
+    shouldSyncThrow = false;
+    syncEnv.setMockApiError(null);
+    syncEnv.setMockApiResponse({
+      success: true,
+      ranking: [{ rank: 1, staffId: 'S_SYNC_RETRY', count: 999, isMe: true }],
+      mySummary: { rank: 1, count: 999 }
+    });
+
+    const syncRetryResult = await syncRm.fetchRanking();
+    assert.strictEqual(syncRetryResult.fetched, true, '同期例外後の再試行で成功し fetched === true');
+    assert.strictEqual(syncRetryResult.ranking[0].staffId, 'S_SYNC_RETRY');
+    assert.strictEqual(syncEnv.getApiCallCount(), 2, '通信累計2回・成功');
     console.log("✅ Gate 4 PASS\n");
   }
 

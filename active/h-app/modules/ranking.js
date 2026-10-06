@@ -21,7 +21,7 @@ const RankingModule = (function() {
       return _inFlightPromise;
     }
 
-    _inFlightPromise = (async () => {
+    const promise = (async () => {
       try {
         const data = await callApiPost('getRanking');
         if (data && data.success === true && Array.isArray(data.ranking)) {
@@ -38,10 +38,12 @@ const RankingModule = (function() {
       } catch (err) {
         console.warn('[RankingModule] fetchRanking failed:', err);
         throw err;
-      } finally {
-        _inFlightPromise = null;
       }
     })();
+
+    _inFlightPromise = promise.finally(() => {
+      _inFlightPromise = null;
+    });
 
     return _inFlightPromise;
   }

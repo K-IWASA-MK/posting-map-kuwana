@@ -44,7 +44,7 @@ window.onunhandledrejection = function(event) {
   logDebug(`UNHANDLED PROMISE: ${event.reason}`);
 };
 
-{ var allPoints = []; }
+let allPoints = [];
 let currentCity = null;
 
 
