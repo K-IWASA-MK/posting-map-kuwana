@@ -465,8 +465,56 @@ async function runTests() {
     console.log('✅ Gate 16 PASS\n');
   }
 
+  console.log('--- Gate 17: 認可フック未指定時の送信拒否・API呼出し0件検証 ---');
+  {
+    env = createTestEnvironment();
+    env.sandbox.localStorage.setItem('user_info', JSON.stringify({ id: 'STAFF_001', first: '太郎', last: '桑名' }));
+    env.$('storage-register-location').value = '桑名市';
+    env.$('storage-register-count').value = '300';
+
+    let updateStockCalls = 0;
+    const sm = vm.runInContext('StorageModule', env.sandbox);
+    sm.updateStock = async (p) => {
+      updateStockCalls++;
+      return { success: true };
+    };
+
+    const sv = vm.runInContext('StorageView', env.sandbox);
+
+    // Case 1: authorize を渡さない場合
+    let errorCaughtWithoutAuthorize = false;
+    try {
+      await sv.submitRegisterForm({
+        getUserInfo: () => JSON.parse(env.sandbox.localStorage.getItem('user_info')),
+        storageModule: sm
+      });
+    } catch (e) {
+      errorCaughtWithoutAuthorize = true;
+      assert.ok(e.message.includes('authorize hook is required'), 'エラーメッセージに authorize hook is required を含むこと');
+    }
+    assert.strictEqual(errorCaughtWithoutAuthorize, true, 'authorize 未指定時に例外がスローされること');
+    assert.strictEqual(updateStockCalls, 0, 'authorize 未指定時は updateStock API が一切呼ばれないこと');
+
+    // Case 2: authorize に null やオブジェクト等の不正型を渡した場合
+    let errorCaughtWithInvalidAuthorize = false;
+    try {
+      await sv.submitRegisterForm({
+        authorize: 'not_a_function',
+        getUserInfo: () => JSON.parse(env.sandbox.localStorage.getItem('user_info')),
+        storageModule: sm
+      });
+    } catch (e) {
+      errorCaughtWithInvalidAuthorize = true;
+      assert.ok(e.message.includes('authorize hook is required'), 'エラーメッセージに authorize hook is required を含むこと');
+    }
+    assert.strictEqual(errorCaughtWithInvalidAuthorize, true, '不正型 authorize 指定時に例外がスローされること');
+    assert.strictEqual(updateStockCalls, 0, '不正型 authorize 指定時も updateStock API が一切呼ばれないこと');
+
+    console.log('✅ Gate 17 PASS\n');
+  }
+
   console.log('====================================================');
-  console.log('🎉 ALL 16 GATES PASSED PERFECTLY!');
+  console.log('🎉 ALL 17 GATES PASSED PERFECTLY!');
   console.log('====================================================');
 }
 

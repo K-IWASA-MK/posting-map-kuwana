@@ -377,6 +377,9 @@ const StorageView = (function() {
     if (!storageModule) {
       throw new Error('[StorageView.submitRegisterForm] storageModule is required.');
     }
+    if (typeof authorize !== 'function') {
+      throw new Error('[StorageView.submitRegisterForm] authorize hook is required.');
+    }
 
     const locSelect = $('storage-register-location');
     const countInput = $('storage-register-count');
@@ -413,9 +416,7 @@ const StorageView = (function() {
     btn.textContent = "更新中...";
 
     try {
-      if (typeof authorize === 'function') {
-        await authorize();
-      }
+      await authorize();
     } catch (authErr) {
       alert("本人確認が完了していないか、未登録のため更新できません。");
       btn.disabled = false;

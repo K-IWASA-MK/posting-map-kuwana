@@ -1,32 +1,29 @@
 import { chromium } from 'playwright';
-import http from 'http';
-import fs from 'fs';
-import path from 'path';
-import assert from 'assert';
+import assert from 'node:assert';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..');
 const PORT = 8097;
-const rootDir = process.cwd();
 
 function startLocalServer() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      let relativePath = req.url.split('?')[0];
-      if (relativePath.startsWith('/app/')) {
-        relativePath = relativePath.replace('/app/', '/active/h-app/');
-      } else if (relativePath === '/app') {
-        relativePath = '/active/h-app/index.html';
-      } else if (relativePath.startsWith('/business/')) {
-        relativePath = relativePath.replace('/business/', '/active/business/');
-      }
-      let filePath = path.join(rootDir, relativePath);
-
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
-        filePath = path.join(filePath, 'index.html');
+      let reqPath = req.url.split('?')[0];
+      if (reqPath === '/' || reqPath === '/app' || reqPath === '/app/') {
+        reqPath = '/active/h-app/index.html';
+      } else if (reqPath.startsWith('/app/')) {
+        reqPath = '/active/h-app/' + reqPath.substring(5);
       }
 
+      const filePath = path.join(REPO_ROOT, reqPath);
       fs.readFile(filePath, (err, data) => {
         if (err) {
-          res.writeHead(404);
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
           res.end(`File not found: ${req.url}`);
         } else {
           let contentType = 'text/html';
@@ -72,7 +69,12 @@ async function runBrowserStorageTests() {
   });
 
   const page = await context.newPage();
-  page.on('console', msg => console.log('  [BROWSER CONSOLE]', msg.type(), msg.text()));
+  page.on('console', msg => {
+    const text = msg.text();
+    if (text.includes('[DEBUG]') || text.includes('StorageView') || text.includes('fetchFlyerStock')) {
+      console.log('  [BROWSER CONSOLE]', msg.type(), text);
+    }
+  });
   page.on('pageerror', err => console.log('  [BROWSER ERROR]', err.message));
 
   // Mock LIFF SDK
@@ -116,7 +118,14 @@ async function runBrowserStorageTests() {
   });
 
   // Mock GAS API
+  let getFlyerStockCallCount = 0;
+  let mockGetFlyerStockDelay = 0;
+  let mockStocksData = [
+    { id: "STK001", staffId: "S002", staffName: "鈴木 一郎", location: "桑名市", count: 1200, updatedAt: "2026/10/06 10:00" },
+    { id: "STK002", staffId: "S001", staffName: "テスト配布員", location: "桑名市", count: 500, updatedAt: "2026/10/06 12:00", isMe: true }
+  ];
   let updatedStockPayload = null;
+
   await page.route('**/*exec*', async route => {
     const postData = route.request().postData();
     let action = '';
@@ -129,16 +138,17 @@ async function runBrowserStorageTests() {
     } catch(e) {}
 
     if (action === 'getFlyerStock') {
+      getFlyerStockCallCount++;
+      if (mockGetFlyerStockDelay > 0) {
+        await new Promise(r => setTimeout(r, mockGetFlyerStockDelay));
+      }
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
-          stocks: [
-            { id: "STK001", staffId: "S002", staffName: "鈴木 一郎", location: "桑名市", count: 1200, updatedAt: "2026/10/06 10:00" },
-            { id: "STK002", staffId: "S001", staffName: "テスト配布員", location: "桑名市", count: 500, updatedAt: "2026/10/06 12:00", isMe: true }
-          ],
-          myStock: { location: "桑名市", count: 500 }
+          stocks: mockStocksData,
+          myStock: { location: "桑名市", count: mockStocksData.find(s => s.isMe)?.count || 500 }
         })
       });
       return;
@@ -219,13 +229,16 @@ async function runBrowserStorageTests() {
     // 👉 CASE A: 在庫登録画面への遷移 & 初期表示検証
     // ─────────────────────────────────────────────────────────
     console.log("👉 CASE A: Storage register page initialization & display");
+    getFlyerStockCallCount = 0;
+    mockGetFlyerStockDelay = 100;
+
     await page.evaluate(() => {
       if (typeof window.switchPage === 'function') {
         window.switchPage('storage-register');
       }
     });
     // 非同期 fetchStock 完了を待機
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(600);
 
     const initFormState = await page.evaluate(() => {
       const locText = document.getElementById('storage-location-text');
@@ -248,12 +261,104 @@ async function runBrowserStorageTests() {
     assert.equal(initFormState.count, '500', '初期枚数 500 が反映されていること');
     assert.equal(initFormState.countDisplayText, '500', '枚数表示 500 が描画されていること');
     assert.equal(initFormState.btnDisabled, false, 'ボタンが活性化されていること');
-    console.log("  ✅ Case A PASSED: Storage register page initialized successfully");
+    console.log("  ✅ Case A PASSED: Storage register page initialized successfully\n");
 
     // ─────────────────────────────────────────────────────────
-    // 👉 CASE B: 入力フォーマッター & ボタン文言動的更新
+    // 👉 CASE B: 画面復帰時のキャッシュ即時表示（復元検証）
     // ─────────────────────────────────────────────────────────
-    console.log("👉 CASE B: Input formatter & button text dynamic update");
+    console.log("👉 CASE B: Instant cache display upon page return");
+    // 設定画面へ遷移
+    await page.evaluate(() => window.switchPage('settings'));
+    await page.waitForTimeout(250);
+
+    // 在庫登録へ戻る（APIを500ms遅延）
+    getFlyerStockCallCount = 0;
+    mockGetFlyerStockDelay = 500;
+    const switchStartTime = Date.now();
+    await page.evaluate(() => window.switchPage('storage-register'));
+
+    // ★ API完了前（80ms以内）にキャッシュから即座に値が入っていることを検証
+    await page.waitForTimeout(80);
+    const elapsedB = Date.now() - switchStartTime;
+    const cacheFormState = await page.evaluate(() => {
+      const countInput = document.getElementById('storage-register-count');
+      const countDisplay = document.getElementById('storage-register-count-text');
+      return {
+        count: countInput ? countInput.value : null,
+        countDisplay: countDisplay ? countDisplay.textContent.trim() : null
+      };
+    });
+
+    assert.equal(cacheFormState.count, '500', 'API通信完了を待たずキャッシュから即座に値が入ること');
+    assert.equal(cacheFormState.countDisplay, '500', 'API通信完了を待たずキャッシュから即座に表示されること');
+    console.log(`  ✅ Case B PASSED: Instant cache verified in ${elapsedB}ms\n`);
+    await page.waitForTimeout(500); // 遅延APIの完了を待機
+
+    // ─────────────────────────────────────────────────────────
+    // 👉 CASE C: 高速往復時の通信重複防止 (In-flight共有)（復元検証）
+    // ─────────────────────────────────────────────────────────
+    console.log("👉 CASE C: Prevent duplicate in-flight requests during rapid switching");
+    getFlyerStockCallCount = 0;
+    mockGetFlyerStockDelay = 400;
+
+    await page.evaluate(() => window.switchPage('storage-register'));
+    await page.waitForTimeout(50);
+    await page.evaluate(() => window.switchPage('settings'));
+    await page.waitForTimeout(50);
+    await page.evaluate(() => window.switchPage('storage-register'));
+    await page.waitForTimeout(50);
+    await page.evaluate(() => window.switchPage('storage-register'));
+
+    console.log(`  [In-flight Check] API calls during rapid switching: ${getFlyerStockCallCount}`);
+    assert.ok(getFlyerStockCallCount <= 1, `In-flight共有により多重通信が防止されること (Calls: ${getFlyerStockCallCount})`);
+    console.log("  ✅ Case C PASSED: Rapid switching in-flight deduplication verified\n");
+    await page.waitForTimeout(400);
+
+    // ─────────────────────────────────────────────────────────
+    // 👉 CASE D: 遅延GET到着時の手入力保護（復元検証）
+    // ─────────────────────────────────────────────────────────
+    console.log("👉 CASE D: Protect user input against delayed GET arrival");
+    mockStocksData = [
+      { id: "STK001", staffId: "S002", staffName: "鈴木 一郎", location: "桑名市", count: 1200, updatedAt: "2026/10/06 10:00" },
+      { id: "STK002", staffId: "S001", staffName: "テスト配布員", location: "桑名市", count: 9999, updatedAt: "2026/10/06 12:00", isMe: true }
+    ];
+    mockGetFlyerStockDelay = 400;
+
+    // 画面を開く（API通信開始）
+    await page.evaluate(() => window.switchPage('settings'));
+    await page.waitForTimeout(100);
+    await page.evaluate(() => window.switchPage('storage-register'));
+
+    // ★ API通信中にユーザーが「777」と入力
+    await page.waitForTimeout(50);
+    await page.evaluate(() => {
+      const container = document.getElementById('storage-register-count-container');
+      const input = document.getElementById('storage-register-count');
+      const display = document.getElementById('storage-register-count-display');
+      if (input && display) {
+        input.classList.remove('hidden');
+        display.classList.add('hidden');
+        input.dataset.userEditing = 'true';
+        input.value = '777';
+        input.dispatchEvent(new Event('input'));
+      }
+    });
+
+    const editingVal = await page.$eval('#storage-register-count', el => el.value);
+    console.log(`  [Input Lock Check] User typed during in-flight: "${editingVal}"`);
+
+    // ★ 450ms待機し、サーバーからの遅延レスポンス（9999枚）を到着させる
+    await page.waitForTimeout(450);
+
+    // ★ 検証: レスポンス（9999枚）で上書きされず、手入力値「777」が完全保護されていること
+    const postDelayedVal = await page.$eval('#storage-register-count', el => el.value);
+    assert.equal(postDelayedVal, '777', `遅延APIレスポンス後も手入力値 777 が保護されること (actual: ${postDelayedVal})`);
+    console.log("  ✅ Case D PASSED: User input protected from delayed GET response\n");
+
+    // ─────────────────────────────────────────────────────────
+    // 👉 CASE E: 入力フォーマッター & ボタン文言動的更新
+    // ─────────────────────────────────────────────────────────
+    console.log("👉 CASE E: Input formatter & button text dynamic update");
     await page.evaluate(() => {
       const countInput = document.getElementById('storage-register-count');
       countInput.value = '1500';
@@ -273,12 +378,12 @@ async function runBrowserStorageTests() {
 
     assert.equal(updatedInputState.countDisplayText, '1,500', 'カンマ区切りで 1,500 とフォーマットされること');
     assert.equal(updatedInputState.btnText, 'チラシ枚数を更新する', 'ボタン文言が「更新する」になること');
-    console.log("  ✅ Case B PASSED: Input formatter & button text verified");
+    console.log("  ✅ Case E PASSED: Input formatter & button text verified\n");
 
     // ─────────────────────────────────────────────────────────
-    // 👉 CASE C: 在庫更新の送信 & アラート & ボタン復元
+    // 👉 CASE F: 在庫更新の送信 & アラート & ボタン復元
     // ─────────────────────────────────────────────────────────
-    console.log("👉 CASE C: Stock update submission & feedback cycle");
+    console.log("👉 CASE F: Stock update submission & feedback cycle");
     await page.evaluate(() => {
       window.submitFlyerStock();
     });
@@ -296,12 +401,12 @@ async function runBrowserStorageTests() {
       };
     });
     assert.equal(postSubmitBtnState.disabled, false, '送信完了後にボタンが活性復元されること');
-    console.log("  ✅ Case C PASSED: Stock update submitted & button state restored");
+    console.log("  ✅ Case F PASSED: Stock update submitted & button state restored\n");
 
     // ─────────────────────────────────────────────────────────
-    // 👉 CASE D: 在庫一覧画面への遷移 & 一覧描画検証
+    // 👉 CASE G: 在庫一覧画面への遷移 & 一覧描画検証
     // ─────────────────────────────────────────────────────────
-    console.log("👉 CASE D: Storage list page transition & render");
+    console.log("👉 CASE G: Storage list page transition & render");
     await page.evaluate(() => {
       if (typeof window.switchPage === 'function') {
         window.switchPage('storage-list');
@@ -326,10 +431,10 @@ async function runBrowserStorageTests() {
     assert.equal(listState.hasTransferBtn, true, '受渡要請ボタンが存在すること');
     assert.equal(listState.hasOtherStaff, true, '他配布員（鈴木 一郎）が表示されていること');
     assert.equal(listState.hasMyStaff, false, '自分の在庫（テスト配布員）は一覧から除外されていること');
-    console.log("  ✅ Case D PASSED: Storage list rendered & transfer button present");
+    console.log("  ✅ Case G PASSED: Storage list rendered & transfer button present\n");
 
-    console.log("\n==================================================================");
-    console.log("🏆 ALL REAL-BROWSER STORAGE AUDIT CASES (A - D) PASSED!");
+    console.log("==================================================================");
+    console.log("🏆 ALL REAL-BROWSER STORAGE AUDIT CASES (A - G) PASSED!");
     console.log("==================================================================");
 
   } finally {
