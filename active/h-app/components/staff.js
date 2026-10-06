@@ -248,7 +248,6 @@ window.StaffIdInfoView = (() => {
 
   return {
     open,
-    close,
-    getRawData: (type) => (type ? ID_INFO_DATA[type] : ID_INFO_DATA)
+    close
   };
 })();

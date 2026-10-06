@@ -100,20 +100,138 @@ function loadStaffIdInfoView(mockDOM) {
   return { View, escapeHtml };
 }
 
-test('Gate 1: ID_INFO_DATA の完全一致検証 (HEAD app.js との完全ディープイコール照合)', () => {
-  // Git HEAD (直前コミット) の app.js から ID_INFO_DATA を抽出
-  const headAppJs = execSync('git show HEAD~1:active/h-app/app.js', { cwd: rootDir, encoding: 'utf8' });
-  const match = headAppJs.match(/const ID_INFO_DATA = (\{[\s\S]*?\n\};)/);
-  assert.ok(match, 'HEAD~1 app.js に ID_INFO_DATA が存在すること');
+// 移動前確定文面スナップショット (HEAD~1 依存を解消した固定期待値)
+const EXPECTED_ID_INFO_SNAPSHOT = {
+  terms: {
+    title: 'Terms of Service',
+    body: `
+      <div class="space-y-4 text-[11px] leading-relaxed text-white/50 select-none">
+        <p>POSTING MAP は、<br>認証された配布員・管理者向けの<br><span class="text-white font-bold">FIELD OPERATIONS SYSTEM</span> です。</p>
 
-  const evalHeadData = new Function(`return ${match[1]}`)();
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">本システムは：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・配布進捗</div>
+            <div>・エリア管理</div>
+            <div>・GPSログ</div>
+            <div>・活動データ</div>
+            <div>・ランキング</div>
+          </div>
+          <p class="text-white/40">をリアルタイム管理します。</p>
+        </div>
 
-  // 現在の StaffIdInfoView の内部データ
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">本システムの：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・無断複製</div>
+            <div>・再配布</div>
+            <div>・不正利用</div>
+            <div>・地域外利用</div>
+          </div>
+          <p class="text-white/40">を禁止します。</p>
+        </div>
+
+        <p class="text-white/40 pt-2 border-t border-white/5">各地域ライセンスは、<br>契約支部・契約組織にのみ付与されます。</p>
+      </div>
+    `
+  },
+  privacy: {
+    title: 'Privacy Policy',
+    body: `
+      <div class="space-y-4 text-[11px] leading-relaxed text-white/50 select-none">
+        <p>POSTING MAP は、<br>FIELD OPERATIONS SYSTEM として、<br>以下の情報を取得・管理します。</p>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">【取得・管理する情報】</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・LINE認証情報</div>
+            <div>・配布員ID</div>
+            <div>・エリア進捗</div>
+            <div>・配布ログ</div>
+            <div>・GPS位置情報</div>
+            <div>・写真エビデンス</div>
+            <div>・デバイス情報</div>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">【取得データの利用目的】</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・配布進捗管理</div>
+            <div>・エリア統制</div>
+            <div>・FIELD OPERATIONS分析</div>
+            <div>・不正防止</div>
+            <div>・リアルタイム同期</div>
+          </div>
+        </div>
+
+        <p class="text-white/40 pt-2 border-t border-white/5">GPSおよび写真情報は、<br>FIELD OPERATIONS の活動証跡として利用されます。</p>
+      </div>
+    `
+  },
+  license: {
+    title: 'License',
+    bodyTemplate: `
+      <div class="space-y-4 text-[11px] leading-relaxed text-white/50 select-none">
+        <p class="text-white font-bold">FIELD OPERATIONS LICENSE</p>
+
+        <p class="text-white/60 font-black">LICENSED ORGANIZATION<br>【__BRANCH_NAME__】</p>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">AUTHORIZED SYSTEMS：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・STAFF APP</div>
+            <div>・ADMIN CONTROL</div>
+            <div>・HQ MONITORING</div>
+            <div>・REALTIME FIELD SYNC</div>
+          </div>
+        </div>
+
+        <p class="text-white/60 font-black">LICENSE STATUS:<br><span class="text-emerald-500/80 font-black">ACTIVE</span></p>
+
+        <p class="text-white/40">本ライセンスは、契約地域内のみ有効です。<br>地域外利用・再配布は禁止します。</p>
+
+        <div class="space-y-1">
+          <p class="text-white/70 font-black">POSTING MAP は：</p>
+          <div class="pl-3 text-white/40 space-y-0.5">
+            <div>・LINE認証</div>
+            <div>・STAFF ID</div>
+            <div>・ライセンス管理</div>
+            <div>・権限制御</div>
+          </div>
+          <p class="text-white/40">により、FIELD OPERATIONS を保護します。</p>
+        </div>
+
+        <p class="text-white/40 pt-2 border-t border-white/5">LICENSED FIELD OPERATIONS SYSTEM<br>© POSTING MAP</p>
+      </div>
+    `
+  }
+};
+
+test('Gate 1: 実描画 HTML と確定文面スナップショットの完全一致検証 (HEAD~1 依存解消 & getRawData 非公開)', () => {
   const mockDOM = createMockDOM();
   const { View } = loadStaffIdInfoView(mockDOM);
-  const currentData = View.getRawData();
+  const titleEl = mockDOM.elements['id-info-title'];
+  const bodyEl = mockDOM.elements['id-info-body'];
 
-  assert.deepStrictEqual(currentData, evalHeadData, 'StaffIdInfoView の ID_INFO_DATA は移動前 app.js と完全一致すること (文言・HTML・構造の完全同一性)');
+  // 1. 公開インターフェースのカプセル化検証 (getRawData 非公開)
+  assert.strictEqual(typeof View.getRawData, 'undefined', 'getRawData 等の内部データ露出メソッドが存在しないこと');
+  assert.deepStrictEqual(Object.keys(View).sort(), ['close', 'open'], 'StaffIdInfoView の公開APIは open, close のみであること');
+
+  // 2. Terms 実描画の完全一致
+  View.open('terms');
+  assert.strictEqual(titleEl.textContent, EXPECTED_ID_INFO_SNAPSHOT.terms.title);
+  assert.strictEqual(bodyEl.innerHTML, EXPECTED_ID_INFO_SNAPSHOT.terms.body);
+
+  // 3. Privacy 実描画の完全一致
+  View.open('privacy');
+  assert.strictEqual(titleEl.textContent, EXPECTED_ID_INFO_SNAPSHOT.privacy.title);
+  assert.strictEqual(bodyEl.innerHTML, EXPECTED_ID_INFO_SNAPSHOT.privacy.body);
+
+  // 4. License 実描画の完全一致 (未置換テンプレートとの対比)
+  View.open('license', { branchName: '__BRANCH_NAME__' });
+  assert.strictEqual(titleEl.textContent, EXPECTED_ID_INFO_SNAPSHOT.license.title);
+  assert.strictEqual(bodyEl.innerHTML, EXPECTED_ID_INFO_SNAPSHOT.license.bodyTemplate);
 });
 
 test('Gate 2: Terms 表示 & HTML構造 & アニメーションクラス解除', () => {
@@ -127,7 +245,7 @@ test('Gate 2: Terms 表示 & HTML構造 & アニメーションクラス解除',
   View.open('terms');
 
   assert.strictEqual(titleEl.textContent, 'Terms of Service');
-  assert.strictEqual(bodyEl.innerHTML, View.getRawData('terms').body);
+  assert.strictEqual(bodyEl.innerHTML, EXPECTED_ID_INFO_SNAPSHOT.terms.body);
   assert.strictEqual(modal.classList.contains('pointer-events-none'), false, 'pointer-events-none が解除されていること');
   assert.strictEqual(modal.classList.contains('opacity-0'), false, 'opacity-0 が解除されていること');
   assert.strictEqual(card.classList.contains('translate-y-full'), false, 'translate-y-full が解除されていること');
@@ -142,7 +260,7 @@ test('Gate 3: Privacy 表示 & HTML構造', () => {
   View.open('privacy');
 
   assert.strictEqual(titleEl.textContent, 'Privacy Policy');
-  assert.strictEqual(bodyEl.innerHTML, View.getRawData('privacy').body);
+  assert.strictEqual(bodyEl.innerHTML, EXPECTED_ID_INFO_SNAPSHOT.privacy.body);
 });
 
 test('Gate 4: License 表示 & 地区名動的置換 (正常系)', () => {

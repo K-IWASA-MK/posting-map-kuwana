@@ -81,7 +81,7 @@
 | `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
 | `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |
-| `active/h-app/components/staff.js` | 254 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）およびID情報モーダル（StaffIdInfoView: Terms/Privacy/License）。Wave 8でapp.jsからID情報モーダル文面・開閉Presentationを純粋集約。 |
+| `active/h-app/components/staff.js` | 253 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）およびID情報モーダル（StaffIdInfoView: Terms/Privacy/License）。Wave 8でapp.jsからID情報モーダル文面・開閉Presentationを純粋集約。 |
 | `active/h-app/modules/api.js` | 232 | 🟡 再構築 | `PMS_CLIENT_CONFIG.api.gasWebAppUrl` 経由のPOST通信。認証ヘッダー・共通エラーハンドリングの標準化が必要。 |
 | `active/h-app/modules/device.js` | 122 | 🟢 継承 | 高精度GPS取得（`getGPSLocation`）および写真撮影・クライアント側画像圧縮（`compressImage`）。 |
 | `active/h-app/modules/navigation.js` | 124 | 🟢 継承 | 画面遷移（`switchPage`）・スクロール位置保持・ナビ切り替え。 |
