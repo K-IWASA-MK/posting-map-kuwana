@@ -1787,149 +1787,81 @@ function closeIdInfoModal() {
 }
 
 // =============================
-// 受渡要請システム (Flyer Transfer Request System)
+// 受渡要請システム (Flyer Transfer Request - Wave 5 Wiring Wrapper)
 // =============================
-let currentTransferRequest = null;
-
 window.openTransferRequestDialog = function(name, id, loc, count, storageId) {
   const displayStorageId = String(storageId || '').trim();
-  currentTransferRequest = { holderName: name, holderUserId: id, requestArea: loc, stockCount: count, storageId: displayStorageId };
+  const sessionId = TransferModule.startSession(name, id, loc, count, displayStorageId);
 
-  // 既存を削除して再生成（CSS競合を完全排除）
-  const prev = document.getElementById('dynamic-transfer-dialog');
-  if (prev) prev.remove();
+  TransferView.openDialog({
+    displayStorageId: displayStorageId,
+    onCancel: function() {
+      TransferModule.invalidateSession(sessionId);
+    },
+    onSubmit: async function({ contactMethod, contactValue }) {
+      if (TransferModule.isSubmitting()) return;
 
-  const overlay = document.createElement('div');
-  overlay.id = 'dynamic-transfer-dialog';
-  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,0.85);';
-
-  overlay.innerHTML = `
-    <div style="background:#1C1C1E;border-radius:24px;border:1px solid rgba(255,255,255,0.12);padding:28px 20px;width:100%;max-width:340px;box-sizing:border-box;">
-      <div style="text-align:center;margin-bottom:20px;">
-        <div style="font-size:24px;margin-bottom:8px;">📦</div>
-        <div style="color:white;font-size:16px;font-weight:900;letter-spacing:0.05em;">受渡要請</div>
-      </div>
-      <div style="color:rgba(255,255,255,0.7);font-size:13px;font-weight:700;margin-bottom:20px;line-height:1.5;text-align:left;">
-        ${escapeHtml(displayStorageId)}さんとの<br>連絡方法を入力してください。
-      </div>
-
-      <div style="margin-bottom:16px;">
-        <label style="display:block;color:rgba(255,255,255,0.45);font-size:11px;font-weight:900;letter-spacing:0.05em;margin-bottom:8px;">【連絡方法】</label>
-        <div style="display:flex;gap:16px;align-items:center;padding:4px 0;">
-          <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
-            <input type="radio" name="contact-method" value="LINE" checked style="accent-color:#2563eb;cursor:pointer;"> LINE
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
-            <input type="radio" name="contact-method" value="電話" style="accent-color:#2563eb;cursor:pointer;"> 電話
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
-            <input type="radio" name="contact-method" value="メール" style="accent-color:#2563eb;cursor:pointer;"> メール
-          </label>
-        </div>
-      </div>
-
-      <div style="margin-bottom:24px;">
-        <label style="display:block;color:rgba(255,255,255,0.45);font-size:11px;font-weight:900;letter-spacing:0.05em;margin-bottom:8px;">【連絡先】</label>
-        <input type="text" id="transfer-contact-value" placeholder="LINE ID"
-          style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px 14px;color:white;font-size:14px;font-weight:700;outline:none;" />
-      </div>
-
-      <div style="display:flex;gap:10px;">
-        <button id="dyn-cancel"
-          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:14px;padding:14px 8px;font-size:13px;font-weight:900;cursor:pointer;transition:transform 0.12s ease, opacity 0.12s ease;"
-          onpointerdown="this.style.transform='scale(0.94)'; this.style.opacity='0.7';"
-          onpointerup="this.style.transform='scale(1)'; this.style.opacity='1';"
-          onpointerleave="this.style.transform='scale(1)'; this.style.opacity='1';">キャンセル</button>
-        <button id="dyn-submit" class="btn-neu"
-          style="flex:2;background:#2563eb;border:none;color:white;border-radius:14px;padding:14px 8px;font-size:13px;font-weight:900;cursor:pointer;transition:transform 0.12s ease, opacity 0.12s ease;"
-          onpointerdown="this.style.transform='scale(0.96)'; this.style.opacity='0.85';"
-          onpointerup="this.style.transform='scale(1)'; this.style.opacity='1';"
-          onpointerleave="this.style.transform='scale(1)'; this.style.opacity='1';">受渡要請を送る</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  const contactValueInput = document.getElementById('transfer-contact-value');
-  const methodPlaceholders = {
-    'LINE': 'LINE ID',
-    '電話': '電話番号',
-    'メール': 'メールアドレス'
-  };
-
-  document.querySelectorAll('input[name="contact-method"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      if (contactValueInput) {
-        contactValueInput.placeholder = methodPlaceholders[e.target.value] || '連絡先を入力';
+      const val = TransferModule.validateContact(contactMethod, contactValue);
+      if (!val.valid) {
+        alert(val.message);
+        TransferView.focusContactInput();
+        return;
       }
-    });
-  });
 
-  document.getElementById('dyn-cancel').addEventListener('click', () => overlay.remove());
+      // 認証待機前から二重送信防止ロックを有効化 (Pre-Auth In-Flight Lock)
+      TransferView.setSubmittingState(true);
+      TransferModule.setSubmitting(true);
 
-  let isSubmittingTransfer = false;
-  document.getElementById('dyn-submit').addEventListener('click', async () => {
-    if (isSubmittingTransfer) return;
+      try {
+        await waitForIdentityVerified();
+      } catch (authErr) {
+        if (!TransferModule.isSessionActive(sessionId)) return;
+        alert("本人確認が完了していないため要請を送信できません。");
+        TransferView.setSubmittingState(false);
+        TransferModule.setSubmitting(false);
+        return;
+      }
 
-    const contactValueInput = document.getElementById('transfer-contact-value');
-    const contactValue = contactValueInput ? contactValueInput.value.trim() : '';
+      if (!TransferModule.isSessionActive(sessionId)) return;
 
-    if (!contactValue) {
-      alert('連絡先を入力してください。');
-      if (contactValueInput) contactValueInput.focus();
-      return;
-    }
+      const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+      const requestUserId = userInfo.id ? String(userInfo.id).trim() : 'UNKNOWN';
+      const requestId = window.generateRequestId ? window.generateRequestId('req_tr') : `req_tr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    const methodRadio = document.querySelector('input[name="contact-method"]:checked');
-    const contactMethod = methodRadio ? methodRadio.value : 'LINE';
-
-    const btn = document.getElementById('dyn-submit');
-    if (btn) { btn.textContent = '送信中...'; btn.disabled = true; }
-    isSubmittingTransfer = true;
-
-    try {
-      await waitForIdentityVerified();
-    } catch (authErr) {
-      alert("本人確認が完了していないため要請を送信できません。");
-      if (btn) { btn.textContent = '要請を送信する'; btn.disabled = false; }
-      isSubmittingTransfer = false;
-      return;
-    }
-
-    const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-    const requestUserId = userInfo.id ? String(userInfo.id).trim() : 'UNKNOWN';
-    const requestId = window.generateRequestId ? window.generateRequestId('req_tr') : `req_tr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-    try {
-      const res = await callApiPost('requestFlyerTransfer', {
-        requestId: requestId,
-        requestUserId: requestUserId,
-        holderUserId: currentTransferRequest.holderUserId,
-        storageId: currentTransferRequest.storageId || '',
+      const result = await TransferModule.submitTransferRequest({
+        sessionId: sessionId,
         contactMethod: contactMethod,
-        contactValue: contactValue
+        contactValue: contactValue,
+        requestUserId: requestUserId,
+        requestId: requestId
       });
 
-      overlay.remove();
-      if (res && (res.status === 'SENT' || res.status === 'SKIPPED_NO_LINE_ID')) {
-        alert('✅ 受渡要請を送信しました！\n保管者に通知されます。');
-      } else if (res && res.status === 'UNKNOWN') {
-        alert('⚠️ 送信結果を確認できませんでした。\n通信状態をご確認のうえ、二重送信を防ぐためしばらくお待ちください。');
-      } else {
-        alert('送信に失敗しました: ' + (res ? res.message : 'Unknown error'));
+      if (result.aborted) {
+        // 世代不一致（閉じる→再表示等）の場合は新しいダイアログへ作用させず静かに破棄
+        return;
       }
-    } catch(err) {
-      alert('通信エラー: ' + err.message);
-      isSubmittingTransfer = false;
-      if (btn) { btn.textContent = '受渡要請を送る'; btn.disabled = false; }
+
+      if (result.success) {
+        TransferView.closeDialog();
+        const res = result.res;
+        if (res && (res.status === 'SENT' || res.status === 'SKIPPED_NO_LINE_ID')) {
+          alert('✅ 受渡要請を送信しました！\n保管者に通知されます。');
+        } else if (res && res.status === 'UNKNOWN') {
+          alert('⚠️ 送信結果を確認できませんでした。\n通信状態をご確認のうえ、二重送信を防ぐためしばらくお待ちください。');
+        } else {
+          alert('送信に失敗しました: ' + (res ? res.message : 'Unknown error'));
+        }
+      } else {
+        alert('通信エラー: ' + (result.error ? result.error.message : 'Unknown error'));
+        TransferView.setSubmittingState(false);
+      }
     }
   });
 };
 
 window.closeTransferRequestDialog = function() {
-  const d = document.getElementById('dynamic-transfer-dialog');
-  if (d) d.remove();
+  TransferModule.invalidateSession();
+  TransferView.closeDialog();
 };
 
 window.updateBulletinCharCount = function(textarea) {

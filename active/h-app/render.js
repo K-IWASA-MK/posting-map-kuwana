@@ -1582,3 +1582,143 @@ window.initMainMap = function() {
     });
   });
 };
+
+// =============================
+// TransferView (Flyer Transfer Request Presentation Component)
+// =============================
+const TransferView = (function() {
+  const methodPlaceholders = {
+    'LINE': 'LINE ID',
+    '電話': '電話番号',
+    'メール': 'メールアドレス'
+  };
+
+  function openDialog(options) {
+    const { displayStorageId, onCancel, onSubmit } = options;
+
+    closeDialog();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'dynamic-transfer-dialog';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,0.85);';
+
+    const safeStorageId = (typeof escapeHtml === 'function')
+      ? escapeHtml(displayStorageId)
+      : String(displayStorageId || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    overlay.innerHTML = `
+      <div style="background:#1C1C1E;border-radius:24px;border:1px solid rgba(255,255,255,0.12);padding:28px 20px;width:100%;max-width:340px;box-sizing:border-box;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="font-size:24px;margin-bottom:8px;">📦</div>
+          <div style="color:white;font-size:16px;font-weight:900;letter-spacing:0.05em;">受渡要請</div>
+        </div>
+        <div style="color:rgba(255,255,255,0.7);font-size:13px;font-weight:700;margin-bottom:20px;line-height:1.5;text-align:left;">
+          ${safeStorageId}さんとの<br>連絡方法を入力してください。
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block;color:rgba(255,255,255,0.45);font-size:11px;font-weight:900;letter-spacing:0.05em;margin-bottom:8px;">【連絡方法】</label>
+          <div style="display:flex;gap:16px;align-items:center;padding:4px 0;">
+            <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
+              <input type="radio" name="contact-method" value="LINE" checked style="accent-color:#2563eb;cursor:pointer;"> LINE
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
+              <input type="radio" name="contact-method" value="電話" style="accent-color:#2563eb;cursor:pointer;"> 電話
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
+              <input type="radio" name="contact-method" value="メール" style="accent-color:#2563eb;cursor:pointer;"> メール
+            </label>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <label style="display:block;color:rgba(255,255,255,0.45);font-size:11px;font-weight:900;letter-spacing:0.05em;margin-bottom:8px;">【連絡先】</label>
+          <input type="text" id="transfer-contact-value" placeholder="LINE ID"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px 14px;color:white;font-size:14px;font-weight:700;outline:none;" />
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <button id="dyn-cancel"
+            style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:14px;padding:14px 8px;font-size:13px;font-weight:900;cursor:pointer;transition:transform 0.12s ease, opacity 0.12s ease;"
+            onpointerdown="this.style.transform='scale(0.94)'; this.style.opacity='0.7';"
+            onpointerup="this.style.transform='scale(1)'; this.style.opacity='1';"
+            onpointerleave="this.style.transform='scale(1)'; this.style.opacity='1';">キャンセル</button>
+          <button id="dyn-submit" class="btn-neu"
+            style="flex:2;background:#2563eb;border:none;color:white;border-radius:14px;padding:14px 8px;font-size:13px;font-weight:900;cursor:pointer;transition:transform 0.12s ease, opacity 0.12s ease;"
+            onpointerdown="this.style.transform='scale(0.96)'; this.style.opacity='0.85';"
+            onpointerup="this.style.transform='scale(1)'; this.style.opacity='1';"
+            onpointerleave="this.style.transform='scale(1)'; this.style.opacity='1';">受渡要請を送る</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const contactValueInput = document.getElementById('transfer-contact-value');
+
+    overlay.querySelectorAll('input[name="contact-method"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (contactValueInput) {
+          contactValueInput.placeholder = methodPlaceholders[e.target.value] || '連絡先を入力';
+        }
+      });
+    });
+
+    const cancelBtn = document.getElementById('dyn-cancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        closeDialog();
+        if (typeof onCancel === 'function') onCancel();
+      });
+    }
+
+    const submitBtn = document.getElementById('dyn-submit');
+    if (submitBtn) {
+      submitBtn.addEventListener('click', async () => {
+        const contactVal = contactValueInput ? contactValueInput.value.trim() : '';
+        const methodRadio = overlay.querySelector('input[name="contact-method"]:checked');
+        const contactMethod = methodRadio ? methodRadio.value : 'LINE';
+
+        if (typeof onSubmit === 'function') {
+          await onSubmit({ contactMethod, contactValue: contactVal });
+        }
+      });
+    }
+
+    return overlay;
+  }
+
+  function closeDialog() {
+    const prev = document.getElementById('dynamic-transfer-dialog');
+    if (prev) {
+      prev.remove();
+      return true;
+    }
+    return false;
+  }
+
+  function setSubmittingState(isSubmitting) {
+    const btn = document.getElementById('dyn-submit');
+    if (!btn) return;
+    if (isSubmitting) {
+      btn.textContent = '送信中...';
+      btn.disabled = true;
+    } else {
+      btn.textContent = '受渡要請を送る';
+      btn.disabled = false;
+    }
+  }
+
+  function focusContactInput() {
+    const input = document.getElementById('transfer-contact-value');
+    if (input) input.focus();
+  }
+
+  return {
+    openDialog,
+    closeDialog,
+    setSubmittingState,
+    focusContactInput
+  };
+})();
+

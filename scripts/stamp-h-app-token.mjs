@@ -37,6 +37,7 @@ export const REQUIRED_LOCAL_CODE_ASSETS = [
   '../business/area/address_master_service.js',
   './modules/storage.js',
   './modules/bulletin.js',
+  './modules/transfer.js',
   './app.js',
   './render.js'
 ];

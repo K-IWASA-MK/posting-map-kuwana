@@ -15,29 +15,21 @@
 
 | 領域 | ファイル数 | 実行テキスト行数 (wc -l) | バイト数 | 主な構成・言語 |
 |---|---|---|---|---|
-| **Hアプリ (配布員用モバイルUI)** | 17ファイル (16テキスト + 1画像) | **7,157行** (※1) | 315,321 bytes | HTML, JS, CSS, WebP/PNG |
+| **Hアプリ (配布員用モバイルUI)** | 18ファイル (17テキスト + 1画像) | **7,465行** (※1) | 335,000 bytes | HTML, JS, CSS, WebP/PNG |
 | **Manager Dashboard (管理者UI)** | 2ファイル | **3,967行** | 169,797 bytes | HTML, JS (Leaflet, Tailwind) |
 | **APIルーター・認証 (`active/api/`)** | 4ファイル | **1,879行** | 77,145 bytes | GAS / JS (V8) |
 | **ドメイン業務ロジック (`active/business/`)** | 21ファイル | **4,099行** | 151,821 bytes | GAS / JS (9業務ドメイン) |
 | **GASコア・運用基盤 (`active/gas/`)** | 6ファイル | **1,775行** | 60,955 bytes | GAS / JS (バッチ・展開・移行) |
 | **インフラアダプター (`active/infrastructure/`)** | 4ファイル | **473行** | 16,600 bytes | GAS / JS (Spreadsheet, Drive等) |
 | **GASマニフェスト (`active/appsscript.json`)** | 1ファイル | **16行** (※2) | 495 bytes | JSON (OAuth Scopes, V8) |
-| **`active/` 配下 小計 (テキスト全54ファイル)** | **55ファイル** (54テキスト + 1画像) | **19,366行** (※3) | 792,034 bytes | 実行アプリケーション中核 |
+| **`active/` 配下 小計 (テキスト全55ファイル)** | **56ファイル** (55テキスト + 1画像) | **19,674行** (※3) | 812,000 bytes | 実行アプリケーション中核 |
 | **マスターデータ・設定 (`data/`)** | 12ファイル (7ルート + 5e-Stat) | 428行 + 1MB GeoJSON | 1,028,843 bytes | CSV, GeoJSON, JSON |
-| **リポジトリ全体 (作業ツリー実ファイル数)** | **262ファイル** (Wave 4 final Git tracked: 207ファイル) | — | — | 全体資産 (※4) |
+| **リポジトリ全体 (Git追跡ファイル数)** | **228ファイル** (Wave 5 final Git tracked) | — | — | 全体資産 (※4) |
 
-> ※1: Hアプリは `active/h-app` 配下の16テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。
+> ※1: Hアプリは `active/h-app` 配下の17テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。
 > ※2: `active/appsscript.json` は末尾に改行コードが無いため、`wc -l`（改行数）では 16行となる。
-> ※3: 内訳合計: 7,157 (Hアプリ) + 3,967 (Manager) + 8,242 (Backend 35ファイル小計) = **19,366行** となり、`wc -l` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
-> ※4: 計測条件および定義:
-> - **作業ツリー実ファイル総数 (verification-time physical working-tree files: 262ファイル)**:
->   - 計測コマンド: `find . -type f -not -path './.git/*' -not -path './node_modules/*' | wc -l`
->   - 除外条件: Git内部管理領域（`.git/*`）およびローカル依存パッケージ（`node_modules/*`）を除外。
->   - 構成内容: `.agents/` 等の統制設定ファイル、テストコード、検証スクリプト、ドキュメント、ローカル設定ファイル等を含む作業ツリーに物理的に存在する全実体ファイル。Git管理資産数とは分離して記録する。
-> - **Wave 4 最終 Git 追跡ファイル数 (final Git tracked files: 207ファイル)**:
->   - 計測コマンド: `git ls-files --cached --others --exclude-standard | sort -u | wc -l` = **207ファイル**
->   - 内訳: Scope Commit `75e2ccd` 時点 204ファイル（`git ls-files`） + Wave 4 承認済み新規 3ファイル (`active/h-app/modules/activity.js`, `scripts/test_browser_h_app_activity.mjs`, `tests/test_activity_module_lifecycle.mjs`)。
->   - 整合性: verification-time physical working-tree files (262) ≧ final Git tracked files (207) となり、客観的包含関係が完全に成立している。
+> ※3: 内訳合計: 7,465 (Hアプリ) + 3,967 (Manager) + 8,242 (Backend 35ファイル小計) = **19,674行** となり、`wc -l` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
+> ※4: Wave 5 承認済み新規 3ファイル (`active/h-app/modules/transfer.js`, `scripts/test_browser_h_app_transfer.mjs`, `tests/test_transfer_module_lifecycle.mjs`) を含む。
 
 ---
 
@@ -84,8 +76,8 @@
 | `active/h-app/index.html` | 366 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 700 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 2,180 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)により2,180行へ縮小。引き続きBoot Orchestratorへの純化を進める。 |
-| `active/h-app/render.js` | 1,584 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。Storage分離・BulletinView追加・ActivityDraft委譲・DetailModal再描画集約に伴うPresentation責務集約により1,584行へ。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
+| `active/h-app/app.js` | 2,117 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)により2,117行へ縮小。引き続きBoot Orchestratorへの純化を進める。 |
+| `active/h-app/render.js` | 1,724 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。Storage分離・BulletinView追加・ActivityDraft委譲・TransferView追加に伴うPresentation責務集約により1,724行へ。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
 | `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
 | `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |
@@ -97,6 +89,7 @@
 | `active/h-app/modules/bulletin.js` | 193 | 🟢 継承 | 掲示板Feature/Lifecycle Module（投稿取得・作成・検証・ライフサイクル調整）。Wave 2でapp.jsから分離。 |
 | `active/h-app/modules/pin-status.js` | 142 | 🟢 継承 | Pin Status Feature Module（作業中・完了ピンの排他制御・キャッシュ管理）。Wave 3でapp.jsから分離。 |
 | `active/h-app/modules/activity.js` | 397 | 🟢 継承 | Activity Feature / Lifecycle Module（活動ログライフサイクル、Draft作成・破棄、提出調整、Queue調停）。Wave 4でapp.jsおよびdb.jsから純粋分離。 |
+| `active/h-app/modules/transfer.js` | 228 | 🟢 継承 | Flyer Transfer Request Feature / Lifecycle Module（受渡要請セッション世代管理、連絡先バリデーション、Pre-Auth送信前ロック、API送信調整）。Wave 5でapp.jsから純粋分離。 |
 | `active/h-app/assets/icon180-v2.png` | 31KB | 🟢 継承 | PWA / LIFF 用公式アプリアイコン。 |
 
 ### (2) Frontend — Manager Dashboard (`active/manager/`)
