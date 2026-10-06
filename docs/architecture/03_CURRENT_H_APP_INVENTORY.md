@@ -15,21 +15,21 @@
 
 | 領域 | ファイル数 | 実行テキスト行数 (wc -l) | バイト数 | 主な構成・言語 |
 |---|---|---|---|---|
-| **Hアプリ (配布員用モバイルUI)** | 18ファイル (17テキスト + 1画像) | **7,788行** (※1) | 340,000 bytes | HTML, JS, CSS, WebP/PNG |
+| **Hアプリ (配布員用モバイルUI)** | 19ファイル (18テキスト + 1画像) | **7,908行** (※1) | 345,000 bytes | HTML, JS, CSS, WebP/PNG |
 | **Manager Dashboard (管理者UI)** | 2ファイル | **3,967行** | 169,797 bytes | HTML, JS (Leaflet, Tailwind) |
 | **APIルーター・認証 (`active/api/`)** | 4ファイル | **1,879行** | 77,145 bytes | GAS / JS (V8) |
 | **ドメイン業務ロジック (`active/business/`)** | 21ファイル | **4,099行** | 151,821 bytes | GAS / JS (9業務ドメイン) |
 | **GASコア・運用基盤 (`active/gas/`)** | 6ファイル | **1,775行** | 60,955 bytes | GAS / JS (バッチ・展開・移行) |
 | **インフラアダプター (`active/infrastructure/`)** | 4ファイル | **473行** | 16,600 bytes | GAS / JS (Spreadsheet, Drive等) |
 | **GASマニフェスト (`active/appsscript.json`)** | 1ファイル | **16行** (※2) | 495 bytes | JSON (OAuth Scopes, V8) |
-| **`active/` 配下 小計 (テキスト全55ファイル)** | **56ファイル** (55テキスト + 1画像) | **19,997行** (※3) | 817,000 bytes | 実行アプリケーション中核 |
+| **`active/` 配下 小計 (テキスト全56ファイル)** | **57ファイル** (56テキスト + 1画像) | **20,117行** (※3) | 822,000 bytes | 実行アプリケーション中核 |
 | **マスターデータ・設定 (`data/`)** | 12ファイル (7ルート + 5e-Stat) | 428行 + 1MB GeoJSON | 1,028,843 bytes | CSV, GeoJSON, JSON |
-| **リポジトリ全体 (Git追跡ファイル数)** | **228ファイル** (Wave 5 final Git tracked) | — | — | 全体資産 (※4) |
+| **リポジトリ全体 (Git追跡ファイル数)** | **230ファイル** (Wave 10 Git tracked) | — | — | 全体資産 (※4) |
 
-> ※1: Hアプリは `active/h-app` 配下の17テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。
+> ※1: Hアプリは `active/h-app` 配下の18テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。
 > ※2: `active/appsscript.json` は末尾に改行コードが無いため、`wc -l`（改行数）では 16行となる。
-> ※3: 内訳合計: 7,788 (Hアプリ) + 3,967 (Manager) + 8,242 (Backend 35ファイル小計) = **19,997行** となり、`wc -l` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
-> ※4: Wave 5 承認済み新規 3ファイル (`active/h-app/modules/transfer.js`, `scripts/test_browser_h_app_transfer.mjs`, `tests/test_transfer_module_lifecycle.mjs`) を含む。
+> ※3: 内訳合計: 7,908 (Hアプリ) + 3,967 (Manager) + 8,242 (Backend 35ファイル小計) = **20,117行** となり、`wc -l` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
+> ※4: Wave 10 承認済み新規 3ファイル (`active/h-app/modules/ranking.js`, `scripts/test_browser_h_app_ranking.mjs`, `tests/test_ranking_module_lifecycle.mjs`) を含む。
 
 ---
 
@@ -73,19 +73,20 @@
 | ファイル / コンポーネント | 行数 | 分類 | 分類理由・現物根拠 |
 |---|---|---|---|
 | `index.html` (ルート) | 43 | 🟡 再構築 | LIFF初期化とリダイレクトを担う。地区独立ドメインからUniversal共通APIへ接続する構造への最適化が必要。 |
-| `active/h-app/index.html` | 367 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
+| `active/h-app/index.html` | 368 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 700 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 1,811 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)・ID情報モーダル分離(Wave 8)・在庫登録一覧制御分離(Wave 9)により1,811行へ縮小。在庫登録・一覧ページの初期化・送信制御をrender.js（StorageView）へ完全委譲し、app.jsは動的フック注入・配線のComposition Root責務へ純化。 |
-| `active/h-app/render.js` | 2,084 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。StorageView/BulletinView/ActivityDraft/TransferView/NumpadViewのPresentation集約により2,084行へ。Wave 9でStorageViewへinitRegisterPage/initListPage/submitRegisterFormを集約し、認可必須検証・入力保護・多重送信抑止・キャッシュ追従画面制御を完備。 |
+| `active/h-app/app.js` | 1,775 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)・ID情報モーダル分離(Wave 8)・在庫登録一覧制御分離(Wave 9)・ランキング制御分離(Wave 10)により1,775行へ縮小。ランキングデータ・本人サマリ管理および通信（RankingModule）と画面表示（RankingView）へ完全委譲し、app.jsからはgetRanking呼出しおよび関連状態を完全排除して薄い配線ラッパーへ純化。 |
+| `active/h-app/render.js` | 2,178 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。StorageView/BulletinView/ActivityDraft/TransferView/NumpadView/RankingViewのPresentation集約により2,178行へ。Wave 10でRankingView新設（initPage/renderLoading/renderEmpty/renderError/renderSuccess）を集約し、4状態制御およびキャッシュ同期即時反映を完備。 |
 | `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
-| `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。INV-004（活動意欲支援機能として維持）に準拠。 |
+| `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。引数 mySummary 優先参照化により window._myRankingSummary へのグローバル暗黙依存を完全排除し、純粋関数として純化。 |
 | `active/h-app/components/staff.js` | 253 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）およびID情報モーダル（StaffIdInfoView: Terms/Privacy/License）。Wave 8でapp.jsからID情報モーダル文面・開閉Presentationを純粋集約。 |
 | `active/h-app/modules/api.js` | 232 | 🟡 再構築 | `PMS_CLIENT_CONFIG.api.gasWebAppUrl` 経由のPOST通信。認証ヘッダー・共通エラーハンドリングの標準化が必要。 |
 | `active/h-app/modules/device.js` | 122 | 🟢 継承 | 高精度GPS取得（`getGPSLocation`）および写真撮影・クライアント側画像圧縮（`compressImage`）。 |
 | `active/h-app/modules/navigation.js` | 124 | 🟢 継承 | 画面遷移（`switchPage`）・スクロール位置保持・ナビ切り替え。 |
 | `active/h-app/modules/storage.js` | 120 | 🟢 継承 | チラシ在庫・保管場所データアクセスおよびキャッシュ管理。Wave 1でapp.jsから分離。 |
+| `active/h-app/modules/ranking.js` | 61 | 🟢 継承 | Ranking Feature Module（ランキングデータ・本人サマリ・取得状態・通信中Promiseの非公開カプセル化管理、In-flight多重呼出し防止、応答形式不正時のエラー送出、fetchRanking/getSnapshotのみ公開）。Wave 10で新設。 |
 | `active/h-app/modules/bulletin.js` | 193 | 🟢 継承 | 掲示板Feature/Lifecycle Module（投稿取得・作成・検証・ライフサイクル調整）。Wave 2でapp.jsから分離。 |
 | `active/h-app/modules/pin-status.js` | 142 | 🟢 継承 | Pin Status Feature Module（作業中・完了ピンの排他制御・キャッシュ管理）。Wave 3でapp.jsから分離。 |
 | `active/h-app/modules/activity.js` | 497 | 🟢 継承 | Activity Feature / Lifecycle Module（活動ログライフサイクル、Draft作成・破棄、提出調整、Queue調停、下書き開始非同期フロー調整）。Wave 4でapp.jsおよびdb.jsから純粋分離。Wave 7で下書き開始非同期フロー（startDraftWorkflow）を集約し、端末API/DOM/Storage非依存の純粋オーケストレータとして拡充。 |

@@ -44,11 +44,8 @@ window.onunhandledrejection = function(event) {
   logDebug(`UNHANDLED PROMISE: ${event.reason}`);
 };
 
-let allPoints = [], rankingData = [];
-let _rankingFetched = false;  // ランキング遅延取得済みフラグ
-
+{ var allPoints = []; }
 let currentCity = null;
-window.activeRankingPromise = null;
 
 
 // ─── グローバル・ローディング二重制御ヘルパー ─────────────────────
@@ -533,28 +530,7 @@ async function loadData(skipSync = false) {
   }
 }
 
-// ランキングデータのバックグラウンド先読み関数
-function prefetchRanking() {
-  window.activeRankingPromise = callApiPost('getRanking')
-    .then(data => {
-      if (data && data.success) {
-        rankingData = data.ranking || [];
-        window._myRankingSummary = data.mySummary || null;
-        _rankingFetched = true;
-        logDebug("[prefetchRanking] Ranking pre-fetched in background.");
-        // 現在ランキングページを表示中であれば再描画
-        const activePage = document.querySelector('.page:not(.hidden)');
-        if (activePage && activePage.id === 'page-ranking' && typeof renderRanking === 'function') {
-          renderRanking();
-        }
-      }
-      return data;
-    })
-    .catch(err => {
-      logDebug("[prefetchRanking] Failed to pre-fetch ranking: " + err.message);
-      return null;
-    });
-}
+
 
 let numpadContext = null;
 
@@ -859,29 +835,17 @@ window.onPageEnter = function(id) {
   }
 };
 
+// ランキングページ制御 (Wave 10: RankingModule & RankingView へ委譲)
 function initRankingPage() {
-  const container = $('ranking-list');
-  if (!_rankingFetched) {
-    if (container) {
-      container.innerHTML = `
-        <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
-          <div class="w-8 h-8 rounded-full border-2 border-[#2563eb]/40 border-t-[#2563eb] animate-spin"></div>
-          <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Leaderboard...</p>
-        </div>`;
-    }
-    const p = window.activeRankingPromise || callApiPost('getRanking');
-    p.then(data => {
-      if (data && data.success) {
-        rankingData = data.ranking || [];
-        window._myRankingSummary = data.mySummary || null;
-        _rankingFetched = true;
-      }
-      if (typeof renderRanking === 'function') renderRanking();
-    }).catch(() => {
-      if (typeof renderRanking === 'function') renderRanking();
+  if (typeof RankingView !== 'undefined' && typeof RankingView.initPage === 'function' && typeof RankingModule !== 'undefined') {
+    RankingView.initPage({
+      rankingModule: RankingModule,
+      getMyStaffId: () => {
+        const u = JSON.parse(localStorage.getItem('user_info') || '{}');
+        return u.id ? String(u.id).trim() : '';
+      },
+      renderCard: typeof window.renderRankingCard === 'function' ? window.renderRankingCard : null
     });
-  } else {
-    if (typeof renderRanking === 'function') renderRanking();
   }
 }
 

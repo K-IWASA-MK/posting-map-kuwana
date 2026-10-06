@@ -918,17 +918,19 @@ function renderSettings() {
   container.innerHTML = staffCardHtml;
 }
 
-function renderRanking() {
-  const container = $('ranking-list');
-  if (!container) return;
+// --- Ranking Presentation View ---
+const RankingView = (function() {
+  function renderLoading(container) {
+    if (!container) return;
+    container.innerHTML = `
+      <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+        <div class="w-8 h-8 rounded-full border-2 border-[#2563eb]/40 border-t-[#2563eb] animate-spin"></div>
+        <p class="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Loading Leaderboard...</p>
+      </div>`;
+  }
 
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const myStaffId = userInfo.id ? String(userInfo.id).trim() : '';
-
-  // APIから取得した実データを優先的に使用
-  const displayRanking = (typeof rankingData !== 'undefined' && rankingData) ? rankingData : [];
-
-  if (displayRanking.length === 0) {
+  function renderEmpty(container) {
+    if (!container) return;
     container.innerHTML = `
       <div style="border: 1px solid rgba(255, 255, 255, 0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
         <span class="text-3xl">🏆</span>
@@ -937,13 +939,105 @@ function renderRanking() {
           ポスティング完了が記録されると<br>
           ここにランキングが表示されます
         </p>
-      </div>
-    `;
-    return;
+      </div>`;
   }
 
-  const rankingContentHtml = renderRankingCard(displayRanking, myStaffId);
-  container.innerHTML = rankingContentHtml;
+  function renderError(container, errorMessage = '') {
+    if (!container) return;
+    container.innerHTML = `
+      <div style="border: 1px solid rgba(255,255,255,0.04);" class="premium-glass p-8 flex flex-col items-center justify-center text-center gap-3">
+        <span class="text-2xl">⚠️</span>
+        <p class="text-sm font-black text-white/60">ランキングの取得に失敗しました</p>
+        <p class="text-[10px] text-white/40 font-mono">${errorMessage ? String(errorMessage).replace(/&/g,'&amp;').replace(/</g,'&lt;') : '通信環境をご確認ください'}</p>
+      </div>`;
+  }
+
+  function renderSuccess(container, rankingData, mySummary, myStaffId, renderCardFn) {
+    if (!container) return;
+    const cardFn = (typeof renderCardFn === 'function') ? renderCardFn : (typeof renderRankingCard === 'function' ? renderRankingCard : null);
+    const cardHtml = cardFn ? cardFn(rankingData, myStaffId, mySummary) : '';
+    container.innerHTML = cardHtml;
+  }
+
+  async function initPage(hooks = {}) {
+    const {
+      rankingModule,
+      getMyStaffId = () => '',
+      renderCard = (typeof renderRankingCard === 'function' ? renderRankingCard : null)
+    } = hooks;
+
+    if (!rankingModule || typeof rankingModule.fetchRanking !== 'function') {
+      throw new Error('[RankingView.initPage] rankingModule is required.');
+    }
+
+    const container = $('ranking-list');
+    if (!container) return;
+
+    const snapshot = rankingModule.getSnapshot();
+    const myStaffId = typeof getMyStaffId === 'function' ? getMyStaffId() : '';
+
+    // ① キャッシュ存在時: API通信を待たずに即時同期描画
+    if (snapshot.fetched) {
+      if (Array.isArray(snapshot.ranking) && snapshot.ranking.length === 0) {
+        renderEmpty(container);
+      } else if (Array.isArray(snapshot.ranking)) {
+        renderSuccess(container, snapshot.ranking, snapshot.mySummary, myStaffId, renderCard);
+      } else {
+        renderError(container, '応答形式が不正です');
+      }
+      return;
+    }
+
+    // ② 未取得時: Loading UI を表示してデータ取得
+    renderLoading(container);
+
+    try {
+      const result = await rankingModule.fetchRanking();
+      const currentStaffId = typeof getMyStaffId === 'function' ? getMyStaffId() : '';
+      if (result && Array.isArray(result.ranking) && result.ranking.length === 0) {
+        renderEmpty(container);
+      } else if (result && Array.isArray(result.ranking)) {
+        renderSuccess(container, result.ranking, result.mySummary, currentStaffId, renderCard);
+      } else {
+        renderError(container, '応答形式が不正です');
+      }
+    } catch (err) {
+      renderError(container, err ? (err.message || '') : '');
+    }
+  }
+
+  return {
+    initPage,
+    renderLoading,
+    renderEmpty,
+    renderError,
+    renderSuccess
+  };
+})();
+
+function renderRanking() {
+  const container = $('ranking-list');
+  if (!container) return;
+
+  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+  const myStaffId = userInfo.id ? String(userInfo.id).trim() : '';
+
+  if (typeof RankingModule !== 'undefined' && typeof RankingView !== 'undefined') {
+    const snap = RankingModule.getSnapshot();
+    if (snap.fetched) {
+      if (Array.isArray(snap.ranking) && snap.ranking.length === 0) {
+        RankingView.renderEmpty(container);
+      } else if (Array.isArray(snap.ranking)) {
+        const cardFn = typeof renderRankingCard === 'function' ? renderRankingCard : null;
+        RankingView.renderSuccess(container, snap.ranking, snap.mySummary, myStaffId, cardFn);
+      } else {
+        RankingView.renderError(container, '応答形式が不正です');
+      }
+      return;
+    }
+  }
+
+  RankingView.renderEmpty(container);
 }
 
 // チラシ保管状況の描画処理

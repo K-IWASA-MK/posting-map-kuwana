@@ -1,14 +1,14 @@
 // POSTING MAP Component: ranking.js (Stateless, API-free rendering)
-window.renderRankingCard = function(rankingData, myStaffId) {
+window.renderRankingCard = function(rankingData, myStaffId, mySummary = null) {
   if (!rankingData || !Array.isArray(rankingData)) return '';
 
   let myRank = -1;
   let myCount = 0;
 
-  // Backend提供の集計サマリまたは isMe フラグを優先（staffIdによるクライアント側突合を廃止）
-  if (typeof window !== 'undefined' && window._myRankingSummary) {
-    myRank = window._myRankingSummary.rank || -1;
-    myCount = window._myRankingSummary.count || 0;
+  // 引数 mySummary を優先参照（グローバル暗黙参照 window._myRankingSummary を完全排除）
+  if (mySummary && typeof mySummary === 'object') {
+    myRank = mySummary.rank || -1;
+    myCount = mySummary.count || 0;
   } else {
     const meItem = rankingData.find(r => r.isMe === true) || (myStaffId ? rankingData.find(r => r.staffId === myStaffId) : null);
     if (meItem) {
