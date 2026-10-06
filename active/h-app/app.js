@@ -885,178 +885,40 @@ function initRankingPage() {
   }
 }
 
+// 在庫登録・一覧ページ制御 (Wave 9: StorageView へ委譲)
 function initStorageRegisterPage() {
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const staffId = userInfo.id || '';
-  const staffName = `${userInfo.last || ''} ${userInfo.first || ''}`.trim();
-  const idEl = $('storage-register-staff-id');
-  const nameEl = $('storage-register-staff-name');
-
-  if (idEl) {
-    if (staffId) {
-      idEl.textContent = 'ID: ' + staffId;
-      idEl.style.color = 'inherit';
-      idEl.style.cursor = 'default';
-      idEl.onclick = null;
-    } else if (isRegistering) {
-      idEl.textContent = 'ID: 登録中...';
-      idEl.style.color = 'inherit';
-      idEl.style.cursor = 'default';
-      idEl.onclick = null;
-    } else if (registrationError) {
-      idEl.textContent = 'ID: 登録失敗 (タップして再試行)';
-      idEl.style.color = '#ef4444';
-      idEl.style.cursor = 'pointer';
-      idEl.onclick = async () => {
-        try {
-          idEl.textContent = 'ID: 再登録中...';
-          idEl.style.color = 'inherit';
-          const profile = await liff.getProfile();
-          triggerBackgroundRegistration(profile);
-        } catch(e) {
-          idEl.textContent = 'ID: 登録失敗 (タップして再試行)';
-          idEl.style.color = '#ef4444';
-        }
-      };
-    } else {
-      idEl.textContent = 'ID: ---';
-      idEl.style.color = 'inherit';
-      idEl.style.cursor = 'default';
-      idEl.onclick = null;
-    }
-  }
-  if (nameEl) nameEl.textContent = staffName || '---';
-
-  const countInput = $('storage-register-count');
-  StorageView.setupRegisterInputFormatter(countInput);
-
-  const locSelect = $('storage-register-location');
-  if (locSelect && !locSelect.dataset.changeBound) {
-    locSelect.dataset.changeBound = 'true';
-    locSelect.addEventListener('change', function() {
-      this.dataset.userSelected = 'true';
-      StorageView.updateLocationDisplayText();
+  if (typeof StorageView !== 'undefined' && typeof StorageView.initRegisterPage === 'function') {
+    StorageView.initRegisterPage({
+      getUserInfo: () => JSON.parse(localStorage.getItem('user_info') || '{}'),
+      getRegistrationStatus: () => ({ isRegistering, registrationError }),
+      onRetryRegistration: async () => {
+        const profile = await liff.getProfile();
+        triggerBackgroundRegistration(profile);
+      },
+      getTier1Cache: () => (typeof tier1Cache !== 'undefined' ? tier1Cache : null),
+      storageModule: StorageModule
     });
   }
-
-  StorageView.updateLocationDropdown(StorageModule.getSnapshot().locations, null, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
-
-  const snapshot = StorageModule.getSnapshot();
-  if (!snapshot.locations) {
-    StorageModule.getLocations().then(cities => {
-      StorageView.updateLocationDropdown(cities, null, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
-    });
-  }
-
-  if (snapshot.fetched && Array.isArray(snapshot.stocks) && snapshot.stocks.length > 0) {
-    StorageView.applyMyStockToForm(snapshot, { isAsyncResponse: false });
-  }
-
-  if (staffId && countInput) {
-    StorageModule.fetchStock().then(data => {
-      if (data && data.success && Array.isArray(data.stocks)) {
-        StorageView.applyMyStockToForm(StorageModule.getSnapshot(), { isAsyncResponse: true });
-      }
-    }).catch(err => {
-      console.warn('[initStorageRegisterPage] fetchFlyerStock failed:', err);
-      StorageView.updateCountDisplay();
-      StorageView.updateRegisterButtonText();
-    });
-  }
-
-  StorageView.updateCountDisplay();
-  StorageView.updateRegisterButtonText();
 }
 
 function initStorageListPage() {
-  const listContainer = $('storage-list-container');
-  const snapshot = StorageModule.getSnapshot();
-
-  if (!snapshot.fetched) {
-    StorageView.renderLoadingUI(listContainer);
-    StorageModule.fetchStock().then(data => {
-      if (data && data.success) {
-        if (typeof renderStorageList === 'function') renderStorageList(StorageModule.getSnapshot().stocks, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
-      } else if (data === null) {
-        if (typeof renderStorageList === 'function') renderStorageList(StorageModule.getSnapshot().stocks, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
-      } else {
-        StorageView.renderFetchFailedUI(listContainer);
-      }
-    }).catch(err => {
-      StorageView.renderErrorUI(listContainer);
+  if (typeof StorageView !== 'undefined' && typeof StorageView.initListPage === 'function') {
+    StorageView.initListPage({
+      getTier1Cache: () => (typeof tier1Cache !== 'undefined' ? tier1Cache : null),
+      storageModule: StorageModule,
+      renderList: typeof renderStorageList === 'function' ? renderStorageList : null
     });
-  } else {
-    if (typeof renderStorageList === 'function') renderStorageList(snapshot.stocks, typeof tier1Cache !== 'undefined' ? tier1Cache : null);
   }
 }
 
-// 在庫登録フォームの処理
+// 在庫登録フォームの処理 (Wave 9: StorageView へ委譲)
 window.submitFlyerStock = async function() {
-  const locSelect = $('storage-register-location');
-  const countInput = $('storage-register-count');
-  const btn = $('btn-storage-register-submit');
-
-  if (!locSelect || !countInput || !btn) return;
-
-  const location = locSelect.value;
-  const count = parseInt(String(countInput.value).replace(/,/g, '').replace(/枚/g, ''), 10);
-
-  if (!location) {
-    alert("保管場所を選択してください。");
-    return;
-  }
-  if (isNaN(count) || count < 0) {
-    alert("正しい枚数を入力してください。");
-    return;
-  }
-
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const staffId = userInfo.id || '';
-  const staffName = `${userInfo.last || ''} ${userInfo.first || ''}`.trim();
-
-  if (!staffId || !staffName) {
-    alert("ID情報がありません。ID登録を行ってください。");
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = "更新中...";
-
-  try {
-    await waitForIdentityVerified();
-  } catch (authErr) {
-    alert("本人確認が完了していないか、未登録のため更新できません。");
-    btn.disabled = false;
-    btn.textContent = "チラシ枚数を更新";
-    return;
-  }
-
-  try {
-    const res = await StorageModule.updateStock({
-      location: location,
-      count: count,
-      staffName: staffName,
-      staffId: staffId
+  if (typeof StorageView !== 'undefined' && typeof StorageView.submitRegisterForm === 'function') {
+    return await StorageView.submitRegisterForm({
+      authorize: () => waitForIdentityVerified(),
+      getUserInfo: () => JSON.parse(localStorage.getItem('user_info') || '{}'),
+      storageModule: StorageModule
     });
-
-    if (res && res.success) {
-      alert("✓ チラシ枚数を更新しました");
-      if (countInput) delete countInput.dataset.userEditing;
-      if (locSelect) delete locSelect.dataset.userSelected;
-    } else {
-      alert("更新に失敗しました: " + (res.message || "エラー"));
-    }
-  } catch (e) {
-    alert("エラーが発生しました: " + e.message);
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      if (typeof StorageView !== 'undefined' && typeof StorageView.updateRegisterButtonText === 'function') {
-        StorageView.updateRegisterButtonText();
-      } else {
-        btn.textContent = "チラシ枚数を更新する";
-      }
-    }
   }
 };
 

@@ -211,6 +211,257 @@ const StorageView = (function() {
       </div>`;
   }
 
+  let _isSubmitting = false;
+
+  /**
+   * 在庫登録ページの初期化
+   * @param {Object} hooks
+   */
+  function initRegisterPage(hooks = {}) {
+    const {
+      getUserInfo,
+      getRegistrationStatus = () => ({ isRegistering: false, registrationError: null }),
+      onRetryRegistration = null,
+      getTier1Cache = () => null,
+      storageModule
+    } = hooks;
+
+    if (!storageModule) {
+      throw new Error('[StorageView.initRegisterPage] storageModule is required.');
+    }
+
+    const userInfo = typeof getUserInfo === 'function' ? (getUserInfo() || {}) : {};
+    const staffId = userInfo.id || '';
+    const staffName = `${userInfo.last || ''} ${userInfo.first || ''}`.trim();
+    const idEl = $('storage-register-staff-id');
+    const nameEl = $('storage-register-staff-name');
+
+    const regStatus = typeof getRegistrationStatus === 'function' ? (getRegistrationStatus() || {}) : {};
+    const isRegistering = !!regStatus.isRegistering;
+    const registrationError = regStatus.registrationError;
+
+    if (idEl) {
+      if (staffId) {
+        idEl.textContent = 'ID: ' + staffId;
+        idEl.style.color = 'inherit';
+        idEl.style.cursor = 'default';
+        idEl.onclick = null;
+      } else if (isRegistering) {
+        idEl.textContent = 'ID: 登録中...';
+        idEl.style.color = 'inherit';
+        idEl.style.cursor = 'default';
+        idEl.onclick = null;
+      } else if (registrationError) {
+        idEl.textContent = 'ID: 登録失敗 (タップして再試行)';
+        idEl.style.color = '#ef4444';
+        idEl.style.cursor = 'pointer';
+        idEl.onclick = async () => {
+          if (typeof onRetryRegistration === 'function') {
+            try {
+              idEl.textContent = 'ID: 再登録中...';
+              idEl.style.color = 'inherit';
+              await onRetryRegistration();
+            } catch (e) {
+              idEl.textContent = 'ID: 登録失敗 (タップして再試行)';
+              idEl.style.color = '#ef4444';
+            }
+          }
+        };
+      } else {
+        idEl.textContent = 'ID: ---';
+        idEl.style.color = 'inherit';
+        idEl.style.cursor = 'default';
+        idEl.onclick = null;
+      }
+    }
+    if (nameEl) nameEl.textContent = staffName || '---';
+
+    const countInput = $('storage-register-count');
+    setupRegisterInputFormatter(countInput);
+
+    const locSelect = $('storage-register-location');
+    if (locSelect && !locSelect.dataset.changeBound) {
+      locSelect.dataset.changeBound = 'true';
+      locSelect.addEventListener('change', function() {
+        this.dataset.userSelected = 'true';
+        updateLocationDisplayText();
+      });
+    }
+
+    const tier1 = typeof getTier1Cache === 'function' ? getTier1Cache() : null;
+    updateLocationDropdown(storageModule.getSnapshot().locations, null, tier1);
+
+    const snapshot = storageModule.getSnapshot();
+    if (!snapshot.locations) {
+      storageModule.getLocations().then(cities => {
+        const latestTier1 = typeof getTier1Cache === 'function' ? getTier1Cache() : null;
+        updateLocationDropdown(cities, null, latestTier1);
+      });
+    }
+
+    if (snapshot.fetched && Array.isArray(snapshot.stocks) && snapshot.stocks.length > 0) {
+      applyMyStockToForm(snapshot, { isAsyncResponse: false });
+    }
+
+    if (staffId && countInput) {
+      storageModule.fetchStock().then(data => {
+        if (data && data.success && Array.isArray(data.stocks)) {
+          applyMyStockToForm(storageModule.getSnapshot(), { isAsyncResponse: true });
+        }
+      }).catch(err => {
+        console.warn('[initRegisterPage] fetchFlyerStock failed:', err);
+        updateCountDisplay();
+        updateRegisterButtonText();
+      });
+    }
+
+    updateCountDisplay();
+    updateRegisterButtonText();
+  }
+
+  /**
+   * 在庫一覧ページの初期化
+   * @param {Object} hooks
+   */
+  function initListPage(hooks = {}) {
+    const {
+      getTier1Cache = () => null,
+      storageModule,
+      renderList = (typeof renderStorageList === 'function' ? renderStorageList : null)
+    } = hooks;
+
+    if (!storageModule) {
+      throw new Error('[StorageView.initListPage] storageModule is required.');
+    }
+
+    const listContainer = $('storage-list-container');
+    const snapshot = storageModule.getSnapshot();
+    const tier1 = typeof getTier1Cache === 'function' ? getTier1Cache() : null;
+
+    if (!snapshot.fetched) {
+      renderLoadingUI(listContainer);
+      storageModule.fetchStock().then(data => {
+        const currentTier1 = typeof getTier1Cache === 'function' ? getTier1Cache() : null;
+        if (data && data.success) {
+          if (typeof renderList === 'function') renderList(storageModule.getSnapshot().stocks, currentTier1);
+        } else if (data === null) {
+          if (typeof renderList === 'function') renderList(storageModule.getSnapshot().stocks, currentTier1);
+        } else {
+          renderFetchFailedUI(listContainer);
+        }
+      }).catch(err => {
+        renderErrorUI(listContainer);
+      });
+    } else {
+      if (typeof renderList === 'function') renderList(snapshot.stocks, tier1);
+    }
+  }
+
+  /**
+   * 在庫登録フォームの送信制御
+   * @param {Object} hooks
+   */
+  async function submitRegisterForm(hooks = {}) {
+    if (_isSubmitting) {
+      return null;
+    }
+
+    const {
+      authorize,
+      getUserInfo,
+      storageModule,
+      onSuccess = null,
+      onError = null
+    } = hooks;
+
+    if (!storageModule) {
+      throw new Error('[StorageView.submitRegisterForm] storageModule is required.');
+    }
+
+    const locSelect = $('storage-register-location');
+    const countInput = $('storage-register-count');
+    const btn = $('btn-storage-register-submit');
+
+    if (!locSelect || !countInput || !btn) return null;
+
+    const location = locSelect.value;
+    const count = parseInt(String(countInput.value).replace(/,/g, '').replace(/枚/g, ''), 10);
+
+    if (!location) {
+      alert("保管場所を選択してください。");
+      return null;
+    }
+    if (isNaN(count) || count < 0) {
+      alert("正しい枚数を入力してください。");
+      return null;
+    }
+
+    const userInfo = typeof getUserInfo === 'function' ? (getUserInfo() || {}) : {};
+    const staffId = userInfo.id || '';
+    const staffName = `${userInfo.last || ''} ${userInfo.first || ''}`.trim();
+
+    if (!staffId || !staffName) {
+      alert("ID情報がありません。ID登録を行ってください。");
+      return null;
+    }
+
+    const submittedCountRaw = String(countInput.value).replace(/,/g, '').replace(/枚/g, '').trim();
+    const submittedLocation = location;
+
+    _isSubmitting = true;
+    btn.disabled = true;
+    btn.textContent = "更新中...";
+
+    try {
+      if (typeof authorize === 'function') {
+        await authorize();
+      }
+    } catch (authErr) {
+      alert("本人確認が完了していないか、未登録のため更新できません。");
+      btn.disabled = false;
+      btn.textContent = "チラシ枚数を更新";
+      _isSubmitting = false;
+      return null;
+    }
+
+    try {
+      const res = await storageModule.updateStock({
+        location: location,
+        count: count,
+        staffName: staffName,
+        staffId: staffId
+      });
+
+      if (res && res.success) {
+        alert("✓ チラシ枚数を更新しました");
+        const currentCountRaw = String(countInput.value).replace(/,/g, '').replace(/枚/g, '').trim();
+        if (countInput && currentCountRaw === submittedCountRaw) {
+          delete countInput.dataset.userEditing;
+        }
+        if (locSelect && locSelect.value === submittedLocation) {
+          delete locSelect.dataset.userSelected;
+        }
+        if (typeof onSuccess === 'function') onSuccess(res);
+        return res;
+      } else {
+        const errMsg = res && res.message ? res.message : "エラー";
+        alert("更新に失敗しました: " + errMsg);
+        if (typeof onError === 'function') onError(res);
+        return res;
+      }
+    } catch (e) {
+      alert("エラーが発生しました: " + (e ? e.message : e));
+      if (typeof onError === 'function') onError(e);
+      return null;
+    } finally {
+      _isSubmitting = false;
+      if (btn) {
+        btn.disabled = false;
+        updateRegisterButtonText();
+      }
+    }
+  }
+
   return {
     updateCountDisplay,
     updateRegisterButtonText,
@@ -220,7 +471,10 @@ const StorageView = (function() {
     applyMyStockToForm,
     renderLoadingUI,
     renderErrorUI,
-    renderFetchFailedUI
+    renderFetchFailedUI,
+    initRegisterPage,
+    initListPage,
+    submitRegisterForm
   };
 })();
 let cachedElectionData = null;

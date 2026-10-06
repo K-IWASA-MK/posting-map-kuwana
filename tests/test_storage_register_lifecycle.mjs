@@ -343,8 +343,130 @@ async function runTests() {
   assert.ok(env.$('storage-register-location').innerHTML.includes('桑名市'), 'fetchTier1後にDropdownが更新される');
   console.log('✅ Gate 11 PASS\n');
 
+  console.log('--- Gate 12: 認証待機中の重複送信防止 (Pre-Auth In-Flight Lock & 関数入口チェック) ---');
+  {
+    env = createTestEnvironment();
+    let authResolve;
+    const delayedAuthPromise = new Promise(resolve => { authResolve = resolve; });
+    env.sandbox.waitForIdentityVerified = () => delayedAuthPromise;
+    env.state.mockApiDelayMs = 10;
+    env.state.apiCallCount = 0;
+
+    env.$('storage-register-location').value = '桑名市';
+    env.$('storage-register-count').value = '500';
+
+    // 1回目の送信 (認証待機中)
+    const submitPromise1 = vm.runInContext('window.submitFlyerStock()', env.sandbox);
+    assert.equal(env.$('btn-storage-register-submit').disabled, true, '送信直後にボタンが disabled');
+    assert.equal(env.$('btn-storage-register-submit').textContent, '更新中...', '送信直後にボタン文言が「更新中...」');
+
+    // 2回目の送信 (認証待機中の重複呼出し)
+    const submitPromise2 = vm.runInContext('window.submitFlyerStock()', env.sandbox);
+
+    // 認証を解決
+    authResolve(true);
+    const [res1, res2] = await Promise.all([submitPromise1, submitPromise2]);
+
+    assert.ok(res1 && res1.success, '1回目の送信は成功');
+    assert.strictEqual(res2, null, '2回目の重複送信は関数入口で即時拒否され null を返却');
+    assert.equal(env.state.apiCallCount, 1, 'API コールは厳格に1回のみ');
+    assert.equal(env.$('btn-storage-register-submit').disabled, false, '完了後はボタンが復元');
+    console.log('✅ Gate 12 PASS\n');
+  }
+
+  console.log('--- Gate 13: 認証失敗時のボタン復元・フラグ解除・入力値保持 ---');
+  {
+    env = createTestEnvironment();
+    env.sandbox.waitForIdentityVerified = () => Promise.reject(new Error('UNAUTHORIZED'));
+    env.state.apiCallCount = 0;
+
+    env.$('storage-register-location').value = '四日市市';
+    env.$('storage-register-count').value = '700';
+
+    const failedRes = await vm.runInContext('window.submitFlyerStock()', env.sandbox);
+    assert.strictEqual(failedRes, null, '認証失敗時は null を返却');
+    assert.equal(env.state.apiCallCount, 0, 'API は一度も呼ばれない');
+    assert.equal(env.$('btn-storage-register-submit').disabled, false, 'ボタンが disabled 解除されて復元');
+    assert.equal(env.$('storage-register-location').value, '四日市市', '入力された保管場所が保持');
+    assert.equal(env.$('storage-register-count').value, '700', '入力された枚数が保持');
+
+    // 認証成功へ切り替えて再試行可能か確認
+    env.sandbox.waitForIdentityVerified = () => Promise.resolve(true);
+    const retryRes = await vm.runInContext('window.submitFlyerStock()', env.sandbox);
+    assert.ok(retryRes && retryRes.success, '認証失敗後に再試行が正常に成功');
+    assert.equal(env.state.apiCallCount, 1, '再試行時に API が呼ばれた');
+    console.log('✅ Gate 13 PASS\n');
+  }
+
+  console.log('--- Gate 14: 更新待機中に編集された入力を保護 (送信後の userEditing 保護) ---');
+  {
+    env = createTestEnvironment();
+    env.state.mockApiDelayMs = 50; // API応答に時間がかかる状態
+    env.$('storage-register-location').value = '桑名市';
+    env.$('storage-register-count').value = '500';
+    env.$('storage-register-count').dataset.userEditing = 'true';
+
+    // 送信開始
+    const submitPromise = vm.runInContext('window.submitFlyerStock()', env.sandbox);
+
+    // 送信中にユーザーが入力欄を再編集して「600」に変更したシチュエーション
+    await new Promise(r => setTimeout(r, 20));
+    env.$('storage-register-count').value = '600';
+    env.$('storage-register-count').dataset.userEditing = 'true';
+
+    // API 完了を待つ
+    await submitPromise;
+
+    assert.equal(env.$('storage-register-count').value, '600', '送信中に再入力された「600」が保持');
+    assert.equal(env.$('storage-register-count').dataset.userEditing, 'true', '送信中再編集の userEditing フラグが消されずに保護');
+    console.log('✅ Gate 14 PASS\n');
+  }
+
+  console.log('--- Gate 15: 動的フックの追従性 (値の固定化防止) ---');
+  {
+    env = createTestEnvironment();
+    // 初期ユーザー
+    env.sandbox.localStorage.setItem('user_info', JSON.stringify({ id: 'STAFF_001', first: '一郎', last: '桑名' }));
+    vm.runInContext('initStorageRegisterPage()', env.sandbox);
+    assert.equal(env.$('storage-register-staff-id').textContent, 'ID: STAFF_001');
+
+    // 途中でユーザー情報が更新されたシチュエーション
+    env.sandbox.localStorage.setItem('user_info', JSON.stringify({ id: 'STAFF_999', first: '次郎', last: '桑名' }));
+    env.$('storage-register-location').value = '桑名市';
+    env.$('storage-register-count').value = '100';
+
+    let lastPayload = null;
+    const sm = vm.runInContext('StorageModule', env.sandbox);
+    const origUpdateStock = sm.updateStock;
+    sm.updateStock = async (p) => {
+      lastPayload = p;
+      return origUpdateStock(p);
+    };
+
+    await vm.runInContext('window.submitFlyerStock()', env.sandbox);
+    assert.equal(lastPayload.staffId, 'STAFF_999', '動的フック経由で最新の STAFF_999 が参照されて送信');
+    assert.equal(lastPayload.staffName, '桑名 次郎', '動的フック経由で最新の 桑名 次郎 が参照されて送信');
+    console.log('✅ Gate 15 PASS\n');
+  }
+
+  console.log('--- Gate 16: 画面再初期化時のイベント多重バインド防止 (冪等性) ---');
+  {
+    env = createTestEnvironment();
+    const inputEl = env.$('storage-register-count');
+    const locSelect = env.$('storage-register-location');
+
+    // 5回連続で初期化を実行
+    for (let i = 0; i < 5; i++) {
+      vm.runInContext('initStorageRegisterPage()', env.sandbox);
+    }
+
+    assert.equal(inputEl.dataset.formatted, 'true', 'formatted フラグが維持');
+    assert.equal(locSelect.dataset.changeBound, 'true', 'changeBound フラグが維持');
+    console.log('✅ Gate 16 PASS\n');
+  }
+
   console.log('====================================================');
-  console.log('🎉 ALL 11 GATES PASSED PERFECTLY!');
+  console.log('🎉 ALL 16 GATES PASSED PERFECTLY!');
   console.log('====================================================');
 }
 
