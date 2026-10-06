@@ -8,8 +8,8 @@
   <meta name="theme-color" content="#0B1019">
   <title>POSTING MAP</title>
   <meta name="apple-mobile-web-app-title" content="POSTING MAP">
-  <link rel="icon" type="image/png" href="../dashboard/assets/icon180-v2.png">
-  <link rel="apple-touch-icon" href="../dashboard/assets/icon180-v2.png">
+  <link rel="icon" type="image/png" href="../h-app/assets/icon180-v2.png">
+  <link rel="apple-touch-icon" href="../h-app/assets/icon180-v2.png">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -638,6 +638,7 @@
             <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-lg bg-[#0B1019] border border-borderNormal shadow-inner">
               <span class="text-base">💬</span>
               <span class="font-bold text-sm text-white tracking-wide">配布員 情報交換掲示板</span>
+              <button onclick="renderMainStageBulletin({ force: true })" type="button" class="text-xs text-textSub hover:text-white px-2 py-0.5 rounded bg-white/5 border border-borderNormal hover:border-brand/40 transition-colors ml-1 cursor-pointer" title="最新の投稿を取得">🔄 更新</button>
             </div>
           </div>
           <div id="main-stage-bulletin-content" class="flex-1 overflow-y-auto pt-1 space-y-1.5 pr-1"></div>

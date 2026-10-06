@@ -33,6 +33,13 @@ const DashboardState = {
   selectedPin: null, // 現在MAP上で選択中のピン/エリアデータ (右下エリア統計連動)
   selectedCity: 'ALL',
   currentFocus: 'areas',
+  domainState: {
+    ranking: 'IDLE',
+    stocks: 'IDLE',
+    roster: 'IDLE',
+    requests: 'IDLE'
+  },
+  lastSuccessfulSyncTime: null,
   map: null,
   markersLayer: null
 };
@@ -908,7 +915,12 @@ async function syncDashboardData() {
     }
 
     if (!snapshotRes || !snapshotRes.domains) {
-      setSyncStatus(false);
+      if (DashboardState.domainState) {
+        ['ranking', 'stocks', 'roster', 'requests'].forEach(d => {
+          DashboardState.domainState[d] = (DashboardState[d] && DashboardState[d].length > 0) ? 'STALE' : 'ERROR';
+        });
+      }
+      setSyncStatus('FAILED');
       return;
     }
 
@@ -998,6 +1010,13 @@ async function syncDashboardData() {
       DashboardState.ranking = rankRes.ranking || [];
     }
 
+    if (DashboardState.domainState) {
+      DashboardState.domainState.stocks = isStockOk ? 'SUCCESS' : ((DashboardState.stocks && DashboardState.stocks.length > 0) ? 'STALE' : 'ERROR');
+      DashboardState.domainState.roster = isRosterOk ? 'SUCCESS' : ((DashboardState.roster && DashboardState.roster.length > 0) ? 'STALE' : 'ERROR');
+      DashboardState.domainState.requests = isReqOk ? 'SUCCESS' : ((DashboardState.requests && DashboardState.requests.length > 0) ? 'STALE' : 'ERROR');
+      DashboardState.domainState.ranking = isRankOk ? 'SUCCESS' : ((DashboardState.ranking && DashboardState.ranking.length > 0) ? 'STALE' : 'ERROR');
+    }
+
     if (isLatestDistOk && Array.isArray(latestDistRes.records)) {
       DashboardState.liveRecords = latestDistRes.records;
     }
@@ -1012,12 +1031,25 @@ async function syncDashboardData() {
       renderPinsOnMap(DashboardState.map, DashboardState.markersLayer, DashboardState.masterPins);
     }
 
-    const allOk = isSummaryOk && isStockOk && isPinStatusOk;
-    setSyncStatus(allOk);
+    const allOk = isSummaryOk && isStockOk && isPinStatusOk && isRankOk && isRosterOk && isReqOk && isLatestDistOk;
+    const anyOk = isSummaryOk || isStockOk || isPinStatusOk || isRankOk || isRosterOk || isReqOk || isLatestDistOk;
+
+    if (allOk) {
+      setSyncStatus('SYNCED');
+    } else if (anyOk) {
+      setSyncStatus('PARTIAL');
+    } else {
+      setSyncStatus('FAILED');
+    }
 
   } catch (err) {
     console.error('[Dashboard Sync Error]', err);
-    setSyncStatus(false);
+    if (DashboardState.domainState) {
+      ['ranking', 'stocks', 'roster', 'requests'].forEach(d => {
+        DashboardState.domainState[d] = (DashboardState[d] && DashboardState[d].length > 0) ? 'STALE' : 'ERROR';
+      });
+    }
+    setSyncStatus('FAILED');
   } finally {
     _isSyncing = false;
   }
@@ -1543,12 +1575,13 @@ function renderRightBottomAreaStats(selectedPin) {
 
   let resultSectionHtml = '';
   if (isCompleted) {
-    const liveRec = (DashboardState.liveRecords || []).find(r => r.rowId === selectedPin.rowId) || {};
-    const staffId = liveRec.staffId || '--';
-    const rosterStaff = (DashboardState.roster || []).find(rs => rs.id === staffId);
+    const liveRec = (DashboardState.liveRecords || []).find(r => r.rowId === selectedPin.rowId) || null;
+    const staffId = (liveRec && liveRec.staffId) ? liveRec.staffId : '--';
+    const rosterStaff = staffId !== '--' ? (DashboardState.roster || []).find(rs => rs.id === staffId) : null;
     const staffName = rosterStaff ? rosterStaff.name : '';
-    const doneTime = liveRec.time || '08/23 09:36';
-    const doneCount = liveRec.count || Math.round(households * 0.85);
+    const doneTime = (liveRec && liveRec.time) ? liveRec.time : '--';
+    const isCountValid = liveRec && liveRec.count !== undefined && liveRec.count !== null && !isNaN(Number(liveRec.count));
+    const doneCountStr = isCountValid ? Number(liveRec.count).toLocaleString() : '--';
 
     resultSectionHtml = `
       <div class="pt-2.5 mt-2.5 border-t border-borderNormal">
@@ -1558,7 +1591,7 @@ function renderRightBottomAreaStats(selectedPin) {
         <div class="space-y-1.5 text-[13px]">
           <div class="flex justify-between items-center">
             <span class="text-textSub">投函枚数:</span>
-            <span class="font-bold text-white font-mono text-[15px]">${Number(doneCount).toLocaleString()} <span class="text-xs font-normal text-textSub">枚</span></span>
+            <span class="font-bold text-white font-mono text-[15px]">${doneCountStr} <span class="text-xs font-normal text-textSub">枚</span></span>
           </div>
           <div class="flex justify-between items-center">
             <span class="text-textSub">担当:</span>
@@ -1566,7 +1599,7 @@ function renderRightBottomAreaStats(selectedPin) {
           </div>
           <div class="flex justify-between items-center">
             <span class="text-textSub">完了日時:</span>
-            <span class="text-textSub font-mono text-xs">${doneTime}</span>
+            <span class="text-textSub font-mono text-xs">${escapeHtml(doneTime)}</span>
           </div>
         </div>
       </div>
@@ -1636,13 +1669,36 @@ function closeAreaDetail() {
   if (detailEl) detailEl.classList.add('hidden');
 }
 
+function renderDomainStateBanner(domainKey) {
+  const state = DashboardState.domainState ? DashboardState.domainState[domainKey] : 'SUCCESS';
+  if (state === 'STALE') {
+    return `
+      <div class="mb-2 px-3 py-1.5 rounded-lg bg-statusYellow/10 border border-statusYellow/30 text-statusYellow text-xs flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          <span>⚠️</span>
+          <span>最新データの取得に失敗したため、前回データを表示しています</span>
+        </div>
+      </div>
+    `;
+  }
+  return '';
+}
+
 function renderMainStageRecords(ranking) {
   const contentEl = document.getElementById('main-stage-records-content');
   if (!contentEl) return;
 
   const rankingList = ranking || [];
+  const domainStatus = DashboardState.domainState ? DashboardState.domainState.ranking : 'IDLE';
+
   if (rankingList.length === 0) {
-    contentEl.innerHTML = `<div class="text-xs text-[#94A3B8]/60 text-center py-12">配布実績データはありません</div>`;
+    if (domainStatus === 'IDLE' || domainStatus === 'LOADING') {
+      contentEl.innerHTML = `<div class="text-xs text-[#94A3B8]/70 text-center py-12 flex items-center justify-center gap-2"><span class="animate-spin">⏳</span> 配布実績データを取得中...</div>`;
+    } else if (domainStatus === 'ERROR') {
+      contentEl.innerHTML = `<div class="text-xs text-statusRed/80 text-center py-12 flex flex-col items-center justify-center gap-1.5"><span>⚠️ 配布実績データの取得に失敗しました</span><span class="text-[11px] text-textSub/60">再接続待機中</span></div>`;
+    } else {
+      contentEl.innerHTML = `<div class="text-xs text-[#94A3B8]/60 text-center py-12">現在、登録されている配布実績はありません</div>`;
+    }
     return;
   }
 
@@ -1650,7 +1706,7 @@ function renderMainStageRecords(ranking) {
     DashboardState.staffFeedPages = {};
   }
 
-  let html = '<div class="space-y-1.5">';
+  let html = renderDomainStateBanner('ranking') + '<div class="space-y-1.5">';
   rankingList.forEach((item, index) => {
     const rank = item.rank || (index + 1);
     let rankBadgeHtml = '';
@@ -1772,8 +1828,16 @@ function renderMainStageStocks(stocks) {
   if (!contentEl) return;
 
   const stocksList = stocks || [];
+  const domainStatus = DashboardState.domainState ? DashboardState.domainState.stocks : 'IDLE';
+
   if (stocksList.length === 0) {
-    contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">保有チラシの登録データはありません</div>`;
+    if (domainStatus === 'IDLE' || domainStatus === 'LOADING') {
+      contentEl.innerHTML = `<div class="text-xs text-[#94A3B8]/70 text-center py-12 flex items-center justify-center gap-2"><span class="animate-spin">⏳</span> 保有チラシデータを取得中...</div>`;
+    } else if (domainStatus === 'ERROR') {
+      contentEl.innerHTML = `<div class="text-xs text-statusRed/80 text-center py-12 flex flex-col items-center justify-center gap-1.5"><span>⚠️ 保有チラシデータの取得に失敗しました</span><span class="text-[11px] text-textSub/60">再接続待機中</span></div>`;
+    } else {
+      contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、保有チラシの登録データはありません</div>`;
+    }
     return;
   }
 
@@ -1784,7 +1848,7 @@ function renderMainStageStocks(stocks) {
     return idxA - idxB;
   });
 
-  let html = '<div class="space-y-1.5">';
+  let html = renderDomainStateBanner('stocks') + '<div class="space-y-1.5">';
   sortedStocks.forEach(s => {
     const staffBadgeHtml = s.staffId
       ? `<span class="h-7 px-2 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center font-mono font-bold text-xs text-brand flex-shrink-0">${escapeHtml(s.staffId)}</span>`
@@ -1821,12 +1885,20 @@ function renderMainStageRoster(roster) {
   if (!contentEl) return;
 
   const rosterList = roster || [];
+  const domainStatus = DashboardState.domainState ? DashboardState.domainState.roster : 'IDLE';
+
   if (rosterList.length === 0) {
-    contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">登録配布員データはありません</div>`;
+    if (domainStatus === 'IDLE' || domainStatus === 'LOADING') {
+      contentEl.innerHTML = `<div class="text-xs text-[#94A3B8]/70 text-center py-12 flex items-center justify-center gap-2"><span class="animate-spin">⏳</span> 登録配布員データを取得中...</div>`;
+    } else if (domainStatus === 'ERROR') {
+      contentEl.innerHTML = `<div class="text-xs text-statusRed/80 text-center py-12 flex flex-col items-center justify-center gap-1.5"><span>⚠️ 登録配布員データの取得に失敗しました</span><span class="text-[11px] text-textSub/60">再接続待機中</span></div>`;
+    } else {
+      contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、登録配布員データはありません</div>`;
+    }
     return;
   }
 
-  let html = '<div class="space-y-1.5">';
+  let html = renderDomainStateBanner('roster') + '<div class="space-y-1.5">';
   rosterList.forEach(r => {
     let formattedDate = '--';
     if (r.registeredAt) {
@@ -1858,12 +1930,20 @@ function renderMainStageRequests(requests) {
   if (!contentEl) return;
 
   const reqList = requests || [];
+  const domainStatus = DashboardState.domainState ? DashboardState.domainState.requests : 'IDLE';
+
   if (reqList.length === 0) {
-    contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、受渡要請はありません</div>`;
+    if (domainStatus === 'IDLE' || domainStatus === 'LOADING') {
+      contentEl.innerHTML = `<div class="text-xs text-[#94A3B8]/70 text-center py-12 flex items-center justify-center gap-2"><span class="animate-spin">⏳</span> 受渡要請データを取得中...</div>`;
+    } else if (domainStatus === 'ERROR') {
+      contentEl.innerHTML = `<div class="text-xs text-statusRed/80 text-center py-12 flex flex-col items-center justify-center gap-1.5"><span>⚠️ 受渡要請データの取得に失敗しました</span><span class="text-[11px] text-textSub/60">再接続待機中</span></div>`;
+    } else {
+      contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、受渡要請はありません</div>`;
+    }
     return;
   }
 
-  let html = '<div class="space-y-1.5">';
+  let html = renderDomainStateBanner('requests') + '<div class="space-y-1.5">';
   reqList.forEach(req => {
     let formattedDate = '--';
     if (req.requestTime) {
@@ -1912,20 +1992,25 @@ function renderMainStageRequests(requests) {
 }
 
 let _activeBulletinPromise = null;
+let _lastBulletinFetchTime = 0;
+const BULLETIN_TTL_MS = 30000;
 
 function renderMainStageBulletin(options = {}) {
   const force = options && options.force === true;
   const contentEl = document.getElementById('main-stage-bulletin-content');
   if (!contentEl) return;
 
-  // ① 2回目以降：キャッシュがあれば即座に一覧を描画（スピナーは一切出さない・通信もしない）
-  if (DashboardState.bulletinPosts !== null && !force) {
-    drawBulletinList(DashboardState.bulletinPosts);
-    return;
-  }
+  const hasCache = DashboardState.bulletinPosts !== null;
+  const isFresh = !force && hasCache && (Date.now() - _lastBulletinFetchTime < BULLETIN_TTL_MS);
 
-  // ② 初回（キャッシュがない場合）のみスピナーを表示
-  if (DashboardState.bulletinPosts === null) {
+  // ① 既存キャッシュがあれば即座に一覧を描画（真っ白化・ちらつき防止）
+  if (hasCache) {
+    drawBulletinList(DashboardState.bulletinPosts);
+    if (isFresh) {
+      return;
+    }
+  } else {
+    // キャッシュがない初回のみスピナー表示
     contentEl.innerHTML = `
       <div class="flex items-center justify-center py-12">
         <div class="w-6 h-6 rounded-full border-2 border-brand/40 border-t-brand animate-spin"></div>
@@ -1933,31 +2018,34 @@ function renderMainStageBulletin(options = {}) {
     `;
   }
 
-  // ③ in-flight通信の多重化防止
+  // ② in-flight通信の多重化防止
   if (_activeBulletinPromise) {
     return _activeBulletinPromise;
   }
 
-  // ④ API通信
+  // ③ API通信 (Stale-While-Revalidate)
   _activeBulletinPromise = callApiPost('getBulletinPosts', {})
     .then(res => {
       const posts = (res && res.success && Array.isArray(res.posts)) ? res.posts : [];
       DashboardState.bulletinPosts = posts;
+      _lastBulletinFetchTime = Date.now();
 
-      // 取得完了時、現在 bulletin 表示中なら静かに更新
+      // 取得完了時、現在 bulletin 表示中なら最新データで更新描画
       if (DashboardState.currentFocus === 'bulletin') {
         drawBulletinList(posts);
       }
     })
-    .catch(() => {
+    .catch((err) => {
+      console.warn('[Bulletin Fetch Warning]', err);
+      // 失敗時でも既存キャッシュを絶対に消失させない
       if (DashboardState.bulletinPosts !== null) {
         if (DashboardState.currentFocus === 'bulletin') {
-          drawBulletinList(DashboardState.bulletinPosts);
+          drawBulletinList(DashboardState.bulletinPosts, { isStale: true });
         }
         return;
       }
       if (DashboardState.currentFocus === 'bulletin') {
-        contentEl.innerHTML = `<div class="text-sm text-statusRed/80 text-center py-12">掲示板の取得に失敗しました</div>`;
+        contentEl.innerHTML = `<div class="text-sm text-statusRed/80 text-center py-12 flex flex-col items-center justify-center gap-1.5"><span>⚠️ 掲示板データの取得に失敗しました</span><span class="text-[11px] text-textSub/60">再接続待機中</span></div>`;
       }
     })
     .finally(() => {
@@ -1967,16 +2055,21 @@ function renderMainStageBulletin(options = {}) {
   return _activeBulletinPromise;
 }
 
-function drawBulletinList(posts) {
+function drawBulletinList(posts, options = {}) {
   const contentEl = document.getElementById('main-stage-bulletin-content');
   if (!contentEl) return;
 
+  const isStale = options && options.isStale === true;
+  const staleBanner = isStale
+    ? `<div class="mb-2 px-3 py-1.5 rounded-lg bg-statusYellow/10 border border-statusYellow/30 text-statusYellow text-xs flex items-center justify-between"><span>⚠️ 最新投稿の取得に失敗したため、前回取得データを表示しています</span></div>`
+    : '';
+
   if (!posts || posts.length === 0) {
-    contentEl.innerHTML = `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、掲示板の投稿はありません</div>`;
+    contentEl.innerHTML = staleBanner + `<div class="text-sm text-[#94A3B8]/60 text-center py-12">現在、掲示板の投稿はありません</div>`;
     return;
   }
 
-  let html = '<div class="space-y-1.5">';
+  let html = staleBanner + '<div class="space-y-1.5">';
   posts.forEach(post => {
     let formattedDate = '--';
     if (post.updatedAt) {
@@ -2525,7 +2618,7 @@ function showMailToast(msg) {
   }, 1800);
 }
 
-function setSyncStatus(isLive) {
+function setSyncStatus(status) {
   const dot = document.getElementById('live-dot');
   const text = document.getElementById('live-status-text');
   const clock = document.getElementById('sync-clock');
@@ -2533,16 +2626,39 @@ function setSyncStatus(isLive) {
   const mDot = document.getElementById('mobile-live-dot');
   const mClock = document.getElementById('mobile-sync-clock');
 
-  if (dot) dot.className = isLive ? 'w-2 h-2 rounded-full bg-statusGreen' : 'w-2 h-2 rounded-full bg-statusYellow';
-  if (mDot) mDot.className = isLive ? 'w-2 h-2 rounded-full bg-statusGreen' : 'w-2 h-2 rounded-full bg-statusYellow';
-  if (text) text.textContent = isLive ? '現場データ同期' : '再接続待機中';
+  const isSuccess = status === 'SYNCED' || status === true;
+  const isPartial = status === 'PARTIAL';
 
-  const now = new Date();
-  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-  const shortTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  if (dot) dot.className = isSuccess ? 'w-2 h-2 rounded-full bg-statusGreen' : 'w-2 h-2 rounded-full bg-statusYellow';
+  if (mDot) mDot.className = isSuccess ? 'w-2 h-2 rounded-full bg-statusGreen' : 'w-2 h-2 rounded-full bg-statusYellow';
 
-  if (clock) clock.textContent = timeStr;
-  if (mClock) mClock.textContent = shortTimeStr;
+  if (text) {
+    if (isSuccess) text.textContent = '現場データ同期';
+    else if (isPartial) text.textContent = '一部データ遅延';
+    else text.textContent = '再接続待機中';
+  }
+
+  if (isSuccess || isPartial) {
+    const now = new Date();
+    DashboardState.lastSuccessfulSyncTime = now;
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const shortTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (clock) clock.textContent = timeStr;
+    if (mClock) mClock.textContent = shortTimeStr;
+  } else {
+    // 同期失敗時: 最終成功時刻を保持し、未成功なら「未同期」と表示
+    if (DashboardState.lastSuccessfulSyncTime) {
+      const last = DashboardState.lastSuccessfulSyncTime;
+      const timeStr = `${String(last.getHours()).padStart(2, '0')}:${String(last.getMinutes()).padStart(2, '0')}:${String(last.getSeconds()).padStart(2, '0')}`;
+      const shortTimeStr = `${String(last.getHours()).padStart(2, '0')}:${String(last.getMinutes()).padStart(2, '0')}`;
+      if (clock) clock.textContent = timeStr;
+      if (mClock) mClock.textContent = shortTimeStr;
+    } else {
+      if (clock) clock.textContent = '未同期';
+      if (mClock) mClock.textContent = '未同期';
+    }
+  }
 }
 
 
@@ -3246,3 +3362,4 @@ function downloadRecordsCsv() {
 window.formatCsvField = formatCsvField;
 window.generateRecordsCsv = generateRecordsCsv;
 window.downloadRecordsCsv = downloadRecordsCsv;
+window.renderMainStageBulletin = renderMainStageBulletin;
