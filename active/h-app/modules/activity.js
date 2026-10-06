@@ -13,7 +13,7 @@
  * 厳格な制約:
  * - DOM/Map/UI/Globals への直接依存は一切禁止
  * - 外部ストレージへの直接参照禁止
- * - 状態公開は厳密に 7 つの承認メソッドのみ。内部状態オブジェクトや getSnapshot() は露出しない
+ * - 状態公開は厳密に 8 つの承認メソッドのみ。内部状態オブジェクトや getSnapshot() は露出しない
  * - Classic-script lexical binding (window/global property export なし)
  */
 const ActivityModule = (() => {
@@ -387,6 +387,100 @@ const ActivityModule = (() => {
     }
   }
 
+  /**
+   * 8. 下書き開始非同期ワークフロー (写真受領 ➔ Draft生成 ➔ GPS測位 ➔ 完了通知)
+   * 画面・DOM・端末APIへの直接依存は持たず、純粋な非同期オーケストレーションと状態適用を担当する。
+   * @param {Object} point
+   * @param {Object} options - { valNum, staffName, staffId, timeStr, cameraPromise, gpsPromise }
+   * @param {Object} hooks - { isSessionValid, blobToBase64, createObjectURL, getGPSLocationRetry, onDraftReady, onGpsReady, onFinally }
+   */
+  async function startDraftWorkflow(point, options, hooks) {
+    if (!point || !options || !hooks) return;
+    const { valNum, staffName, staffId, timeStr, cameraPromise, gpsPromise } = options;
+    const { isSessionValid, blobToBase64, createObjectURL, getGPSLocationRetry, onDraftReady, onGpsReady, onFinally } = hooks;
+
+    try {
+      let imageBlob = null;
+      try {
+        if (cameraPromise) {
+          imageBlob = await cameraPromise;
+        }
+      } catch (err) {
+        console.error("Camera activation failed:", err);
+      }
+
+      // 非同期処理完了後の有効性確認 1 (写真受領後)
+      if (typeof isSessionValid === 'function' && !isSessionValid()) return;
+
+      // カメラ取消・失敗判定
+      if (!imageBlob || typeof blobToBase64 !== 'function') {
+        console.warn("Photo capture cancelled or failed. Draft creation aborted.");
+        return;
+      }
+
+      let photoBase64 = '';
+      try {
+        photoBase64 = await blobToBase64(imageBlob);
+      } catch (err) {
+        console.warn("Photo Base64 conversion threw an error.", err);
+      }
+
+      // 非同期処理完了後の有効性確認 2 (Base64変換後)
+      if (typeof isSessionValid === 'function' && !isSessionValid()) return;
+      if (!photoBase64) {
+        console.warn("Photo Base64 conversion returned empty data. Draft creation aborted.");
+        return;
+      }
+
+      // 3. 写真確定後に下書き状態を生成（GPSは待たない）
+      const tempPhotoUrl = typeof createObjectURL === 'function' ? createObjectURL(imageBlob) : undefined;
+      createDraft(point, {
+        valNum,
+        staffName,
+        staffId,
+        timeStr,
+        tempPhotoUrl,
+        photoBase64
+      });
+
+      // 再描画通知 1 (DRAFT プレビュー)
+      if (typeof onDraftReady === 'function') {
+        onDraftReady(point);
+      }
+
+      // 4. バックグラウンドで GPS 結果を待機
+      let gps = null;
+      if (gpsPromise) {
+        gps = await gpsPromise;
+      }
+
+      // 既存の再取得条件を維持: GPSが空の場合は1回再試行
+      if ((!gps || !gps.latitude || !gps.longitude) && typeof getGPSLocationRetry === 'function') {
+        console.log("GPS empty after camera, retrying...");
+        gps = await getGPSLocationRetry();
+      }
+
+      // 非同期処理完了後の有効性確認 3 (GPS完了後)
+      if (typeof isSessionValid === 'function' && !isSessionValid()) return;
+
+      // 5. GPS 結果を適用
+      if (gps) {
+        applyGpsResult(point, gps);
+      }
+
+      // 再描画通知 2 (GPS 確定)
+      if (typeof onGpsReady === 'function') {
+        onGpsReady(point);
+      }
+    } catch (err) {
+      console.error("Async draft workflow task failed:", err);
+    } finally {
+      if (typeof onFinally === 'function') {
+        onFinally();
+      }
+    }
+  }
+
   return {
     createDraft,
     applyGpsResult,
@@ -394,6 +488,7 @@ const ActivityModule = (() => {
     submitActivity,
     reconcileQueueState,
     restorePendingState,
-    applyQueueOutcome
+    applyQueueOutcome,
+    startDraftWorkflow
   };
 })();

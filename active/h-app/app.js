@@ -666,54 +666,36 @@ function pressNum(key) {
     const now = new Date();
     const timeStr = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    (async () => {
-      try {
-        let imageBlob = null;
-        try {
-          imageBlob = await cameraPromise;
-        } catch (err) {
-          console.error("Camera activation failed:", err);
+    // ActivityModule へ下書き開始ワークフローを委譲 (Composition Root 配線)
+    ActivityModule.startDraftWorkflow(p, {
+      valNum,
+      staffName,
+      staffId,
+      timeStr,
+      cameraPromise,
+      gpsPromise
+    }, {
+      isSessionValid: () => Boolean(numpadContext && numpadContext.sessionId === sessionId && !numpadContext.aborted),
+      blobToBase64: (blob) => (typeof window.blobToBase64 === 'function' ? window.blobToBase64(blob) : Promise.resolve('')),
+      createObjectURL: (blob) => URL.createObjectURL(blob),
+      getGPSLocationRetry: () => getGPSLocation(),
+      onDraftReady: (p) => {
+        const modalContent = $('detail-modal-content');
+        if (modalContent && window.currentPointDetailRowId === rowId) {
+          modalContent.innerHTML = renderDetailModalContent({ ...p, isDone: true });
         }
-
-        if (!numpadContext || numpadContext.sessionId !== sessionId || numpadContext.aborted) return;
-        if (!imageBlob || typeof window.blobToBase64 !== 'function') return;
-
-        let photoBase64 = '';
-        try {
-          photoBase64 = await window.blobToBase64(imageBlob);
-        } catch (err) {
-          console.warn("Photo Base64 conversion threw an error.", err);
+      },
+      onGpsReady: (p) => {
+        const modalContent = $('detail-modal-content');
+        if (modalContent && window.currentPointDetailRowId === rowId && p.syncStatus !== 'submitting') {
+          modalContent.innerHTML = renderDetailModalContent(p.isDone ? p : { ...p, isDone: true });
         }
-
-        if (!numpadContext || numpadContext.sessionId !== sessionId || numpadContext.aborted || !photoBase64) return;
-
-        if (p) {
-          const tempPhotoUrl = URL.createObjectURL(imageBlob);
-          ActivityModule.createDraft(p, { valNum, staffName, staffId, timeStr, tempPhotoUrl, photoBase64 });
-          const modalContent = $('detail-modal-content');
-          if (modalContent && window.currentPointDetailRowId === rowId) {
-            modalContent.innerHTML = renderDetailModalContent({ ...p, isDone: true });
-          }
+      },
+      onFinally: () => {
+        if (numpadContext && numpadContext.sessionId === sessionId) {
+          numpadContext.isStarting = false;
         }
-
-        let gps = await gpsPromise;
-        if (!gps || !gps.latitude || !gps.longitude) gps = await getGPSLocation();
-        if (!numpadContext || numpadContext.sessionId !== sessionId || numpadContext.aborted) return;
-
-        if (p) {
-          ActivityModule.applyGpsResult(p, gps);
-          const modalContent = $('detail-modal-content');
-          if (modalContent && window.currentPointDetailRowId === rowId && p.syncStatus !== 'submitting') {
-            modalContent.innerHTML = renderDetailModalContent(p.isDone ? p : { ...p, isDone: true });
-          }
-        }
-      } catch (err) {
-        console.error("Async sync background task failed:", err);
-      } finally {
-        if (numpadContext && numpadContext.sessionId === sessionId) numpadContext.isStarting = false;
       }
-    })().catch(err => {
-      console.error("Async sync background task failed:", err);
     });
 
     return;

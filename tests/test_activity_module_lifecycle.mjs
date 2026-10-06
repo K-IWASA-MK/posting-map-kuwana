@@ -701,9 +701,11 @@ test('Gate 32: cancel PinStatus remove, onFinally DOM re-query, rerenderDetailMo
   assert.ok(!rerenderMatch[0].includes('Number(currentPointDetailRowId)'), 'rerenderDetailModalIfOpen の判定で Number(currentPointDetailRowId) 変換を行わないこと');
   assert.ok(rerenderMatch[0].includes('currentPointDetailRowId === rowId'), 'rerenderDetailModalIfOpen の判定で厳密等価比較 (currentPointDetailRowId === rowId) を行うこと');
 
-  // Codex 指摘 1: app.js onFinally 内でその時点のボタンを DOM から再取得すること
+  // Codex 指摘 1: app.js submitMissionComplete 内の onFinally でその時点のボタンを DOM から再取得すること
   const appJs = fs.readFileSync(appJsPath, 'utf8');
-  const onFinallyMatch = appJs.match(/onFinally:\s*\(\)\s*=>\s*\{[\s\S]*?^\s*\}/m);
+  const submitMissionMatch = appJs.match(/async function submitMissionComplete[\s\S]*?^}/m);
+  assert.ok(submitMissionMatch, 'submitMissionComplete が存在すること');
+  const onFinallyMatch = submitMissionMatch[0].match(/onFinally:\s*\(\)\s*=>\s*\{[\s\S]*?^\s*\}/m);
   assert.ok(onFinallyMatch, 'app.js submitMissionComplete 内に onFinally が存在すること');
   assert.ok(onFinallyMatch[0].includes("$('submit-mission-btn')"), 'onFinally 内で submit-mission-btn を再取得すること');
   assert.ok(onFinallyMatch[0].includes("$('cancel-mission-btn')"), 'onFinally 内で cancel-mission-btn を再取得すること');
@@ -1066,7 +1068,148 @@ test('Gate 45: triggerUISyncRefresh reflects completed pin ONLY when point NOT i
   assert.strictEqual(lockActivePinCalls.length, 2, 'lockActivePinAndBubble 呼出総数が正確に 2 回であること');
 });
 
-test('Architecture Gate: Public API exactly 7 methods & no globals', () => {
+test('Gate 46: startDraftWorkflow 正常系 (写真 ➔ Draft生成 ➔ GPS ➔ applyGps ➔ onDraftReady / onGpsReady 順序呼出し)', async () => {
+  const ActivityModule = createActivityModule();
+  const point = { rowId: 201 };
+
+  const dummyBlob = { size: 100 };
+  const cameraPromise = Promise.resolve(dummyBlob);
+  const gpsPromise = Promise.resolve({ latitude: 35.11, longitude: 136.66 });
+
+  const callOrder = [];
+
+  await ActivityModule.startDraftWorkflow(point, {
+    valNum: 42,
+    staffName: 'テスト太郎',
+    staffId: 'U_100',
+    timeStr: '10/06 18:00',
+    cameraPromise,
+    gpsPromise
+  }, {
+    isSessionValid: () => {
+      callOrder.push('isSessionValid');
+      return true;
+    },
+    blobToBase64: async (b) => {
+      callOrder.push('blobToBase64');
+      return 'data:image/jpeg;base64,TEST_DATA';
+    },
+    createObjectURL: (b) => 'blob:http://localhost/test-uuid',
+    getGPSLocationRetry: async () => null,
+    onDraftReady: (p) => {
+      callOrder.push('onDraftReady');
+      assert.equal(p.count, 42);
+      assert.equal(p.isReadyToSubmit, true);
+      assert.equal(p.isDone, false);
+      assert.equal(p.photoStatus, 'OK');
+      assert.equal(p.tempPhotoUrl, 'blob:http://localhost/test-uuid');
+    },
+    onGpsReady: (p) => {
+      callOrder.push('onGpsReady');
+      assert.equal(p.gpsStatus, 'OK');
+      assert.equal(p.gps, '35.11,136.66');
+    },
+    onFinally: () => {
+      callOrder.push('onFinally');
+    }
+  });
+
+  assert.deepEqual(callOrder, [
+    'isSessionValid',
+    'blobToBase64',
+    'isSessionValid',
+    'onDraftReady',
+    'isSessionValid',
+    'onGpsReady',
+    'onFinally'
+  ], 'フック呼出しの因果順序が厳密に守られていること');
+});
+
+test('Gate 47: startDraftWorkflow セッション無効化時の早期遮断 (各チェックポイントでの isSessionValid() === false 検証)', async () => {
+  const ActivityModule = createActivityModule();
+
+  // Case 1: 写真Blob受信前にセッション無効化
+  {
+    const point = { rowId: 202 };
+    let draftReadyCalled = false;
+    let finallyCalled = false;
+
+    await ActivityModule.startDraftWorkflow(point, {
+      valNum: 10,
+      cameraPromise: Promise.resolve({ size: 50 }),
+      gpsPromise: Promise.resolve({ latitude: 35, longitude: 136 })
+    }, {
+      isSessionValid: () => false,
+      blobToBase64: async () => 'base64',
+      onDraftReady: () => { draftReadyCalled = true; },
+      onFinally: () => { finallyCalled = true; }
+    });
+
+    assert.equal(draftReadyCalled, false, 'セッション無効時は createDraft / onDraftReady が呼ばれないこと');
+    assert.equal(finallyCalled, true, '中断時も onFinally は必ず呼ばれること');
+    assert.equal(point.count, undefined, 'point 状態は未更新のままであること');
+  }
+
+  // Case 2: Base64変換後にセッション無効化
+  {
+    const point = { rowId: 203 };
+    let checkCount = 0;
+    let draftReadyCalled = false;
+    let finallyCalled = false;
+
+    await ActivityModule.startDraftWorkflow(point, {
+      valNum: 20,
+      cameraPromise: Promise.resolve({ size: 50 }),
+      gpsPromise: Promise.resolve({ latitude: 35, longitude: 136 })
+    }, {
+      isSessionValid: () => {
+        checkCount++;
+        return checkCount === 1;
+      },
+      blobToBase64: async () => 'base64',
+      onDraftReady: () => { draftReadyCalled = true; },
+      onFinally: () => { finallyCalled = true; }
+    });
+
+    assert.equal(draftReadyCalled, false, 'Base64後無効時は onDraftReady が呼ばれないこと');
+    assert.equal(finallyCalled, true, '中断時も onFinally は必ず呼ばれること');
+  }
+});
+
+test('Gate 48: startDraftWorkflow GPS空時の再取得 (getGPSLocationRetry) および onFinally 確実実行', async () => {
+  const ActivityModule = createActivityModule();
+  const point = { rowId: 204 };
+
+  let retryCalled = false;
+  let finallyCalled = false;
+
+  await ActivityModule.startDraftWorkflow(point, {
+    valNum: 30,
+    staffName: 'リトライ花子',
+    cameraPromise: Promise.resolve({ size: 50 }),
+    gpsPromise: Promise.resolve(null)
+  }, {
+    isSessionValid: () => true,
+    blobToBase64: async () => 'base64_ok',
+    getGPSLocationRetry: async () => {
+      retryCalled = true;
+      return { latitude: 35.22, longitude: 136.77, accuracy: 20 };
+    },
+    onDraftReady: () => {},
+    onGpsReady: (p) => {
+      assert.equal(p.gpsStatus, 'OK');
+      assert.equal(p.gps, '35.22,136.77');
+    },
+    onFinally: () => {
+      finallyCalled = true;
+    }
+  });
+
+  assert.equal(retryCalled, true, '初回GPSが空の場合は getGPSLocationRetry が呼ばれること');
+  assert.equal(finallyCalled, true, 'onFinally が確実に呼ばれること');
+});
+
+test('Architecture Gate: Public API exactly 8 methods & no globals', () => {
   const ActivityModule = createActivityModule();
   const keys = Object.keys(ActivityModule).sort();
   const expected = [
@@ -1076,10 +1219,11 @@ test('Architecture Gate: Public API exactly 7 methods & no globals', () => {
     'reconcileQueueState',
     'resetDraft',
     'restorePendingState',
+    'startDraftWorkflow',
     'submitActivity'
   ].sort();
-  assert.deepEqual(keys, expected, 'Public API は厳密に承認された7メソッドのみであること');
+  assert.deepEqual(keys, expected, 'Public API は厳密に承認された8メソッドのみであること');
 });
 
-console.log('✅ ALL 45 ACTIVITY LIFECYCLE GATES DEFINED SUCCESSFULLY.\n');
+console.log('✅ ALL 48 ACTIVITY LIFECYCLE GATES DEFINED SUCCESSFULLY.\n');
 

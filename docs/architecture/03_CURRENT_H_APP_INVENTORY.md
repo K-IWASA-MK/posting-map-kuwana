@@ -73,10 +73,10 @@
 | ファイル / コンポーネント | 行数 | 分類 | 分類理由・現物根拠 |
 |---|---|---|---|
 | `index.html` (ルート) | 43 | 🟡 再構築 | LIFF初期化とリダイレクトを担う。地区独立ドメインからUniversal共通APIへ接続する構造への最適化が必要。 |
-| `active/h-app/index.html` | 366 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
+| `active/h-app/index.html` | 367 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 700 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 2,093 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)により2,093行へ縮小。テンキー表示・入力状態をNumpadViewへ分離。下書き作成フロー（写真変換・Draft生成・GPS反映・再描画）はComposition Rootに暫定残存（Provisional in Composition Root - Pending Future Workflow Separation）として記録し、引き続きBoot Orchestratorへの純化を進める。 |
+| `active/h-app/app.js` | 2,075 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)により2,075行へ縮小。テンキー入力後の下書き開始非同期フロー（写真変換・Draft生成・空GPS再取得・セッション世代確認）をActivityModule.startDraftWorkflowへ集約・純粋分離。app.jsは同期呼出し配線および再描画通知・ロック解除のComposition Root責務へ純化。 |
 | `active/h-app/render.js` | 1,829 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。Storage/BulletinView/ActivityDraft/TransferView/NumpadViewのPresentation集約により1,829行へ。大量ポリゴン描画の最適化およびクリーン構造化が必要。 |
 | `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
@@ -88,7 +88,7 @@
 | `active/h-app/modules/storage.js` | 120 | 🟢 継承 | チラシ在庫・保管場所データアクセスおよびキャッシュ管理。Wave 1でapp.jsから分離。 |
 | `active/h-app/modules/bulletin.js` | 193 | 🟢 継承 | 掲示板Feature/Lifecycle Module（投稿取得・作成・検証・ライフサイクル調整）。Wave 2でapp.jsから分離。 |
 | `active/h-app/modules/pin-status.js` | 142 | 🟢 継承 | Pin Status Feature Module（作業中・完了ピンの排他制御・キャッシュ管理）。Wave 3でapp.jsから分離。 |
-| `active/h-app/modules/activity.js` | 397 | 🟢 継承 | Activity Feature / Lifecycle Module（活動ログライフサイクル、Draft作成・破棄、提出調整、Queue調停）。Wave 4でapp.jsおよびdb.jsから純粋分離。 |
+| `active/h-app/modules/activity.js` | 494 | 🟢 継承 | Activity Feature / Lifecycle Module（活動ログライフサイクル、Draft作成・破棄、提出調整、Queue調停、下書き開始非同期フロー調整）。Wave 4でapp.jsおよびdb.jsから純粋分離。Wave 7で下書き開始非同期フロー（startDraftWorkflow）を集約し、端末API/DOM/Storage非依存の純粋オーケストレータとして拡充。 |
 | `active/h-app/modules/transfer.js` | 228 | 🟢 継承 | Flyer Transfer Request Feature / Lifecycle Module（受渡要請セッション世代管理、連絡先バリデーション、Pre-Auth送信前ロック、API送信調整）。Wave 5でapp.jsから純粋分離。 |
 | `active/h-app/assets/icon180-v2.png` | 31KB | 🟢 継承 | PWA / LIFF 用公式アプリアイコン。 |
 
