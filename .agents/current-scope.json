@@ -1,8 +1,10 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/modules/activity.js",
+  "active/h-app/components/staff.js",
   "active/h-app/app.js",
-  "tests/test_activity_module_lifecycle.mjs",
   "active/h-app/index.html",
+  "tests/test_staff_id_info_lifecycle.mjs",
+  "tests/run_all_tests.mjs",
+  "scripts/test_browser_h_app_id_info.mjs",
   "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
 ]
