@@ -15,21 +15,21 @@
 
 | 領域 | ファイル数 | 実行テキスト行数 (wc -l) | バイト数 | 主な構成・言語 |
 |---|---|---|---|---|
-| **Hアプリ (配布員用モバイルUI)** | 20ファイル (19テキスト + 1画像) | **8,058行** (※1) | 368,000 bytes | HTML, JS, CSS, WebP/PNG |
+| **Hアプリ (配布員用モバイルUI)** | 20ファイル (19テキスト + 1画像) | **8,069行** (※1) | 368,000 bytes | HTML, JS, CSS, WebP/PNG |
 | **Manager Dashboard (管理者UI)** | 2ファイル | **4,085行** | 169,797 bytes | HTML, JS (Leaflet, Tailwind) |
 | **APIルーター・認証 (`active/api/`)** | 4ファイル | **1,879行** | 77,145 bytes | GAS / JS (V8) |
 | **ドメイン業務ロジック (`active/business/`)** | 21ファイル | **4,099行** | 151,821 bytes | GAS / JS (9業務ドメイン) |
 | **GASコア・運用基盤 (`active/gas/`)** | 6ファイル | **1,775行** | 60,955 bytes | GAS / JS (バッチ・展開・移行) |
 | **インフラアダプター (`active/infrastructure/`)** | 4ファイル | **473行** | 16,600 bytes | GAS / JS (Spreadsheet, Drive等) |
 | **GASマニフェスト (`active/appsscript.json`)** | 1ファイル | **16行** (※2) | 495 bytes | JSON (OAuth Scopes, V8) |
-| **`active/` 配下 小計 (テキスト全57ファイル)** | **58ファイル** (57テキスト + 1画像) | **20,385行** (※3) | 845,000 bytes | 実行アプリケーション中核 |
+| **`active/` 配下 小計 (テキスト全57ファイル)** | **58ファイル** (57テキスト + 1画像) | **20,396行** (※3) | 845,000 bytes | 実行アプリケーション中核 |
 | **マスターデータ・設定 (`data/`)** | 12ファイル (7ルート + 5e-Stat) | 428行 + 1MB GeoJSON | 1,028,843 bytes | CSV, GeoJSON, JSON |
-| **リポジトリ全体 (Git追跡ファイル数)** | **238ファイル** (Wave 12 実測値) | — | — | 全体資産 (※4) |
+| **リポジトリ全体 (Git追跡ファイル数)** | **238ファイル** (Wave 13 実測値) | — | — | 全体資産 (※4) |
 
-> ※1: Hアプリは `active/h-app` 配下の19テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。app.js は 1,599行 ➔ 1,546行（-53行純減）。Hアプリ全体は 7,974行 ➔ 8,058行（+84行: app.js -53, render.js +58, index.html +1, staff-registration.js +78。Rectificationによりコミット155cb8aから-77行純減）。
+> ※1: Hアプリは `active/h-app` 配下の19テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。app.js は 1,551行、modules/api.js は 238行。Hアプリ全体は 8,069行（Wave 13 DI配線により +11行）。
 > ※2: `active/appsscript.json` は末尾に改行コードが無いため、`wc -l`（改行数）では 16行となる。
-> ※3: 内訳合計: 8,058 (Hアプリ) + 4,085 (Manager) + 8,242 (Backend 35ファイル小計) = **20,385行** となり、`wc -l $(find active -type f ! -name "*.png")` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
-> ※4: 現在のGit HEAD (`5c0bf6d`) における `git ls-files` 実測値 236ファイル に、Wave 12 承認済み新規ファイル `active/h-app/modules/staff-registration.js` および `tests/test_staff_registration_lifecycle.mjs` (計2ファイル) を加えた計 **238ファイル** である。
+> ※3: 内訳合計: 8,069 (Hアプリ) + 4,085 (Manager) + 8,242 (Backend 35ファイル小計) = **20,396行** となり、`wc -l $(find active -type f ! -name "*.png")` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
+> ※4: 現在のGit HEADにおける `git ls-files` 実測値 238ファイルである。
 
 ---
 

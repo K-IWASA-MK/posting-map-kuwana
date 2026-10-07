@@ -282,6 +282,11 @@ async function startApp() {
   if (appStartupTriggered) return;
   appStartupTriggered = true;
 
+  setApiAuthGates({
+    waitForLiffAuthReady: waitForLiffAuthReady,
+    waitForIdentityVerified: waitForIdentityVerified
+  });
+
   // Wave 4: Activity Queue Hooks Wiring (Composition Root) - MissingならBoot時に明示failure
   configureActivityQueueHooks({
     onRejectedBeforeDequeue(item, res) {

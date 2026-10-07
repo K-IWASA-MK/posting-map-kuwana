@@ -51,6 +51,12 @@ const TRANSIENT_ERROR_CODES = [
   'INTERNAL_ERROR'
 ];
 
+let apiAuthGates = null;
+
+function setApiAuthGates(gates) {
+  apiAuthGates = gates;
+}
+
 async function callApiPost(action, payload = {}) {
   const isPublic = PUBLIC_ACTIONS.includes(action);
   const isIdentityBootstrap = IDENTITY_BOOTSTRAP_ACTIONS.includes(action);
@@ -58,24 +64,24 @@ async function callApiPost(action, payload = {}) {
 
   // 1. Auth Readiness Gates (Fail-Closed: 存在しない場合も送信拒否)
   if (!isPublic) {
-    if (typeof window === 'undefined' || typeof window.waitForLiffAuthReady !== 'function') {
+    if (!apiAuthGates || typeof apiAuthGates.waitForLiffAuthReady !== 'function') {
       const authErr = new Error("AUTH_GATE_UNAVAILABLE");
       authErr.code = "UNAUTHORIZED";
       authErr.errorType = "PERMANENT";
       authErr.retryable = false;
       throw authErr;
     }
-    await window.waitForLiffAuthReady();
+    await apiAuthGates.waitForLiffAuthReady();
 
     if (isProtectedWrite) {
-      if (typeof window.waitForIdentityVerified !== 'function') {
+      if (!apiAuthGates || typeof apiAuthGates.waitForIdentityVerified !== 'function') {
         const identErr = new Error("IDENTITY_GATE_UNAVAILABLE");
         identErr.code = "UNAUTHORIZED";
         identErr.errorType = "PERMANENT";
         identErr.retryable = false;
         throw identErr;
       }
-      await window.waitForIdentityVerified();
+      await apiAuthGates.waitForIdentityVerified();
     }
   }
 

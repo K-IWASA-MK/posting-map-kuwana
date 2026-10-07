@@ -110,6 +110,17 @@ function createApiVmContext({
   const context = vm.createContext(sandbox);
   vm.runInContext(apiJs, context);
 
+  if (hasAuthGate || hasIdentityGate) {
+    const gates = {};
+    if (hasAuthGate) {
+      gates.waitForLiffAuthReady = mockWindow.waitForLiffAuthReady;
+    }
+    if (hasIdentityGate) {
+      gates.waitForIdentityVerified = mockWindow.waitForIdentityVerified;
+    }
+    sandbox.setApiAuthGates(gates);
+  }
+
   return {
     callApiPost: sandbox.window.callApiPost,
     getFetchCount: () => fetchCallCount,

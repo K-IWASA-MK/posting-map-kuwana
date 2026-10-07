@@ -91,9 +91,8 @@
   - `render.js` ─▶ `components/`
   - **Feature ↔ Presentation 間** は Stable Interface / DI を原則とし、固定的な逆依存を新設しない。
 
-#### 【Deferred Migration Gaps (保留中の移行課題)】
-- 現行の `modules/api.js` 等から、`app.js` 内部の Auth/Identity 状態（`window.waitForLiffAuthReady` 等）への逆依存が存在する。
-- 該当部分は、今後の実装Wave（後期）にて Dependency Injection または Stable Interface を通じて解消予定である。
+#### 【Resolved Migration Gaps (解消済みの移行課題)】
+- `modules/api.js` から `app.js` 内部の Auth/Identity Gate への逆依存（`window.waitForLiffAuthReady` 等の直接参照）は、Wave 13 にて Dependency Injection（DI: `setApiAuthGates`）を通じて解消済み。
 
 ### 2. Dashboard (統括管理者用UI: `active/manager/`)
 - PC/タブレット向けの進捗管理・チラシ在庫・配布員名簿・受渡要請の統括管理画面。
