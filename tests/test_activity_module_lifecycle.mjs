@@ -896,6 +896,11 @@ test('Gate 40: Backend { success: true, accepted: false } ➔ REJECTED hook exac
 
   const ActivityModule = vm.runInContext('ActivityModule;', sandbox);
 
+  sandbox.setQueueLifecycleGates({
+    isIdentityVerifiedReady: sandbox.window.isIdentityVerifiedReady,
+    loadData: sandbox.loadData
+  });
+
   sandbox.configureActivityQueueHooks({
     onRejectedBeforeDequeue: async (item, res) => {
       rejectedCalls++;

@@ -117,6 +117,7 @@ function createTestEnvironment() {
     fetch: async () => ({ ok: true, json: async () => (['桑名市', '四日市市']) }),
     waitForIdentityVerified: async () => {},
     renderStorageList: (data) => { sandbox.renderStorageListCallCount++; },
+    setQueueLifecycleGates: () => {},
     callApiPost: async function(action, payload = {}) {
       if (action === 'getFlyerStock') {
         state.apiCallCount++;

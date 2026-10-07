@@ -88,6 +88,7 @@ function createTestEnvironment(options = {}) {
       removeItem: (k) => { delete storage[k]; }
     },
     callApiPost,
+    setQueueLifecycleGates: () => {},
     console: {
       log: () => {},
       warn: () => {},

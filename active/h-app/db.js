@@ -220,6 +220,13 @@ async function scheduleRetry(item) {
 
 // ── メイン同期処理 ────────────────────────────────────────────
 
+// Queue Lifecycle Gates (Auth readiness, UI Sync, LoadData)
+let _queueLifecycleGates = null;
+
+function setQueueLifecycleGates(gates) {
+  _queueLifecycleGates = gates;
+}
+
 // Activity Feature Module 連携用固定 Hooks (Generic Event Bus 禁止)
 let _activityQueueHooks = null;
 
@@ -267,8 +274,8 @@ async function processQueue() {
 
   // Auth / Identity 準備防壁 (Fail-Closed)
   // 未準備時は retryCount を消費せず、ネットワーク通信も行わず安全に待機中断
-  const isAuthReady = typeof window !== 'undefined' && typeof window.isIdentityVerifiedReady === 'function'
-    ? window.isIdentityVerifiedReady()
+  const isAuthReady = _queueLifecycleGates && typeof _queueLifecycleGates.isIdentityVerifiedReady === 'function'
+    ? _queueLifecycleGates.isIdentityVerifiedReady()
     : false;
 
   if (!isAuthReady) {
@@ -385,8 +392,12 @@ async function processQueue() {
     }
 
     // 全キュー処理完了後に1回だけUI更新（件数分の連続API呼び出しを防止）
-    if (anySuccess && typeof loadData === 'function') {
-      loadData(true);
+    if (
+      anySuccess &&
+      _queueLifecycleGates &&
+      typeof _queueLifecycleGates.loadData === 'function'
+    ) {
+      _queueLifecycleGates.loadData(true);
     }
 
   } catch (err) {
@@ -416,8 +427,11 @@ window.blobToBase64 = blobToBase64;
  * UI の同期ステータス表示を更新（app.js の triggerUISyncRefresh を呼ぶ）
  */
 function updateUISyncStatus() {
-  if (typeof window.triggerUISyncRefresh === 'function') {
-    window.triggerUISyncRefresh();
+  if (
+    _queueLifecycleGates &&
+    typeof _queueLifecycleGates.triggerUISyncRefresh === 'function'
+  ) {
+    _queueLifecycleGates.triggerUISyncRefresh();
   }
 }
 

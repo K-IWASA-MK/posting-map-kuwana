@@ -92,6 +92,7 @@ function createTestEnvironment(options = {}) {
       removeItem: () => {}
     },
     callApiPost,
+    setQueueLifecycleGates: () => {},
     logDebug: (msg) => {
       eventLog.push({ type: 'LOG_DEBUG', msg });
     },

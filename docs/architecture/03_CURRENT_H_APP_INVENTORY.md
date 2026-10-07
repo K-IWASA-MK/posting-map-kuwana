@@ -76,13 +76,13 @@
 | `active/h-app/index.html` | 369 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 700 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 1,546 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)・ID情報モーダル分離(Wave 8)・在庫登録一覧制御分離(Wave 9)・ランキング制御分離(Wave 10)・掲示板投稿連絡モーダル分離(Wave 11)・スタッフ初回登録フロー分離(Wave 12)により1,546行へ縮小（-53行純減）。チラシ在庫画面DOM・Loading画面DOMへの直接侵入およびAPI直叩きを完全撤廃し、StaffRegistrationModuleおよびStorageView/StaffRegistrationViewへの薄い配線ラッパーへ純化。 |
+| `active/h-app/app.js` | 1,558 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)・ID情報モーダル分離(Wave 8)・在庫登録一覧制御分離(Wave 9)・ランキング制御分離(Wave 10)・掲示板投稿連絡モーダル分離(Wave 11)・スタッフ初回登録フロー分離(Wave 12)・Auth Gate DI(Wave 13)・Queue Lifecycle Gate DI(Wave 14)を実施。チラシ在庫画面DOM・Loading画面DOMへの直接侵入およびAPI直叩きを完全撤廃し、Composition Rootとして各モジュールへGates/Hooksを注入。 |
 | `active/h-app/render.js` | 2,454 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。StorageView/BulletinView/ActivityDraft/TransferView/NumpadView/RankingView/StaffRegistrationViewのPresentation集約により2,454行へ。Wave 12でStorageView.updateStaffIdDisplayおよびStaffRegistrationViewを集約完備。 |
-| `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
+| `active/h-app/db.js` | 486 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)による4固定フック連携に加え、Wave 14でsetQueueLifecycleGatesによるDI受領を確立し、上位app.jsへの直接逆依存を解消。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
 | `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。引数 mySummary 優先参照化により window._myRankingSummary へのグローバル暗黙依存を完全排除し、純粋関数として純化。 |
 | `active/h-app/components/staff.js` | 253 | 🟢 継承 | デジタル配布員証（ジャイロカード・公式配布員ID表示）およびID情報モーダル（StaffIdInfoView: Terms/Privacy/License）。Wave 8でapp.jsからID情報モーダル文面・開閉Presentationを純粋集約。 |
-| `active/h-app/modules/api.js` | 232 | 🟡 再構築 | `PMS_CLIENT_CONFIG.api.gasWebAppUrl` 経由のPOST通信。認証ヘッダー・共通エラーハンドリングの標準化が必要。 |
+| `active/h-app/modules/api.js` | 238 | 🟡 再構築 | `PMS_CLIENT_CONFIG.api.gasWebAppUrl` 経由のPOST通信。Wave 13でsetApiAuthGatesを通じたAuth/Identity GatesのDI受領を確立。 |
 | `active/h-app/modules/device.js` | 122 | 🟢 継承 | 高精度GPS取得（`getGPSLocation`）および写真撮影・クライアント側画像圧縮（`compressImage`）。 |
 | `active/h-app/modules/navigation.js` | 124 | 🟢 継承 | 画面遷移（`switchPage`）・スクロール位置保持・ナビ切り替え。 |
 | `active/h-app/modules/storage.js` | 120 | 🟢 継承 | チラシ在庫・保管場所データアクセスおよびキャッシュ管理。Wave 1でapp.jsから分離。 |

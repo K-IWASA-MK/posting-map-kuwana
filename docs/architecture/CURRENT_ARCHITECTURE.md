@@ -93,6 +93,7 @@
 
 #### 【Resolved Migration Gaps (解消済みの移行課題)】
 - `modules/api.js` から `app.js` 内部の Auth/Identity Gate への逆依存（`window.waitForLiffAuthReady` 等の直接参照）は、Wave 13 にて Dependency Injection（DI: `setApiAuthGates`）を通じて解消済み。
+- `active/h-app/db.js` から `app.js` 内部の Lifecycle/UI 関数への逆依存（`window.isIdentityVerifiedReady`, `window.triggerUISyncRefresh`, `loadData` の直接参照）は、Wave 14 にて Dependency Injection（DI: `setQueueLifecycleGates`）を通じて解消済み。
 
 ### 2. Dashboard (統括管理者用UI: `active/manager/`)
 - PC/タブレット向けの進捗管理・チラシ在庫・配布員名簿・受渡要請の統括管理画面。

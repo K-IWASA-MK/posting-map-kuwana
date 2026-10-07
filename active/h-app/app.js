@@ -568,6 +568,13 @@ window.triggerUISyncRefresh = async function() {
   }
 };
 
+setQueueLifecycleGates({
+  isIdentityVerifiedReady: window.isIdentityVerifiedReady,
+  triggerUISyncRefresh: window.triggerUISyncRefresh,
+  loadData: loadData
+});
+
+
 
 function pressNum(key) {
   if (!numpadContext) return;

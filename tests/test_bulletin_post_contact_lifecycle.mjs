@@ -262,7 +262,8 @@ function createTestEnvironment(customApiHandler = null) {
       warn: () => {},
       error: () => {}
     },
-    waitForIdentityVerified: async () => true
+    waitForIdentityVerified: async () => true,
+    setQueueLifecycleGates: () => {}
   };
 
   sandbox.window = sandbox;

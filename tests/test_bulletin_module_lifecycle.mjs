@@ -162,6 +162,7 @@ function createBulletinTestContext(customConfig = {}) {
     alert: (msg) => { alertMessages.push(msg); },
     waitForIdentityVerified: mockWaitForIdentityVerified,
     callApiPost: (action, payload) => apiHandler(action, payload),
+    setQueueLifecycleGates: () => {},
     currentUser: null,
     escapeHtml: (str) => String(str || '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
   };
