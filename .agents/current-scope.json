@@ -1,8 +1,8 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/modules/api.js",
+  "active/h-app/db.js",
   "active/h-app/app.js",
-  "tests/test_optimistic_startup_safety.mjs",
+  "tests/test_activity_module_lifecycle.mjs",
   "docs/architecture/CURRENT_ARCHITECTURE.md",
   "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
 ]
