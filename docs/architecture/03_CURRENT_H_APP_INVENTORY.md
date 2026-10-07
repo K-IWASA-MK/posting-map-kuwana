@@ -15,20 +15,20 @@
 
 | 領域 | ファイル数 | 実行テキスト行数 (wc -l) | バイト数 | 主な構成・言語 |
 |---|---|---|---|---|
-| **Hアプリ (配布員用モバイルUI)** | 20ファイル (19テキスト + 1画像) | **8,135行** (※1) | 368,000 bytes | HTML, JS, CSS, WebP/PNG |
+| **Hアプリ (配布員用モバイルUI)** | 20ファイル (19テキスト + 1画像) | **8,058行** (※1) | 368,000 bytes | HTML, JS, CSS, WebP/PNG |
 | **Manager Dashboard (管理者UI)** | 2ファイル | **4,085行** | 169,797 bytes | HTML, JS (Leaflet, Tailwind) |
 | **APIルーター・認証 (`active/api/`)** | 4ファイル | **1,879行** | 77,145 bytes | GAS / JS (V8) |
 | **ドメイン業務ロジック (`active/business/`)** | 21ファイル | **4,099行** | 151,821 bytes | GAS / JS (9業務ドメイン) |
 | **GASコア・運用基盤 (`active/gas/`)** | 6ファイル | **1,775行** | 60,955 bytes | GAS / JS (バッチ・展開・移行) |
 | **インフラアダプター (`active/infrastructure/`)** | 4ファイル | **473行** | 16,600 bytes | GAS / JS (Spreadsheet, Drive等) |
 | **GASマニフェスト (`active/appsscript.json`)** | 1ファイル | **16行** (※2) | 495 bytes | JSON (OAuth Scopes, V8) |
-| **`active/` 配下 小計 (テキスト全57ファイル)** | **58ファイル** (57テキスト + 1画像) | **20,462行** (※3) | 845,000 bytes | 実行アプリケーション中核 |
+| **`active/` 配下 小計 (テキスト全57ファイル)** | **58ファイル** (57テキスト + 1画像) | **20,385行** (※3) | 845,000 bytes | 実行アプリケーション中核 |
 | **マスターデータ・設定 (`data/`)** | 12ファイル (7ルート + 5e-Stat) | 428行 + 1MB GeoJSON | 1,028,843 bytes | CSV, GeoJSON, JSON |
 | **リポジトリ全体 (Git追跡ファイル数)** | **238ファイル** (Wave 12 実測値) | — | — | 全体資産 (※4) |
 
-> ※1: Hアプリは `active/h-app` 配下の19テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。app.js は 1,599行 ➔ 1,560行（-39行純減）。Hアプリ全体は 7,974行 ➔ 8,135行（+161行: app.js -39, render.js +62, index.html +1, staff-registration.js +137）。
+> ※1: Hアプリは `active/h-app` 配下の19テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。app.js は 1,599行 ➔ 1,546行（-53行純減）。Hアプリ全体は 7,974行 ➔ 8,058行（+84行: app.js -53, render.js +58, index.html +1, staff-registration.js +78。Rectificationによりコミット155cb8aから-77行純減）。
 > ※2: `active/appsscript.json` は末尾に改行コードが無いため、`wc -l`（改行数）では 16行となる。
-> ※3: 内訳合計: 8,135 (Hアプリ) + 4,085 (Manager) + 8,242 (Backend 35ファイル小計) = **20,462行** となり、`wc -l $(find active -type f ! -name "*.png")` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
+> ※3: 内訳合計: 8,058 (Hアプリ) + 4,085 (Manager) + 8,242 (Backend 35ファイル小計) = **20,385行** となり、`wc -l $(find active -type f ! -name "*.png")` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
 > ※4: 現在のGit HEAD (`5c0bf6d`) における `git ls-files` 実測値 236ファイル に、Wave 12 承認済み新規ファイル `active/h-app/modules/staff-registration.js` および `tests/test_staff_registration_lifecycle.mjs` (計2ファイル) を加えた計 **238ファイル** である。
 
 ---
@@ -76,8 +76,8 @@
 | `active/h-app/index.html` | 369 | 🟢 継承 | HアプリのメインDOM。ブラック基調のプレミアムUI、下部ナビゲーション、モーダル構造を確立。 |
 | `active/h-app/style.css` | 700 | 🟢 継承 | グラスモフィズム、ネオモルフィズム、タッチアニメーション等のデザインシステム。 |
 | `active/h-app/tailwind-utils.css` | 321 | 🟢 継承 | オフライン稼働・高速レンダリングのためのTailwind事前生成CSS。 |
-| `active/h-app/app.js` | 1,560 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)・ID情報モーダル分離(Wave 8)・在庫登録一覧制御分離(Wave 9)・ランキング制御分離(Wave 10)・掲示板投稿連絡モーダル分離(Wave 11)・スタッフ初回登録フロー分離(Wave 12)により1,560行へ縮小（-39行純減）。チラシ在庫画面DOM・Loading画面DOMへの直接侵入およびAPI直叩きを完全撤廃し、StaffRegistrationModuleおよびStorageView/StaffRegistrationViewへの薄い配線ラッパーへ純化。 |
-| `active/h-app/render.js` | 2,458 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。StorageView/BulletinView/ActivityDraft/TransferView/NumpadView/RankingView/StaffRegistrationViewのPresentation集約により2,458行へ。Wave 12でStorageView.updateStaffIdDisplayおよびStaffRegistrationViewを集約完備。 |
+| `active/h-app/app.js` | 1,546 | 🟡 再構築 | 【Current Fact】Target B'へ向けたStorage分離(Wave 1)・Bulletin分離(Wave 2)・PinStatus分離(Wave 3)・Activity分離(Wave 4)・Transfer分離(Wave 5)・Numpad分離(Wave 6)・下書き開始フロー集約(Wave 7)・ID情報モーダル分離(Wave 8)・在庫登録一覧制御分離(Wave 9)・ランキング制御分離(Wave 10)・掲示板投稿連絡モーダル分離(Wave 11)・スタッフ初回登録フロー分離(Wave 12)により1,546行へ縮小（-53行純減）。チラシ在庫画面DOM・Loading画面DOMへの直接侵入およびAPI直叩きを完全撤廃し、StaffRegistrationModuleおよびStorageView/StaffRegistrationViewへの薄い配線ラッパーへ純化。 |
+| `active/h-app/render.js` | 2,454 | 🟡 再構築 | Google Mapsピン・ポリゴン・モーダル描画。StorageView/BulletinView/ActivityDraft/TransferView/NumpadView/RankingView/StaffRegistrationViewのPresentation集約により2,454行へ。Wave 12でStorageView.updateStaffIdDisplayおよびStaffRegistrationViewを集約完備。 |
 | `active/h-app/db.js` | 472 | 🟢 継承 | IndexedDBによるオフライン送信キュー（`PostingMapDB` -> `syncQueue`）。Activity分離(Wave 4)により直接状態更新を排除し4固定フック経由へ純化。 |
 | `active/h-app/components/navigation.js` | 50 | 🟢 継承 | 現場目線の2層（Tier1/Tier2）ボトムナビゲーションHTML生成。 |
 | `active/h-app/components/ranking.js` | 72 | 🟢 継承 | 個人ランキングカード表示。引数 mySummary 優先参照化により window._myRankingSummary へのグローバル暗黙依存を完全排除し、純粋関数として純化。 |
@@ -91,7 +91,7 @@
 | `active/h-app/modules/pin-status.js` | 142 | 🟢 継承 | Pin Status Feature Module（作業中・完了ピンの排他制御・キャッシュ管理）。Wave 3でapp.jsから分離。 |
 | `active/h-app/modules/activity.js` | 497 | 🟢 継承 | Activity Feature / Lifecycle Module（活動ログライフサイクル、Draft作成・破棄、提出調整、Queue調停、下書き開始非同期フロー調整）。Wave 4でapp.jsおよびdb.jsから純粋分離。Wave 7で下書き開始非同期フロー（startDraftWorkflow）を集約し、端末API/DOM/Storage非依存の純粋オーケストレータとして拡充。 |
 | `active/h-app/modules/transfer.js` | 228 | 🟢 継承 | Flyer Transfer Request Feature / Lifecycle Module（受渡要請セッション世代管理、連絡先バリデーション、Pre-Auth送信前ロック、API送信調整）。Wave 5でapp.jsから純粋分離。 |
-| `active/h-app/modules/staff-registration.js` | 137 | 🟢 継承 | Staff Registration Feature Module（スタッフ登録状態 isRegistering, registrationError, activeRegistrationPromise の単一SSOT管理、多重呼出し防止、hooks発火）。Wave 12で新設。 |
+| `active/h-app/modules/staff-registration.js` | 78 | 🟢 継承 | Staff Registration Feature Module（スタッフ登録状態 isRegistering, registrationError, activeRegistrationPromise の単一SSOT管理、多重呼出し防止、hooks発火）。Wave 12で新設。 |
 | `active/h-app/assets/icon180-v2.png` | 31KB | 🟢 継承 | PWA / LIFF 用公式アプリアイコン。 |
 
 ### (2) Frontend — Manager Dashboard (`active/manager/`)

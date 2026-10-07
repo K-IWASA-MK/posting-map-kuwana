@@ -12,59 +12,29 @@ const StaffRegistrationModule = (function() {
   let _registrationError = false;
   let _activeRegistrationPromise = null;
 
-  function registerStaff(profile, hooks = {}) {
+  function registerStaff(profile, hooks) {
     if (_activeRegistrationPromise) {
       return _activeRegistrationPromise;
     }
 
     _isRegistering = true;
+    window.isRegistering = true;
     _registrationError = false;
+    window.registrationError = false;
 
-    if (typeof hooks.onStart === 'function') {
-      try {
-        hooks.onStart();
-      } catch (e) {
-        console.warn('[StaffRegistrationModule] onStart hook error:', e);
-      }
+    if (hooks && hooks.onStart) {
+      hooks.onStart();
     }
 
-    const apiCaller = (hooks && typeof hooks.apiCaller === 'function')
-      ? hooks.apiCaller
-      : ((hooks && typeof hooks.callApiPost === 'function')
-          ? hooks.callApiPost
-          : (typeof callApiPost === 'function' ? callApiPost : null));
-
-    if (typeof apiCaller !== 'function') {
-      const missingErr = new Error("callApiPost is not available");
-      _registrationError = true;
-      _isRegistering = false;
-      if (typeof hooks.onError === 'function') {
-        try { hooks.onError(missingErr); } catch (e) {}
-      }
-      return Promise.reject(missingErr);
-    }
-
-    const logger = (hooks && typeof hooks.logDebug === 'function')
-      ? hooks.logDebug
-      : (typeof logDebug === 'function' ? logDebug : null);
-
-    if (logger) {
-      logger("API START (初回登録・非同期)");
-    }
-
-    const payload = {
-      lastName: profile ? profile.displayName : '',
+    logDebug("API START (初回登録・非同期)");
+    _activeRegistrationPromise = callApiPost('registerStaff', {
+      lastName: profile.displayName,
       firstName: "(LINE)",
-      lineUserId: profile ? profile.userId : ''
-    };
-
-    _activeRegistrationPromise = apiCaller('registerStaff', payload).then(res => {
-      if (logger) {
-        logger("API OK (初回登録完了)");
-      }
-
+      lineUserId: profile.userId
+    }).then(res => {
+      logDebug("API OK (初回登録完了)");
       if (res && res.success && res.id && String(res.id).trim() !== '') {
-        if (typeof hooks.onSuccess === 'function') {
+        if (hooks && hooks.onSuccess) {
           hooks.onSuccess(res, profile);
         }
         return res;
@@ -74,30 +44,17 @@ const StaffRegistrationModule = (function() {
       }
     }).catch(err => {
       _registrationError = true;
+      window.registrationError = true;
+      logDebug("Background registration failed: " + (err ? err.message : err));
 
-      if (logger) {
-        logger("Background registration failed: " + (err ? err.message : err));
-      }
-
-      if (typeof hooks.onError === 'function') {
-        try {
-          hooks.onError(err);
-        } catch (hookErr) {
-          console.warn('[StaffRegistrationModule] onError hook error:', hookErr);
-        }
+      if (hooks && hooks.onError) {
+        hooks.onError(err);
       }
       throw err;
     }).finally(() => {
       _isRegistering = false;
+      window.isRegistering = false;
       _activeRegistrationPromise = null;
-
-      if (typeof hooks.onFinally === 'function') {
-        try {
-          hooks.onFinally();
-        } catch (finallyErr) {
-          console.warn('[StaffRegistrationModule] onFinally hook error:', finallyErr);
-        }
-      }
     });
 
     return _activeRegistrationPromise;
@@ -110,25 +67,9 @@ const StaffRegistrationModule = (function() {
     };
   }
 
-  function getSnapshot() {
-    return {
-      isRegistering: _isRegistering,
-      registrationError: _registrationError,
-      hasActivePromise: Boolean(_activeRegistrationPromise)
-    };
-  }
-
-  function resetForTest() {
-    _isRegistering = false;
-    _registrationError = false;
-    _activeRegistrationPromise = null;
-  }
-
   return {
     registerStaff,
-    getStatus,
-    getSnapshot,
-    resetForTest
+    getStatus
   };
 })();
 

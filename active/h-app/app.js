@@ -403,49 +403,35 @@ function setSyncStatus(state) {
 function triggerBackgroundRegistration(profile) {
   window.liffProfile = profile;
 
-  if (typeof StaffRegistrationModule === 'undefined') {
-    console.error("[StaffRegistration Error] StaffRegistrationModule is not loaded.");
-    return Promise.reject(new Error("StaffRegistrationModule unavailable"));
-  }
-
   return StaffRegistrationModule.registerStaff(profile, {
     onStart: () => {
-      if (typeof StorageView !== 'undefined' && typeof StorageView.updateStaffIdDisplay === 'function') {
-        StorageView.updateStaffIdDisplay('registering');
-      }
+      StorageView.updateStaffIdDisplay('registering');
     },
     onSuccess: (res, p) => {
       const registeredInfo = {
-        last: p ? p.displayName : '',
+        last: p.displayName,
         first: "",
         id: res.id,
-        picture: p ? p.pictureUrl : ''
+        picture: p.pictureUrl
       };
       localStorage.setItem('user_info', JSON.stringify(registeredInfo));
-      if (typeof logDebug === 'function') {
-        logDebug("Registered! Staff ID: " + res.id);
-      }
+      logDebug("Registered! Staff ID: " + res.id);
 
-      if (typeof StorageView !== 'undefined' && typeof StorageView.updateStaffIdDisplay === 'function') {
-        StorageView.updateStaffIdDisplay('success', res.id);
-      }
+      StorageView.updateStaffIdDisplay('success', res.id);
 
       if (typeof renderSettings === 'function') {
         renderSettings();
       }
       updateBottomNavVisibility();
+      return res;
     },
     onError: (err) => {
-      if (typeof StorageView !== 'undefined' && typeof StorageView.updateStaffIdDisplay === 'function') {
-        StorageView.updateStaffIdDisplay('error', null, () => {
-          window.retryRegistration();
-        });
-      }
-      if (typeof StaffRegistrationView !== 'undefined' && typeof StaffRegistrationView.showRegistrationError === 'function') {
-        StaffRegistrationView.showRegistrationError(err, () => {
-          window.retryRegistration();
-        });
-      }
+      StorageView.updateStaffIdDisplay('error', null, () => {
+        window.retryRegistration();
+      });
+      StaffRegistrationView.showRegistrationError(err, () => {
+        window.retryRegistration();
+      });
     }
   });
 }
@@ -815,7 +801,7 @@ function initStorageRegisterPage() {
   if (typeof StorageView !== 'undefined' && typeof StorageView.initRegisterPage === 'function') {
     StorageView.initRegisterPage({
       getUserInfo: () => JSON.parse(localStorage.getItem('user_info') || '{}'),
-      getRegistrationStatus: () => (typeof StaffRegistrationModule !== 'undefined' ? StaffRegistrationModule.getStatus() : { isRegistering: false, registrationError: false }),
+      getRegistrationStatus: () => (typeof StaffRegistrationModule !== 'undefined' ? StaffRegistrationModule.getStatus() : ({ isRegistering: window.isRegistering, registrationError: window.registrationError })),
       onRetryRegistration: async () => {
         const profile = await liff.getProfile();
         triggerBackgroundRegistration(profile);

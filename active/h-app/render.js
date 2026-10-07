@@ -463,29 +463,27 @@ const StorageView = (function() {
     }
   }
 
-  function updateStaffIdDisplay(state, staffId = null, onRetry = null) {
+  function updateStaffIdDisplay(state, staffId, onRetry) {
     const idEl = $('storage-register-staff-id');
-    if (!idEl) return;
-
-    if (state === 'registering') {
-      idEl.textContent = 'ID: 登録中...';
-      idEl.style.color = 'inherit';
-      idEl.style.cursor = 'default';
-      idEl.onclick = null;
-    } else if (state === 'success') {
-      idEl.textContent = 'ID: ' + (staffId || '---');
-      idEl.style.color = 'inherit';
-      idEl.style.cursor = 'default';
-      idEl.onclick = null;
-    } else if (state === 'error') {
-      idEl.textContent = 'ID: 登録失敗 (タップして再試行)';
-      idEl.style.color = '#ef4444';
-      idEl.style.cursor = 'pointer';
-      idEl.onclick = () => {
-        if (typeof onRetry === 'function') {
+    if (idEl) {
+      if (state === 'registering') {
+        idEl.textContent = 'ID: 登録中...';
+        idEl.style.color = 'inherit';
+        idEl.style.cursor = 'default';
+        idEl.onclick = null;
+      } else if (state === 'success') {
+        idEl.textContent = 'ID: ' + (staffId || '---');
+        idEl.style.color = 'inherit';
+        idEl.style.cursor = 'default';
+        idEl.onclick = null;
+      } else if (state === 'error') {
+        idEl.textContent = 'ID: 登録失敗 (タップして再試行)';
+        idEl.style.color = '#ef4444';
+        idEl.style.cursor = 'pointer';
+        idEl.onclick = () => {
           onRetry();
-        }
-      };
+        };
+      }
     }
   }
 
@@ -511,19 +509,17 @@ const StaffRegistrationView = (function() {
     return document.getElementById(id);
   }
 
-  function showRegistrationError(err, onRetry = null) {
+  function showRegistrationError(err, onRetry) {
     const loadingStatusEl = $('loading-status');
     if (loadingStatusEl) {
-      loadingStatusEl.textContent = '登録エラー (タップして再試行): ' + (err && err.message ? err.message : '通信失敗');
+      loadingStatusEl.textContent = '登録エラー (タップして再試行): ' + (err.message || '通信失敗');
       loadingStatusEl.style.color = '#ef4444';
       loadingStatusEl.style.cursor = 'pointer';
       loadingStatusEl.onclick = () => {
         loadingStatusEl.textContent = '再試行中...';
         loadingStatusEl.style.color = 'inherit';
         loadingStatusEl.onclick = null;
-        if (typeof onRetry === 'function') {
-          onRetry();
-        }
+        onRetry();
       };
     }
   }

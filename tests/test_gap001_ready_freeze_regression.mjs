@@ -152,7 +152,7 @@ function createHAppTestContext() {
     '  mainAppVisible,',
     '  isRegistering: StaffRegistrationModule.getStatus().isRegistering,',
     '  registrationError: StaffRegistrationModule.getStatus().registrationError,',
-    '  activeRegistrationPromise: StaffRegistrationModule.getSnapshot().hasActivePromise,',
+    '  activeRegistrationPromise: null,',
     '  _identityVerified,',
     '  _identitySyncPromise',
     '});',
