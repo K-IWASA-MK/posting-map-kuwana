@@ -857,6 +857,7 @@ function selectTownArea(target) {
     showAreaDetail({
       name: pin.fullName || `${pin.cityName} ${pin.townName}`,
       statusCfg: statusCfg,
+      households: households,
       population: population
     });
   }
@@ -1122,6 +1123,7 @@ function renderPinsOnMap(mapInstance, layerGroup, pins) {
       showAreaDetail({
         name: pin.fullName,
         statusCfg: statusCfg,
+        households: households,
         population: population
       });
       renderRightBottomAreaStats(pin);
@@ -1676,6 +1678,7 @@ function showAreaDetail(data) {
   const detailEl = document.getElementById('map-area-detail');
   const nameEl = document.getElementById('selected-area-name');
   const statusEl = document.getElementById('selected-area-status');
+  const householdsEl = document.getElementById('selected-area-households');
   const metaEl = document.getElementById('selected-area-meta');
 
   const cfg = data.statusCfg || AREA_STATUS_CONFIG.UNKNOWN;
@@ -1684,6 +1687,13 @@ function showAreaDetail(data) {
   if (statusEl) {
     statusEl.textContent = cfg.statusText;
     statusEl.style.color = cfg.color;
+  }
+  if (householdsEl) {
+    if (data.households !== undefined && data.households !== null) {
+      householdsEl.textContent = `🏠 世帯数: ${Number(data.households).toLocaleString()}世帯`;
+    } else {
+      householdsEl.textContent = '';
+    }
   }
   if (metaEl) {
     if (data.population !== undefined && data.population !== null) {
