@@ -190,6 +190,183 @@
       height: calc(3rem + env(safe-area-inset-top, 0px) + 44px) !important;
       padding-top: calc(env(safe-area-inset-top, 0px) + 44px) !important;
     }
+
+    /* ==========================================================================
+       PHASE A2: RESPONSIVE SHELL ARCHITECTURE (Right Panel Stationary 3-Pane)
+       - Main Canvas & Main Stage Container Queries
+       - KPI 20-Column 2-Tier Grid Reflow (Tier 1: 12/20 + 8/20, Tier 2: 8/20 + 7/20 + 5/20)
+       - Right Panel Constant 3-Pane Docking (width 280px in Compact Desktop)
+       - Right Panel Vertical Allocation (Turnout ~68% / Area Stats ~32% on <=650px)
+       - Sidebar Short-Height Compression (<= 650px)
+       - Live Feed Responsive Visibility Control (2/3/4 items)
+       - Records Ranking Adaptive 2-Row Layout (@container main-stage <= 820px)
+       ========================================================================== */
+
+    /* 1. Query Containers */
+    #main-control-canvas {
+      container-type: inline-size;
+      container-name: main-canvas;
+    }
+    #main-stage-container {
+      container-type: inline-size;
+      container-name: main-stage;
+    }
+
+    /* 2. Compact Cockpit (Desktop only: 1024px <= viewport, Main Canvas < 1100px) */
+    @media (min-width: 1024px) {
+      @container main-canvas (max-width: 1099px) {
+        /* KPI Bar: 2-Tier Grid (20-column system) */
+        #situation-bar {
+          height: auto !important;
+          display: grid !important;
+          grid-template-columns: repeat(20, 1fr) !important;
+          gap: 0.5rem !important;
+          padding: 0.5rem !important;
+        }
+        #situation-bar > div {
+          width: 100% !important;
+          flex-shrink: 1 !important;
+          min-width: 0 !important;
+        }
+        /* Tier 1: エリア内訳 (12/20 = 60%) + 配布状況 (8/20 = 40%) */
+        #situation-bar > div:nth-child(2) {
+          grid-column: 1 / span 12 !important;
+          grid-row: 1 !important;
+        }
+        #situation-bar > div:nth-child(1) {
+          grid-column: 13 / span 8 !important;
+          grid-row: 1 !important;
+        }
+        /* Tier 2: 配布実績 (8/20 = 40%) + 保有チラシ (7/20 = 35%) + 名簿 (5/20 = 25%) */
+        #situation-bar > div:nth-child(3) {
+          grid-column: 1 / span 8 !important;
+          grid-row: 2 !important;
+        }
+        #situation-bar > div:nth-child(4) {
+          grid-column: 9 / span 7 !important;
+          grid-row: 2 !important;
+        }
+        #situation-bar > div:nth-child(5) {
+          grid-column: 16 / span 5 !important;
+          grid-row: 2 !important;
+        }
+
+        /* Right Panel: 右側常駐維持（下段reflow完全禁止・280px幅調整のみ） */
+        #right-panel-container {
+          width: 280px !important;
+          flex-shrink: 0 !important;
+        }
+      }
+    }
+
+    /* 3. Short-Height Mode (height <= 650px) */
+    @media (max-height: 650px) {
+      aside {
+        padding: 0.5rem !important;
+      }
+      #sidebar-logo-container {
+        padding-top: 0.25rem !important;
+        padding-bottom: 0.25rem !important;
+      }
+      #sidebar-logo-outer {
+        width: 56px !important;
+        height: 56px !important;
+      }
+      #sidebar-logo-inner {
+        width: 44px !important;
+        height: 44px !important;
+      }
+      #area-selector-card,
+      #nav-menu-card {
+        padding: 0.375rem !important;
+      }
+      #nav-menu-card .nav-item {
+        height: 2rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        gap: 0.375rem !important;
+        font-size: 0.75rem !important;
+      }
+      #sidebar-bottom-status {
+        padding-top: 0.25rem !important;
+      }
+      #sidebar-bottom-status button {
+        margin-top: 0.25rem !important;
+        height: 1.5rem !important;
+      }
+
+      /* Right Panel Vertical Allocation: Turnout ~68% / Area Stats ~32% */
+      #right-slot-top {
+        flex: 68 1 0% !important;
+        padding: 0.625rem !important;
+      }
+      #right-slot-bottom {
+        flex: 32 1 0% !important;
+        padding: 0.625rem !important;
+        overflow-y: auto !important;
+      }
+      #right-slot-bottom .area-stats-body {
+        margin-top: 0.375rem !important;
+        gap: 0.25rem !important;
+      }
+      #right-slot-bottom .area-stats-result {
+        padding-top: 0.375rem !important;
+        margin-top: 0.375rem !important;
+      }
+    }
+
+    /* 4. Live Feed Responsive Visibility Control */
+    #live-feed-container {
+      container-type: inline-size;
+      container-name: live-feed;
+    }
+    @media (min-width: 1024px) {
+      /* Compact Desktop (width <= 820px): Show 2 records */
+      @container live-feed (max-width: 820px) {
+        #live-feed-container > :nth-child(n+4) {
+          display: none !important;
+        }
+      }
+      /* Medium Desktop (821px - 1080px): Show 3 records */
+      @container live-feed (min-width: 821px) and (max-width: 1080px) {
+        #live-feed-container > :nth-child(n+6) {
+          display: none !important;
+        }
+      }
+      /* > 1080px: Show all 4 records (MacBook default full display) */
+    }
+
+    /* 5. Records Ranking 2-Row Adaptive Layout (<= 820px) */
+    @container main-stage (max-width: 820px) {
+      .ranking-record-row {
+        flex-wrap: wrap !important;
+        gap: 0.375rem !important;
+        padding: 0.5rem 0.625rem !important;
+      }
+      .ranking-col-staff {
+        order: 1 !important;
+        flex: 1 1 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+      }
+      .ranking-col-count {
+        order: 2 !important;
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+      }
+      .ranking-col-feed {
+        order: 3 !important;
+        width: 100% !important;
+        flex: 1 0 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        padding-top: 0.25rem !important;
+        border-top: 1px solid rgba(36, 48, 68, 0.4) !important;
+        justify-content: flex-start !important;
+      }
+    }
   </style>
 </head>
 <body class="bg-appBg text-textMain h-[100dvh] w-screen overflow-hidden flex flex-col lg:flex-row antialiased">
@@ -290,9 +467,9 @@
 
     <!-- Top: Branding (公式ロゴ: 一回り大きい正円暗いグレーカード内に配置) -->
     <div class="flex flex-col min-h-0 overflow-hidden">
-      <div class="flex items-center justify-center pt-1 pb-1 flex-shrink-0">
-        <div class="w-[136px] h-[136px] rounded-full bg-[#0B1019] border border-borderNormal flex items-center justify-center shadow-inner">
-          <div class="w-[114px] h-[114px] rounded-full overflow-hidden border border-white/10 bg-white flex items-center justify-center p-1 shadow-md">
+      <div id="sidebar-logo-container" class="flex items-center justify-center pt-1 pb-1 flex-shrink-0">
+        <div id="sidebar-logo-outer" class="w-[136px] h-[136px] rounded-full bg-[#0B1019] border border-borderNormal flex items-center justify-center shadow-inner">
+          <div id="sidebar-logo-inner" class="w-[114px] h-[114px] rounded-full overflow-hidden border border-white/10 bg-white flex items-center justify-center p-1 shadow-md">
             <img src="/active/h-app/assets/icon180-v2.png" alt="POSTING MAP" class="w-full h-full object-cover">
           </div>
         </div>
@@ -365,7 +542,7 @@
     </div>
 
     <!-- Bottom: 常時監視ステータスライン (最下部固定) -->
-    <div class="pt-2 border-t border-borderNormal flex-shrink-0">
+    <div id="sidebar-bottom-status" class="pt-2 border-t border-borderNormal flex-shrink-0">
       <!-- Live Sync Status Line -->
       <div class="px-2.5 py-1.5 rounded-lg bg-[#0B1019]/60 border border-borderNormal/50 text-[11px]">
         <div class="flex items-center gap-1.5">
@@ -385,7 +562,7 @@
   </aside>
 
   <!-- ==================== MAIN CONTROL CANVAS (管制メインキャンバス) ==================== -->
-  <main class="flex-1 flex flex-col p-2 lg:p-2.5 gap-2 overflow-hidden bg-appBg min-w-0 min-h-0 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-2.5">
+  <main id="main-control-canvas" class="flex-1 flex flex-col p-2 lg:p-2.5 gap-2 overflow-hidden bg-appBg min-w-0 min-h-0 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-2.5">
 
     <!-- ========== ① 統括状況 BAR (PC用: hidden lg:flex 固定幅計器ライン) ========== -->
     <div id="situation-bar" class="hidden lg:flex h-11 flex-shrink-0 items-center justify-between gap-2 px-2.5 bg-containerBg border border-borderNormal rounded-xl overflow-hidden">
@@ -647,7 +824,7 @@
       </div>
 
       <!-- ===== ③ RIGHT: 現場判断パネル (PC 1024px+ のみ常時固定表示) ===== -->
-      <div class="hidden lg:flex lg:w-72 sm:lg:w-80 flex-shrink-0 flex-col gap-2 min-h-0 overflow-hidden">
+      <div id="right-panel-container" class="hidden lg:flex lg:w-72 sm:lg:w-80 flex-shrink-0 flex-col gap-2 min-h-0 overflow-hidden">
 
         <!-- 上段スロット (空枠) -->
         <div id="right-slot-top" class="flex-[3] pm-card p-3 flex flex-col justify-between overflow-hidden">

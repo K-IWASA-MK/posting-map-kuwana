@@ -1584,7 +1584,7 @@ function renderRightBottomAreaStats(selectedPin) {
     const doneCountStr = isCountValid ? Number(liveRec.count).toLocaleString() : '--';
 
     resultSectionHtml = `
-      <div class="pt-2.5 mt-2.5 border-t border-borderNormal">
+      <div class="area-stats-result pt-2.5 mt-2.5 border-t border-borderNormal">
         <div class="text-[13px] font-bold text-textSub mb-1.5 flex items-center gap-1">
           <span>📊</span><span>実績</span>
         </div>
@@ -1606,7 +1606,7 @@ function renderRightBottomAreaStats(selectedPin) {
     `;
   } else if (isInProgress) {
     resultSectionHtml = `
-      <div class="pt-2.5 mt-2.5 border-t border-borderNormal text-center">
+      <div class="area-stats-result pt-2.5 mt-2.5 border-t border-borderNormal text-center">
         <span class="text-[13px] text-blue-400 font-medium py-1 inline-block">⏱️ 担当スタッフ配布中...</span>
       </div>
     `;
@@ -1623,7 +1623,7 @@ function renderRightBottomAreaStats(selectedPin) {
           ${statusBadgeHtml}
         </div>
 
-        <div class="mt-12 space-y-2.5">
+        <div class="area-stats-body mt-2.5 lg:mt-3 space-y-1.5 lg:space-y-2.5">
           <div class="flex justify-between items-center text-[13px]">
             <span class="text-textSub flex items-center gap-1"><span>🏠</span><span>世帯数</span></span>
             <span class="font-mono font-bold text-white text-[15px]">${households.toLocaleString()} <span class="text-xs font-normal text-textSub">世帯</span></span>
@@ -1771,7 +1771,7 @@ function renderMainStageRecords(ranking) {
         : `<div class="w-14 flex-shrink-0"></div>`;
 
       recentFeedHtml = `
-        <div class="flex items-center justify-start flex-1 min-w-0 px-2 gap-1.5 overflow-hidden">
+        <div class="ranking-col-feed flex items-center justify-start flex-1 min-w-0 px-2 gap-1.5 overflow-hidden">
           <div style="width: 28px; min-width: 28px;" class="flex items-center justify-center flex-shrink-0">${prevBtn}</div>
           <div class="flex-shrink-0 flex items-center">${itemsHtml}</div>
           <div style="width: 72px; min-width: 72px;" class="flex items-center justify-start flex-shrink-0">${nextBtnAndIndicator}</div>
@@ -1779,7 +1779,7 @@ function renderMainStageRecords(ranking) {
       `;
     } else {
       recentFeedHtml = `
-        <div class="flex items-center justify-start flex-1 min-w-0 px-2 gap-1.5 text-xs text-textSub/50">
+        <div class="ranking-col-feed flex items-center justify-start flex-1 min-w-0 px-2 gap-1.5 text-xs text-textSub/50">
           <div style="width: 28px; min-width: 28px;" class="flex-shrink-0"></div>
           <span class="font-mono">（配布履歴なし）</span>
         </div>
@@ -1787,9 +1787,9 @@ function renderMainStageRecords(ranking) {
     }
 
     html += `
-      <div class="flex flex-row items-center justify-between p-2.5 rounded-xl bg-[#182130] border border-[#243044] hover:border-[#33435C] gap-2 transition-colors">
+      <div class="ranking-record-row flex flex-row items-center justify-between p-2.5 rounded-xl bg-[#182130] border border-[#243044] hover:border-[#33435C] gap-2 transition-colors">
         <!-- カラム1: スタッフ情報 (固定幅 210px・truncateで押し広げ防止) -->
-        <div style="width: 210px; min-width: 210px; max-width: 210px;" class="flex items-center justify-start flex-shrink-0 gap-2 min-w-0">
+        <div style="width: 210px; min-width: 210px; max-width: 210px;" class="ranking-col-staff flex items-center justify-start flex-shrink-0 gap-2 min-w-0">
           ${rankBadgeHtml}
           <div class="flex items-center gap-1.5 min-w-0 truncate">
             <span class="font-bold text-white text-base lg:text-lg font-mono flex-shrink-0">${escapeHtml(item.staffId || '--')}</span>
@@ -1801,7 +1801,7 @@ function renderMainStageRecords(ranking) {
         ${recentFeedHtml}
 
         <!-- カラム3: 完了枚数 (固定幅 110px・右寄せ) -->
-        <div style="width: 110px; min-width: 110px; max-width: 110px;" class="flex items-center justify-end flex-shrink-0 text-right">
+        <div style="width: 110px; min-width: 110px; max-width: 110px;" class="ranking-col-count flex items-center justify-end flex-shrink-0 text-right">
           <span class="text-base lg:text-lg font-mono font-bold text-white">${(Number(item.count) || 0).toLocaleString()}</span>
           <span class="text-xs text-[#94A3B8] font-normal ml-1 flex-shrink-0">枚 完了</span>
         </div>
