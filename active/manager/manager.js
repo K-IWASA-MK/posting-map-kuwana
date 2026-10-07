@@ -1546,15 +1546,15 @@ function renderRightBottomAreaStats(selectedPin) {
 
   if (!selectedPin) {
     containerEl.innerHTML = `
-      <div class="flex flex-col justify-between h-full">
-        <div class="flex items-center justify-between pb-2.5 border-b border-borderNormal">
+      <div class="area-stats-empty flex flex-col justify-between h-full min-h-0 overflow-hidden">
+        <div class="flex items-center justify-between pb-2 border-b border-borderNormal flex-shrink-0">
           <div class="flex items-center gap-1.5 text-sm font-bold text-white tracking-wide">
             <span>👥</span>
             <span>エリア統計</span>
           </div>
         </div>
-        <div class="flex-1 flex flex-col items-center justify-center text-center p-3">
-          <span class="text-3xl mb-1.5 opacity-75">🗺️</span>
+        <div class="area-stats-empty-content flex-1 min-h-0 flex flex-col items-center justify-center text-center p-2">
+          <span class="text-2xl lg:text-3xl mb-1 opacity-75 leading-none">🗺️</span>
           <span class="text-xs text-textSub font-medium leading-relaxed">マップ上のピンまたは境界を<br>選択して詳細を表示</span>
         </div>
       </div>
