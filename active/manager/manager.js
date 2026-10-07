@@ -199,8 +199,11 @@ async function checkManagerAuth() {
     }
     return true;
   } catch (err) {
-    console.warn('[Manager Auth Check Error]', err);
-    if (err.message && (err.message.includes('UNAUTHORIZED') || err.message.includes('session') || err.message.includes('MISMATCH'))) {
+    const isTimeout = err && (err.isTimeout || err.name === 'TimeoutError' || err.code === 'API_TIMEOUT' || (err.message && err.message.includes('タイムアウト')));
+    if (!isTimeout) {
+      console.warn('[Manager Auth Check Error]', err);
+    }
+    if (err && err.message && (err.message.includes('UNAUTHORIZED') || err.message.includes('session') || err.message.includes('MISMATCH'))) {
       clearDashboardSessionToken(districtCode);
       return false;
     }
@@ -267,7 +270,11 @@ async function handleManagerPinSubmit(event) {
       inputEl.focus();
     }
   } catch (err) {
-    if (errorEl) errorEl.textContent = err.message || '通信エラーが発生しました';
+    if (err && (err.isTimeout || err.name === 'TimeoutError' || err.code === 'API_TIMEOUT' || (err.message && err.message.includes('タイムアウト')))) {
+      if (errorEl) errorEl.textContent = '通信がタイムアウトしました。もう一度お試しください';
+    } else {
+      if (errorEl) errorEl.textContent = (err && err.message) || '通信エラーが発生しました';
+    }
     inputEl.focus();
   } finally {
     if (btn) btn.disabled = false;
@@ -382,18 +389,36 @@ async function callApiPost(action, payload = {}, options = {}) {
   const body = JSON.stringify({ action, ...payload });
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let didTimeout = false;
+  const timeoutId = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, timeoutMs);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    mode: 'cors',
-    credentials: 'omit',
-    cache: 'no-store',
-    redirect: 'follow',
-    body: body,
-    signal: controller.signal
-  });
-  clearTimeout(timeoutId);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'follow',
+      body: body,
+      signal: controller.signal
+    });
+  } catch (fetchErr) {
+    const isAbort = fetchErr && (fetchErr.name === 'AbortError' || String(fetchErr.message || '').includes('aborted'));
+    if (didTimeout || isAbort) {
+      const timeoutErr = new Error('通信がタイムアウトしました。もう一度お試しください');
+      timeoutErr.name = 'TimeoutError';
+      timeoutErr.code = 'API_TIMEOUT';
+      timeoutErr.isTimeout = true;
+      throw timeoutErr;
+    }
+    throw fetchErr;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 

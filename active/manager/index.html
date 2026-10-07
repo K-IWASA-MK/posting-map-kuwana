@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0B1019">
@@ -16,12 +17,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
 
-  <!-- Leaflet Map -->
+  <!-- 1. Leaflet Map CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 2. Precompiled Tailwind CSS (Production Assets) -->
+  <link rel="stylesheet" href="assets/manager.tailwind.css">
   <script src="../../data/config.js"></script>
   <script>
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
@@ -40,37 +41,7 @@
       document.documentElement.classList.add('is-standalone');
     }
   </script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: '#EA5F08',
-            brandLight: '#fb923c',
-            brandDark: '#c2410c',
-            brandBlue: '#00B7FF',
-            brandGreen: '#22C55E',
-            appBg: '#0B1019',
-            containerBg: '#131A26',
-            cardBg: '#182130',
-            cardSubBg: '#1F2B3E',
-            borderNormal: '#243044',
-            borderHighlight: '#33435C',
-            textMain: '#E6ECF3',
-            textSub: '#94A3B8',
-            statusGreen: '#22C55E',
-            statusYellow: '#F59E0B',
-            statusRed: '#EF4444'
-          },
-          fontFamily: {
-            sans: ['Outfit', 'Noto Sans JP', 'sans-serif'],
-            mono: ['Outfit', 'monospace']
-          }
-        }
-      }
-    }
-  </script>
-
+  <!-- 3. Existing Custom Styles (Component, Responsive & Container Rules) -->
   <style>
     *, *::before, *::after {
       box-sizing: border-box;
