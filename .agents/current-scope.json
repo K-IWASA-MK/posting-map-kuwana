@@ -1,12 +1,8 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/modules/staff-registration.js",
-  "active/h-app/render.js",
+  "active/h-app/modules/api.js",
   "active/h-app/app.js",
-  "active/h-app/index.html",
-  "scripts/stamp-h-app-token.mjs",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
-  "tests/test_staff_registration_lifecycle.mjs",
-  "tests/test_gap001_ready_freeze_regression.mjs",
-  "tests/run_all_tests.mjs"
+  "tests/test_optimistic_startup_safety.mjs",
+  "docs/architecture/CURRENT_ARCHITECTURE.md",
+  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
 ]
