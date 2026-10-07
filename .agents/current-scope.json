@@ -1,5 +1,10 @@
 [
   ".agents/current-scope.json",
+  "active/manager/assets/manager.tailwind.css",
   "active/manager/index.html",
-  "active/manager/manager.js"
+  "active/manager/manager.js",
+  "active/manager/tailwind-input.css",
+  "package-lock.json",
+  "package.json",
+  "tailwind.config.js"
 ]
