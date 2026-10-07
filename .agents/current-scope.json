@@ -1,13 +1,5 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/db.js",
-  "active/h-app/app.js",
-  "tests/test_activity_module_lifecycle.mjs",
-  "tests/test_storage_register_lifecycle.mjs",
-  "tests/test_ranking_module_lifecycle.mjs",
-  "tests/test_staff_registration_lifecycle.mjs",
-  "tests/test_bulletin_module_lifecycle.mjs",
-  "tests/test_bulletin_post_contact_lifecycle.mjs",
-  "docs/architecture/CURRENT_ARCHITECTURE.md",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md"
+  "active/manager/index.html",
+  "active/manager/manager.js"
 ]
