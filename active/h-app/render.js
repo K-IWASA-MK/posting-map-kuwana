@@ -463,6 +463,32 @@ const StorageView = (function() {
     }
   }
 
+  function updateStaffIdDisplay(state, staffId = null, onRetry = null) {
+    const idEl = $('storage-register-staff-id');
+    if (!idEl) return;
+
+    if (state === 'registering') {
+      idEl.textContent = 'ID: 登録中...';
+      idEl.style.color = 'inherit';
+      idEl.style.cursor = 'default';
+      idEl.onclick = null;
+    } else if (state === 'success') {
+      idEl.textContent = 'ID: ' + (staffId || '---');
+      idEl.style.color = 'inherit';
+      idEl.style.cursor = 'default';
+      idEl.onclick = null;
+    } else if (state === 'error') {
+      idEl.textContent = 'ID: 登録失敗 (タップして再試行)';
+      idEl.style.color = '#ef4444';
+      idEl.style.cursor = 'pointer';
+      idEl.onclick = () => {
+        if (typeof onRetry === 'function') {
+          onRetry();
+        }
+      };
+    }
+  }
+
   return {
     updateCountDisplay,
     updateRegisterButtonText,
@@ -475,9 +501,45 @@ const StorageView = (function() {
     renderFetchFailedUI,
     initRegisterPage,
     initListPage,
-    submitRegisterForm
+    submitRegisterForm,
+    updateStaffIdDisplay
   };
 })();
+
+const StaffRegistrationView = (function() {
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function showRegistrationError(err, onRetry = null) {
+    const loadingStatusEl = $('loading-status');
+    if (loadingStatusEl) {
+      loadingStatusEl.textContent = '登録エラー (タップして再試行): ' + (err && err.message ? err.message : '通信失敗');
+      loadingStatusEl.style.color = '#ef4444';
+      loadingStatusEl.style.cursor = 'pointer';
+      loadingStatusEl.onclick = () => {
+        loadingStatusEl.textContent = '再試行中...';
+        loadingStatusEl.style.color = 'inherit';
+        loadingStatusEl.onclick = null;
+        if (typeof onRetry === 'function') {
+          onRetry();
+        }
+      };
+    }
+  }
+
+  return {
+    showRegistrationError
+  };
+})();
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    ...(module.exports || {}),
+    StaffRegistrationView
+  };
+}
+
 let cachedElectionData = null;
 let electionDataPromise = null;
 

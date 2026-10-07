@@ -397,100 +397,60 @@ function setSyncStatus(state) {
   }
 }
 
-let isRegistering = false;
-let registrationError = false;
-let activeRegistrationPromise = null;
+// =====================================
+// Wave 12: Staff Registration Flow (Composition Root Wiring)
+// =====================================
 function triggerBackgroundRegistration(profile) {
   window.liffProfile = profile;
-  if (activeRegistrationPromise) {
-    return activeRegistrationPromise;
-  }
-  isRegistering = true;
-  window.isRegistering = true;
-  registrationError = false;
-  window.registrationError = false;
 
-  const idEl = $('storage-register-staff-id');
-  if (idEl) {
-    idEl.textContent = 'ID: 登録中...';
-    idEl.style.color = 'inherit';
-    idEl.style.cursor = 'default';
-    idEl.onclick = null;
+  if (typeof StaffRegistrationModule === 'undefined') {
+    console.error("[StaffRegistration Error] StaffRegistrationModule is not loaded.");
+    return Promise.reject(new Error("StaffRegistrationModule unavailable"));
   }
 
-  logDebug("API START (初回登録・非同期)");
-  activeRegistrationPromise = callApiPost('registerStaff', {
-    lastName: profile.displayName,
-    firstName: "(LINE)",
-    lineUserId: profile.userId
-  }).then(res => {
-    logDebug("API OK (初回登録完了)");
-    if (res && res.success && res.id && String(res.id).trim() !== '') {
+  return StaffRegistrationModule.registerStaff(profile, {
+    onStart: () => {
+      if (typeof StorageView !== 'undefined' && typeof StorageView.updateStaffIdDisplay === 'function') {
+        StorageView.updateStaffIdDisplay('registering');
+      }
+    },
+    onSuccess: (res, p) => {
       const registeredInfo = {
-        last: profile.displayName,
+        last: p ? p.displayName : '',
         first: "",
         id: res.id,
-        picture: profile.pictureUrl
+        picture: p ? p.pictureUrl : ''
       };
       localStorage.setItem('user_info', JSON.stringify(registeredInfo));
-      logDebug("Registered! Staff ID: " + res.id);
+      if (typeof logDebug === 'function') {
+        logDebug("Registered! Staff ID: " + res.id);
+      }
 
-      const updatedIdEl = $('storage-register-staff-id');
-      if (updatedIdEl) {
-        updatedIdEl.textContent = 'ID: ' + (res.id || '---');
-        updatedIdEl.style.color = 'inherit';
-        updatedIdEl.style.cursor = 'default';
-        updatedIdEl.onclick = null;
+      if (typeof StorageView !== 'undefined' && typeof StorageView.updateStaffIdDisplay === 'function') {
+        StorageView.updateStaffIdDisplay('success', res.id);
       }
 
       if (typeof renderSettings === 'function') {
         renderSettings();
       }
       updateBottomNavVisibility();
-      return res;
-    } else {
-      const errMsg = (res && res.error) ? res.error : "GAS registration returned invalid response (missing id)";
-      throw new Error(errMsg);
+    },
+    onError: (err) => {
+      if (typeof StorageView !== 'undefined' && typeof StorageView.updateStaffIdDisplay === 'function') {
+        StorageView.updateStaffIdDisplay('error', null, () => {
+          window.retryRegistration();
+        });
+      }
+      if (typeof StaffRegistrationView !== 'undefined' && typeof StaffRegistrationView.showRegistrationError === 'function') {
+        StaffRegistrationView.showRegistrationError(err, () => {
+          window.retryRegistration();
+        });
+      }
     }
-  }).catch(err => {
-    registrationError = true;
-    window.registrationError = true;
-    logDebug("Background registration failed: " + (err ? err.message : err));
-
-    const updatedIdEl = $('storage-register-staff-id');
-    if (updatedIdEl) {
-      updatedIdEl.textContent = 'ID: 登録失敗 (タップして再試行)';
-      updatedIdEl.style.color = '#ef4444';
-      updatedIdEl.style.cursor = 'pointer';
-      updatedIdEl.onclick = () => {
-        window.retryRegistration();
-      };
-    }
-
-    // エラー時は未完成画面を表示させず、ローディング画面でエラーと再試行を提示
-    const loadingStatusEl = $('loading-status');
-    if (loadingStatusEl) {
-      loadingStatusEl.textContent = '登録エラー (タップして再試行): ' + (err.message || '通信失敗');
-      loadingStatusEl.style.color = '#ef4444';
-      loadingStatusEl.style.cursor = 'pointer';
-      loadingStatusEl.onclick = () => {
-        loadingStatusEl.textContent = '再試行中...';
-        loadingStatusEl.style.color = 'inherit';
-        loadingStatusEl.onclick = null;
-        window.retryRegistration();
-      };
-    }
-    throw err;
-  }).finally(() => {
-    isRegistering = false;
-    window.isRegistering = false;
-    activeRegistrationPromise = null;
   });
-
-  return activeRegistrationPromise;
 }
 
-// 登録再試行用のグローバルハンドラーを公開
+// 登録再試行用のグローバルハンドラーを公開 (現行順序を100%完全維持)
 window.retryRegistration = () => {
   if (window.liffProfile) {
     return triggerBackgroundRegistration(window.liffProfile).then(() => {
@@ -505,6 +465,7 @@ window.retryRegistration = () => {
     });
   }
 };
+
 
 async function loadData(skipSync = false) {
   logDebug("[loadData] START (Background)");
@@ -854,7 +815,7 @@ function initStorageRegisterPage() {
   if (typeof StorageView !== 'undefined' && typeof StorageView.initRegisterPage === 'function') {
     StorageView.initRegisterPage({
       getUserInfo: () => JSON.parse(localStorage.getItem('user_info') || '{}'),
-      getRegistrationStatus: () => ({ isRegistering, registrationError }),
+      getRegistrationStatus: () => (typeof StaffRegistrationModule !== 'undefined' ? StaffRegistrationModule.getStatus() : { isRegistering: false, registrationError: false }),
       onRetryRegistration: async () => {
         const profile = await liff.getProfile();
         triggerBackgroundRegistration(profile);

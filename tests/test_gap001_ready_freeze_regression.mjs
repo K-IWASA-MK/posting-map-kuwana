@@ -28,6 +28,10 @@ console.log('====================================================\n');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
+const staffRegistrationJsPath = path.join(REPO_ROOT, 'active/h-app/modules/staff-registration.js');
+const staffRegistrationJsContent = fs.readFileSync(staffRegistrationJsPath, 'utf8');
+const renderJsPath = path.join(REPO_ROOT, 'active/h-app/render.js');
+const renderJsContent = fs.readFileSync(renderJsPath, 'utf8');
 const appJsPath = path.join(REPO_ROOT, 'active/h-app/app.js');
 const appJsContent = fs.readFileSync(appJsPath, 'utf8');
 
@@ -128,10 +132,15 @@ function createHAppTestContext() {
   assert.ok(p1 !== -1 && p2 !== -1 && p2 > p1, 'showMainApp block must exist');
   const showMainAppCode = appJsContent.slice(p1, p2);
 
-  const p3 = appJsContent.indexOf('let isRegistering = false;');
+  const p3 = appJsContent.indexOf('function triggerBackgroundRegistration(profile) {');
   const p4 = appJsContent.indexOf('async function loadData(');
   assert.ok(p3 !== -1 && p4 !== -1 && p4 > p3, 'reg block must exist');
   const regCode = appJsContent.slice(p3, p4);
+
+  // StaffRegistrationModule と RenderView をテストコンテキストへ先行ロード
+  vm.runInContext(staffRegistrationJsContent, testVmContext);
+  vm.runInContext(renderJsContent, testVmContext);
+  testVmContext.renderSettings = () => {};
 
   const harnessCode = [
     'let _identityVerified = false;',
@@ -141,9 +150,9 @@ function createHAppTestContext() {
     regCode,
     'this.getAppState = () => ({',
     '  mainAppVisible,',
-    '  isRegistering,',
-    '  registrationError,',
-    '  activeRegistrationPromise,',
+    '  isRegistering: StaffRegistrationModule.getStatus().isRegistering,',
+    '  registrationError: StaffRegistrationModule.getStatus().registrationError,',
+    '  activeRegistrationPromise: StaffRegistrationModule.getSnapshot().hasActivePromise,',
     '  _identityVerified,',
     '  _identitySyncPromise',
     '});',

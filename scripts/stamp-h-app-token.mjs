@@ -39,6 +39,7 @@ export const REQUIRED_LOCAL_CODE_ASSETS = [
   './modules/bulletin.js',
   './modules/transfer.js',
   './modules/ranking.js',
+  './modules/staff-registration.js',
   './app.js',
   './render.js'
 ];
