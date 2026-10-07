@@ -1523,16 +1523,8 @@ window.closeTransferRequestDialog = function() {
 };
 
 window.updateBulletinCharCount = function(textarea) {
-  const counter = document.getElementById('bulletin-char-counter');
-  if (!counter || !textarea) return;
-  const len = textarea.value.length;
-  counter.textContent = len + ' / 150';
-  if (len >= 150) {
-    counter.classList.add('text-red-400');
-    counter.classList.remove('text-white/40');
-  } else {
-    counter.classList.remove('text-red-400');
-    counter.classList.add('text-white/40');
+  if (typeof BulletinView !== 'undefined' && BulletinView.updateCharCount) {
+    BulletinView.updateCharCount(textarea);
   }
 };
 
@@ -1570,206 +1562,38 @@ window.fetchBulletinPosts = function(options = {}) {
 };
 
 window.submitBulletinPost = async function() {
-  const inputEl = document.getElementById('bulletin-message-input');
-  const btn = document.getElementById('btn-bulletin-submit');
-  const counter = document.getElementById('bulletin-char-counter');
-  if (!inputEl || !btn) return;
-
-  const msg = inputEl.value;
-  if (typeof BulletinModule === 'undefined') {
-    alert('BulletinModuleが読み込まれていません。');
-    return;
-  }
-
-  const valRes = BulletinModule.validateMessage(msg);
-  if (!valRes.valid) {
-    alert(valRes.message);
-    if (valRes.error === 'EMPTY') inputEl.focus();
-    return;
-  }
-
-  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-  const staffId = userInfo.id ? String(userInfo.id).trim() : (window.currentUser && window.currentUser.id ? String(window.currentUser.id).trim() : '');
-  const staffName = `${userInfo.last || ''} ${userInfo.first || ''}`.trim() || staffId;
-
-  if (!staffId) {
-    alert('配布員IDが取得できませんでした。');
-    return;
-  }
-
-  const originalText = btn.textContent;
-  btn.textContent = '投稿中...';
-  btn.disabled = true;
-
-  try {
-    await waitForIdentityVerified();
-  } catch (authErr) {
-    alert("本人確認が完了していないため投稿できません。");
-    btn.textContent = originalText;
-    btn.disabled = false;
-    return;
-  }
-
-  try {
-    const res = await BulletinModule.createPost({
-      staffId: staffId,
-      staffName: staffName,
-      message: valRes.value
+  if (typeof BulletinView !== 'undefined' && BulletinView.submitPost) {
+    return await BulletinView.submitPost({
+      getStaffInfo: () => {
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+        const id = userInfo.id ? String(userInfo.id).trim() : (window.currentUser && window.currentUser.id ? String(window.currentUser.id).trim() : '');
+        const name = `${userInfo.last || ''} ${userInfo.first || ''}`.trim() || id;
+        return { id, name };
+      },
+      authorize: () => waitForIdentityVerified(),
+      refreshPosts: () => {
+        window.fetchBulletinPosts({ force: true });
+      }
     });
-
-    if (res && res.success) {
-      inputEl.value = '';
-      if (counter) counter.textContent = '0 / 150';
-      alert('✓ 投稿が完了しました');
-      // 投稿完了後：キャッシュを無視して最新取得を要求
-      window.fetchBulletinPosts({ force: true });
-    } else {
-      alert('投稿に失敗しました: ' + (res ? res.message : 'Unknown error'));
-    }
-  } catch (err) {
-    alert('通信エラー: ' + err.message);
-  } finally {
-    btn.textContent = originalText;
-    btn.disabled = false;
   }
 };
 
-
 window.openBulletinContactDialog = function(targetStaffId) {
-  const prev = document.getElementById('dynamic-bulletin-contact-dialog');
-  if (prev) prev.remove();
-
-  const targetIdStr = String(targetStaffId || '').trim();
-  const overlay = document.createElement('div');
-  overlay.id = 'dynamic-bulletin-contact-dialog';
-  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,0.85);';
-
-  overlay.innerHTML = `
-    <div style="background:#1C1C1E;border-radius:24px;border:1px solid rgba(255,255,255,0.12);padding:28px 20px;width:100%;max-width:340px;box-sizing:border-box;">
-      <div style="text-align:center;margin-bottom:20px;">
-        <div style="font-size:24px;margin-bottom:8px;">💬</div>
-        <div style="color:white;font-size:16px;font-weight:900;letter-spacing:0.05em;">連絡</div>
-      </div>
-      <div style="color:rgba(255,255,255,0.7);font-size:13px;font-weight:700;margin-bottom:20px;line-height:1.5;text-align:left;">
-        ${escapeHtml(targetIdStr)}さんとの<br>連絡方法を入力してください。
-      </div>
-
-      <div style="margin-bottom:16px;">
-        <label style="display:block;color:rgba(255,255,255,0.45);font-size:11px;font-weight:900;letter-spacing:0.05em;margin-bottom:8px;">【連絡方法】</label>
-        <div style="display:flex;gap:16px;align-items:center;padding:4px 0;">
-          <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
-            <input type="radio" name="bulletin-contact-method" value="LINE" checked style="accent-color:#2563eb;cursor:pointer;"> LINE
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
-            <input type="radio" name="bulletin-contact-method" value="電話" style="accent-color:#2563eb;cursor:pointer;"> 電話
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;color:white;font-size:13px;font-weight:700;cursor:pointer;">
-            <input type="radio" name="bulletin-contact-method" value="メール" style="accent-color:#2563eb;cursor:pointer;"> メール
-          </label>
-        </div>
-      </div>
-
-      <div style="margin-bottom:24px;">
-        <label style="display:block;color:rgba(255,255,255,0.45);font-size:11px;font-weight:900;letter-spacing:0.05em;margin-bottom:8px;">【連絡先】</label>
-        <input type="text" id="bulletin-contact-value" placeholder="LINE ID"
-          style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px 14px;color:white;font-size:14px;font-weight:700;outline:none;" />
-      </div>
-
-      <div style="display:flex;gap:10px;">
-        <button id="btn-bulletin-contact-cancel"
-          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:14px;padding:14px 8px;font-size:13px;font-weight:900;cursor:pointer;transition:transform 0.12s ease, opacity 0.12s ease;"
-          onpointerdown="this.style.transform='scale(0.94)'; this.style.opacity='0.7';"
-          onpointerup="this.style.transform='scale(1)'; this.style.opacity='1';"
-          onpointerleave="this.style.transform='scale(1)'; this.style.opacity='1';">キャンセル</button>
-        <button id="btn-bulletin-contact-submit" class="btn-neu"
-          style="flex:2;background:#2563eb;border:none;color:white;border-radius:14px;padding:14px 8px;font-size:13px;font-weight:900;cursor:pointer;transition:transform 0.12s ease, opacity 0.12s ease;"
-          onpointerdown="this.style.transform='scale(0.96)'; this.style.opacity='0.85';"
-          onpointerup="this.style.transform='scale(1)'; this.style.opacity='1';"
-          onpointerleave="this.style.transform='scale(1)'; this.style.opacity='1';">連絡する</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  const contactValueInput = document.getElementById('bulletin-contact-value');
-  const methodPlaceholders = {
-    'LINE': 'LINE ID',
-    '電話': '電話番号',
-    'メール': 'メールアドレス'
-  };
-
-  document.querySelectorAll('input[name="bulletin-contact-method"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      if (contactValueInput) {
-        contactValueInput.placeholder = methodPlaceholders[e.target.value] || '連絡先を入力';
+  if (typeof BulletinView !== 'undefined' && BulletinView.openContactDialog) {
+    BulletinView.openContactDialog(targetStaffId, {
+      authorize: () => waitForIdentityVerified(),
+      getRequestContext: () => {
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+        const requestUserId = userInfo.id ? String(userInfo.id).trim() : (window.currentUser && window.currentUser.id ? String(window.currentUser.id).trim() : 'UNKNOWN');
+        const requestId = window.generateRequestId ? window.generateRequestId('req_bc') : `req_bc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        return { requestUserId, requestId };
       }
     });
-  });
-
-  document.getElementById('btn-bulletin-contact-cancel').addEventListener('click', () => overlay.remove());
-
-  let isSubmittingContact = false;
-  document.getElementById('btn-bulletin-contact-submit').addEventListener('click', async () => {
-    if (isSubmittingContact) return;
-
-    const contactValueInput = document.getElementById('bulletin-contact-value');
-    const contactValue = contactValueInput ? contactValueInput.value.trim() : '';
-
-    if (!contactValue) {
-      alert('連絡先を入力してください。');
-      if (contactValueInput) contactValueInput.focus();
-      return;
-    }
-
-    const methodRadio = document.querySelector('input[name="bulletin-contact-method"]:checked');
-    const contactMethod = methodRadio ? methodRadio.value : 'LINE';
-
-    const btn = document.getElementById('btn-bulletin-contact-submit');
-    if (btn) { btn.textContent = '連絡中...'; btn.disabled = true; }
-    isSubmittingContact = true;
-
-    try {
-      await waitForIdentityVerified();
-    } catch (authErr) {
-      alert("本人確認が完了していないため連絡を送信できません。");
-      if (btn) { btn.textContent = '連絡する'; btn.disabled = false; }
-      isSubmittingContact = false;
-      return;
-    }
-
-    const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
-    const requestUserId = userInfo.id ? String(userInfo.id).trim() : (window.currentUser && window.currentUser.id ? String(window.currentUser.id).trim() : 'UNKNOWN');
-    const requestId = window.generateRequestId ? window.generateRequestId('req_bc') : `req_bc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-    try {
-      const res = await callApiPost('sendBulletinContact', {
-        requestId: requestId,
-        requestUserId: requestUserId,
-        targetStaffId: targetIdStr,
-        contactMethod: contactMethod,
-        contactValue: contactValue
-      });
-
-      overlay.remove();
-      if (res && (res.status === 'SENT' || res.status === 'SKIPPED_NO_LINE_ID')) {
-        alert('✓ 連絡を送信しました');
-      } else if (res && res.status === 'UNKNOWN') {
-        alert('⚠️ 送信結果を確認できませんでした。\n通信状態をご確認のうえ、二重送信を防ぐためしばらくお待ちください。');
-      } else {
-        alert('連絡の送信に失敗しました: ' + (res ? res.message : 'Unknown error'));
-      }
-    } catch(err) {
-      alert('通信エラー: ' + err.message);
-      isSubmittingContact = false;
-      if (btn) { btn.textContent = '連絡する'; btn.disabled = false; }
-    }
-  });
+  }
 };
 
 window.closeBulletinContactDialog = function() {
-  const d = document.getElementById('dynamic-bulletin-contact-dialog');
-  if (d) d.remove();
+  if (typeof BulletinView !== 'undefined' && BulletinView.closeContactDialog) {
+    BulletinView.closeContactDialog();
+  }
 };
-
-

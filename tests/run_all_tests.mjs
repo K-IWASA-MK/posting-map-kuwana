@@ -34,6 +34,7 @@ const testSuites = [
   'test_numpad_view_lifecycle.mjs',
   'test_staff_id_info_lifecycle.mjs',
   'test_ranking_module_lifecycle.mjs',
+  'test_bulletin_post_contact_lifecycle.mjs',
   'test_manager_ui_interaction.mjs',
   'test_line_push_idempotency_audit.mjs',
   'test_contract_expiry.mjs',

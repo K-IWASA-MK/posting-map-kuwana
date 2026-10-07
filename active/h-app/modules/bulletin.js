@@ -185,9 +185,31 @@ const BulletinModule = (() => {
     });
   }
 
+  /**
+   * 掲示板連絡の送信 API 発行
+   * @param {Object} payload
+   * @param {string} payload.requestId
+   * @param {string} payload.requestUserId
+   * @param {string} payload.targetStaffId
+   * @param {string} payload.contactMethod
+   * @param {string} payload.contactValue
+   * @returns {Promise<Object>}
+   */
+  async function sendContact(payload) {
+    return await callApiPost('sendBulletinContact', {
+      requestId: payload.requestId,
+      requestUserId: payload.requestUserId,
+      targetStaffId: payload.targetStaffId,
+      contactMethod: payload.contactMethod,
+      contactValue: payload.contactValue
+    });
+  }
+
   return {
     fetchPosts,
     createPost,
+    sendContact,
     validateMessage
   };
 })();
+
