@@ -112,9 +112,10 @@
    - したがって HMAC 主認証案は完全に却下し、「フロントエンドに秘密情報を絶対に配置しない（No Secrets in Frontend）」原則を厳守する。
 5. **業務データ直接 Fetch の絶対禁止 (Data Provisioning Security Rule)**:
    - 業務データ（CSV等）は、GitHub Pages 等の静的ホスティングからクライアント側で直接 Fetch してはならない。必ず GAS（`v2_api`）認証境界を経由し、認証・認可を通過した状態で取得すること。
-6. **Public Bootstrap API 境界**:
-   - Hアプリ起動用の Public Bootstrap API（`getSystemSummary`, `getMapsApiKey`, `getTier1`, `verifyManagerPassword`）は、初期描画最適化（Optimistic Load）のため無認証アクセスを許可する。
-   - 上記を除くすべての API アクセス（doPost / doGet）は、トークンまたはセッション認証を通過しなければならない。
+6. **Public Bootstrap API & Dual Auth 境界**:
+   - Hアプリ起動用の Public Bootstrap API（`getMapsApiKey`, `getTier1`, `verifyManagerPassword`, `registerOrValidateDevice`, `getDeviceStatus`）は、初期描画最適化（Optimistic Load）または初期ハンドシェイクのため無認証アクセスを許可する。
+   - `getSystemSummary` は Dual Auth API であり、LIFF Token または Dashboard Session Token の有無に応じて返却スコープを動的制御する（未認証アクセス時は公開集約サマリのみ返却）。
+   - 上記を除くすべての業務 API アクセス（doPost / doGet）は、トークンまたはセッション認証を通過しなければならない。
 
 ---
 

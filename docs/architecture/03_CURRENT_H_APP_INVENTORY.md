@@ -26,7 +26,7 @@
 | **マスターデータ・設定 (`data/`)** | 12ファイル (7ルート + 5e-Stat) | 428行 + 1MB GeoJSON | 1,028,843 bytes | CSV, GeoJSON, JSON |
 | **リポジトリ全体 (Git追跡ファイル数)** | **238ファイル** (Wave 13 実測値) | — | — | 全体資産 (※4) |
 
-> ※1: Hアプリは `active/h-app` 配下の21テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。app.js は 1,488行、modules/summary.js は 44行。Hアプリ全体は 8,211行（Wave 16 SummaryModule新設・app.js縮小により実測更新）。
+> ※1: Hアプリは `active/h-app` 配下の21テキストファイルと1バイナリ画像の合計。旧ゾンビコード(`v2_ui.js`)は物理削除済みのため計上外。app.js は 1,488行、modules/summary.js は 40行。Hアプリ全体は 8,211行（Wave 16 SummaryModule新設・app.js縮小により実測更新）。
 > ※2: `active/appsscript.json` は末尾に改行コードが無いため、`wc -l`（改行数）では 16行となる。
 > ※3: 内訳合計: 8,211 (Hアプリ) + 4,085 (Manager) + 8,242 (Backend 35ファイル小計) = **20,538行** となり、`wc -l $(find active -type f ! -name "*.png")` 実測値と完全に一致する。バイナリ画像 `icon180-v2.png` はテキスト行数に含まない。
 > ※4: 現在のGit HEADにおける `git ls-files` 実測値 238ファイルである。
@@ -93,7 +93,7 @@
 | `active/h-app/modules/transfer.js` | 228 | 🟢 継承 | Flyer Transfer Request Feature / Lifecycle Module（受渡要請セッション世代管理、連絡先バリデーション、Pre-Auth送信前ロック、API送信調整）。Wave 5でapp.jsから純粋分離。 |
 | `active/h-app/modules/staff-registration.js` | 78 | 🟢 継承 | Staff Registration Feature Module（スタッフ登録状態 isRegistering, registrationError, activeRegistrationPromise の単一SSOT管理、多重呼出し防止、hooks発火）。Wave 12で新設。 |
 | `active/h-app/modules/auth.js` | 149 | 🟢 継承 | Auth / Identity Feature / Lifecycle Module（LIFF認証状態、本人確認State、同期Promise、Gate所有権、Atomic Setterをカプセル化管理）。Wave 15でapp.jsから分離。 |
-| `active/h-app/modules/summary.js` | 44 | 🟢 継承 | System Summary Feature Module（lastSummaryData キャッシュ、_systemSummaryPromise インフライト/解決済みPromiseキャッシュの所有、原子的ゲッター・セッター管理）。Wave 16でapp.jsから分離。 |
+| `active/h-app/modules/summary.js` | 40 | 🟢 継承 | System Summary Feature Module（lastSummaryData キャッシュ、_systemSummaryPromise インフライト/解決済みPromiseキャッシュの所有、原子的ゲッター・セッター管理）。Wave 16でapp.jsから分離。 |
 | `active/h-app/assets/icon180-v2.png` | 31KB | 🟢 継承 | PWA / LIFF 用公式アプリアイコン。 |
 
 ### (2) Frontend — Manager Dashboard (`active/manager/`)

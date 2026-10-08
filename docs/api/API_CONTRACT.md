@@ -414,7 +414,7 @@ DistributionRecord (配布実績事実)
 
 | アクション名 | 目的・返却データ | 認証 | 備考 |
 |---|---|---|---|
-| `getSystemSummary` | 全体進捗率、完了町丁目数、総町丁目数、累計配布枚数 | 不要 (Public) | ダッシュボード上部サマリ表示用 |
+| `getSystemSummary` | 全体進捗率、完了町丁目数、総町丁目数、累計配布枚数 | Dual Auth (LIFF / Dashboard Session) | ダッシュボード上部サマリ表示用 |
 | `getLatestDistribution` | 直近の配布実績リスト（最大件数指定、最新20件等） | 不要 / Optional | 時系列での活動事実観測、写真プレビュー |
 | `getRoster` | 全配布員の名簿、当月累計配布枚数、チラシ在庫合計 | 管理者権限 | 人員・在庫の全体状況把握 |
 | `getGlobalPinStatus` | 当日中のリアルタイム作業中ピン（町丁目）一覧 | 不要 (Public) | 重複作業の自然防止のための地図表示 |

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PostingMapAIEmployeeOSRegistrySchema",
+  "type": "object",
+  "required": [
+    "$schema",
+    "version",
+    "activationState",
+    "universalContract",
+    "physicalRoles",
+    "authorities",
+    "capabilityPacks",
+    "taskContracts",
+    "virtualProfessions",
+    "operationalKnowledgeSurfaces"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string" },
+    "activationState": {
+      "type": "string",
+      "enum": ["staging", "active"]
+    },
+    "universalContract": {
+      "type": "object",
+      "required": [
+        "oneDistrictOneApp",
+        "zeroDistrictHardcodingInUniversal",
+        "universalEnginePath",
+        "districtDataPath"
+      ],
+      "properties": {
+        "oneDistrictOneApp": { "type": "boolean" },
+        "zeroDistrictHardcodingInUniversal": { "type": "boolean" },
+        "universalEnginePath": { "type": "string" },
+        "districtDataPath": { "type": "string" }
+      }
+    },
+    "physicalRoles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["architect", "execution", "worker", "auditor", "deployer"]
+      },
+      "uniqueItems": true,
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "authorities": {
+      "type": "object",
+      "required": ["codeDeployment", "districtProvisioning"],
+      "properties": {
+        "codeDeployment": {
+          "type": "object",
+          "required": ["authorizedRole", "requiresMasterExplicitApproval"],
+          "properties": {
+            "authorizedRole": { "type": "string", "enum": ["execution"] },
+            "requiresMasterExplicitApproval": { "type": "boolean" }
+          }
+        },
+        "districtProvisioning": {
+          "type": "object",
+          "required": ["authorizedRole", "canDeployCode", "requiresMasterExplicitApproval"],
+          "properties": {
+            "authorizedRole": { "type": "string", "enum": ["deployer"] },
+            "canDeployCode": { "type": "boolean", "const": false },
+            "requiresMasterExplicitApproval": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "capabilityPacks": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["manifestPath", "description", "canonicalSources", "evidenceSources"],
+        "properties": {
+          "manifestPath": { "type": "string" },
+          "description": { "type": "string" },
+          "canonicalSources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path", "sha256"],
+              "properties": {
+                "path": { "type": "string" },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+              }
+            }
+          },
+          "evidenceSources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "taskContracts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "requiredPacks", "maxFiles", "stopCondition"],
+        "properties": {
+          "name": { "type": "string" },
+          "requiredPacks": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "maxFiles": { "type": "integer", "minimum": 0 },
+          "stopCondition": { "type": "string" }
+        }
+      }
+    },
+    "virtualProfessions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["baseRole", "capabilityPacks", "defaultTaskContract"],
+        "properties": {
+          "baseRole": {
+            "type": "string",
+            "enum": ["architect", "execution", "worker", "auditor", "deployer"]
+          },
+          "capabilityPacks": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "defaultTaskContract": { "type": "string" }
+        }
+      }
+    },
+    "operationalKnowledgeSurfaces": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
