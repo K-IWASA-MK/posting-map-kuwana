@@ -51,7 +51,8 @@ const testSuites = [
   'test_schema_provisioning_healing.mjs',
   'test_architecture_gate.mjs',
   'test_auth_module_lifecycle.mjs',
-  'test_summary_module_lifecycle.mjs'
+  'test_summary_module_lifecycle.mjs',
+  'test_knowledge_sync_gate.mjs'
 ];
 
 console.log("====================================================");

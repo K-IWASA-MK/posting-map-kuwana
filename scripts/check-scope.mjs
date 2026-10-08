@@ -91,6 +91,8 @@ console.log('🟢 Scope Validation PASSED: All code changes are within the appro
 const governanceFiles = new Set([
   normalize('scripts/check-scope.mjs'),
   normalize('scripts/check-architecture-gate.mjs'),
+  normalize('scripts/check-knowledge-gate.mjs'),
+  normalize('.agents/os-registry.schema.json'),
   normalize('package.json'),
   normalize('AGENTS.md')
 ]);
@@ -114,6 +116,25 @@ try {
   );
 } catch (e) {
   exitFail('Architecture Guard Failed. See details above.');
+}
+
+// ─────────────────────────────────────────────────────────────
+// 【モード 4: K1 Knowledge Sync Gate (実装コミット時のみ実行)】
+// ─────────────────────────────────────────────────────────────
+const knowledgeGateScript = resolve(rootDir, 'scripts/check-knowledge-gate.mjs');
+const registryFile = resolve(rootDir, '.agents/os-registry.json');
+
+if (existsSync(knowledgeGateScript) && existsSync(registryFile)) {
+  console.log('\n[Knowledge Gate] Executing K1 Knowledge Sync Gate...');
+  try {
+    execFileSync(
+      process.execPath,
+      [knowledgeGateScript],
+      { cwd: rootDir, stdio: 'inherit' }
+    );
+  } catch (e) {
+    exitFail('K1 Knowledge Sync Gate Failed. See details above.');
+  }
 }
 
 // 5. Scope Guard Complete

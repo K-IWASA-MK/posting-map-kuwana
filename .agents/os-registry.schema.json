@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PostingMapAIEmployeeOSRegistrySchema",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "$schema",
     "version",
@@ -9,6 +10,7 @@
     "universalContract",
     "physicalRoles",
     "authorities",
+    "rolePackAssignments",
     "capabilityPacks",
     "taskContracts",
     "virtualProfessions",
@@ -23,6 +25,7 @@
     },
     "universalContract": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "oneDistrictOneApp",
         "zeroDistrictHardcodingInUniversal",
@@ -48,10 +51,12 @@
     },
     "authorities": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["codeDeployment", "districtProvisioning"],
       "properties": {
         "codeDeployment": {
           "type": "object",
+          "additionalProperties": false,
           "required": ["authorizedRole", "requiresMasterExplicitApproval"],
           "properties": {
             "authorizedRole": { "type": "string", "enum": ["execution"] },
@@ -60,6 +65,7 @@
         },
         "districtProvisioning": {
           "type": "object",
+          "additionalProperties": false,
           "required": ["authorizedRole", "canDeployCode", "requiresMasterExplicitApproval"],
           "properties": {
             "authorizedRole": { "type": "string", "enum": ["deployer"] },
@@ -69,10 +75,43 @@
         }
       }
     },
+    "rolePackAssignments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["architect", "execution", "worker", "auditor", "deployer"],
+      "properties": {
+        "architect": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "execution": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "worker": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "auditor": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "deployer": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    },
     "capabilityPacks": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["manifestPath", "description", "canonicalSources", "evidenceSources"],
         "properties": {
           "manifestPath": { "type": "string" },
@@ -81,6 +120,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "additionalProperties": false,
               "required": ["path", "sha256"],
               "properties": {
                 "path": { "type": "string" },
@@ -101,6 +141,7 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["name", "requiredPacks", "maxFiles", "stopCondition"],
         "properties": {
           "name": { "type": "string" },
@@ -117,6 +158,7 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["baseRole", "capabilityPacks", "defaultTaskContract"],
         "properties": {
           "baseRole": {
