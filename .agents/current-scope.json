@@ -1,9 +1,9 @@
 [
   ".agents/current-scope.json",
-  ".agents/os-registry.json",
-  ".agents/rules/core-rules.md",
-  ".agents/skills/official-data-confirmation-audit/SKILL.md",
-  ".agents/skills/census-small-area-master/SKILL.md",
-  ".agents/skills/h-app-auth-boundary/SKILL.md",
-  "docs/architecture/02_LESSONS_FROM_KUWANA.md"
+  ".agents/os-registry.schema.json",
+  "scripts/check-knowledge-gate.mjs",
+  "scripts/check-scope.mjs",
+  "tests/test_knowledge_sync_gate.mjs",
+  "tests/run_all_tests.mjs",
+  "package.json"
 ]
