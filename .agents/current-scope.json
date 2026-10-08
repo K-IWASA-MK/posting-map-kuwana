@@ -1,9 +1,10 @@
 [
-  ".agents/current-scope.json",
+  "docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md",
   ".agents/os-registry.schema.json",
+  ".agents/os-registry.json",
   "scripts/check-knowledge-gate.mjs",
-  "scripts/check-scope.mjs",
   "tests/test_knowledge_sync_gate.mjs",
-  "tests/run_all_tests.mjs",
-  "package.json"
+  "AGENTS.md",
+  "docs/ai-foundation.md",
+  ".agents/skills/behavior-preservation/SKILL.md"
 ]
