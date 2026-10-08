@@ -602,11 +602,16 @@ T5 最新差分同期完了
 
 ---
 
-# 18. 桑名の教訓
+# 18. 桑名の教訓と品質ドクトリン (Universal Doctrine & Historical Evidence)
 
-`docs/architecture/02_LESSONS_FROM_KUWANA.md`
+実証フェーズで得られた知見は、「Universal な再発防止規範」と「桑名固有の歴史的証跡」に責務分離して管理する。
 
-確認済み事故・根本原因・影響・検出・再発防止・検証方法を統一フォーマットで記録する。
+- **Universal 再発防止規範 (Operational Doctrine)**:
+  `docs/architecture/UNIVERSAL_QUALITY_DOCTRINE.md`
+  全地区共通の品質憲章・設計原則として昇格・標準化。
+- **桑名固有の事故・履歴・証跡 (Historical Evidence)**:
+  `docs/research/evidence_kuwana_historical_lessons.md`
+  実証時に発生した事故・根本原因・影響・検出・検証ログを歴史的証跡として隔離保管。
 
 主な教訓：
 
@@ -1201,7 +1206,8 @@ docs/evidence/
 
 ### Deliverables
 - `03_CURRENT_H_APP_INVENTORY.md`
-- `02_LESSONS_FROM_KUWANA.md`
+- `UNIVERSAL_QUALITY_DOCTRINE.md`
+- `evidence_kuwana_historical_lessons.md`
 
 ---
 

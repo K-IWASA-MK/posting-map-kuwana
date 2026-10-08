@@ -85,7 +85,7 @@
   - デジタル庁 アドレス・ベース・レジストリ（住所マスター原本）
 - **Action**:
   1. `scripts/fetch-district-raw-data.py` を実行し、国土交通省および e-Stat 一次データを完全自律取得（ゼロ人間介入原則：`docs/architecture/DISTRICT_DATA_ACQUISITION_RULE.md` 厳格遵守）。
-  2. `census-small-area-master` プロトコルおよび `scripts/generate-boundaries-geojson.py` を実行し、国勢調査小地域（幾何・人口・世帯数）と国交省位置参照情報（小字・完成住所）を空間結合（Point in Polygon）。
+  2. `district-data-provisioning` プロトコルおよび `scripts/generate-boundaries-geojson.py` を実行し、国勢調査小地域（幾何・人口・世帯数）と国交省位置参照情報（小字・完成住所）を空間結合（Point in Polygon）。
   3. 飛び地（MultiPolygon）の統合、水面等非居住区域の除外、丁目・小地域コードの正規化を実施し、マスター3点セット（`boundaries.geojson`, `address_master.csv`, `municipality_master.csv`）を生成。
   4. **マスター3点セット同時一括交換 (Master Triad Simultaneous Replacement)**:
      - `address_master.csv` (点), `boundaries.geojson` (面), `municipality_master.csv` (枠) は不可分の3点セットである。必ず3点同時に新地区の確定データへ一括交換し、旧地区データの混在を絶対禁止とする。
@@ -101,7 +101,7 @@
   - **Rule-02 (rowId 1..N 1:1 対応)**: `address_master.csv` の `rowId` と `boundaries.geojson` の `properties.rowId` が欠損・重複なく 1:1 一致。
   - **Rule-03 (自治体名完全一致)**: 出現するすべての `city_name` が `municipality_master.csv` と完全一致。
   - **Rule-04 (旧地区残骸ゼロ確認)**: 3点セット内に前地区の自治体名・町名・旧コードが 0件。
-  - データ監査スキル `official-data-confirmation-audit` のパス。
+  - データ監査スキル `official-data-audit` のパス。
 - **Evidence**:
   - 生成されたマスターデータファイル群
   - データ監査ログ（レコード件数、世帯数合計一致証跡、Integrity Gate PASS ログ）

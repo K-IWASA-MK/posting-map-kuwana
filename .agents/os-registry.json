@@ -65,7 +65,7 @@
       "canonicalSources": [
         {
           "path": "docs/architecture/01_DESIGN_CONTRACT.md",
-          "sha256": "81af84a4e026508986a752eca1675e59cd92829fd65dd4c929ab17736cb0d820"
+          "sha256": "204cd4e55e61b2875141a18de0014e04fd1709b20b747770edd8d9595ee7a1c9"
         },
         {
           "path": "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
@@ -82,7 +82,7 @@
       "canonicalSources": [
         {
           "path": "docs/architecture/01_DESIGN_CONTRACT.md",
-          "sha256": "81af84a4e026508986a752eca1675e59cd92829fd65dd4c929ab17736cb0d820"
+          "sha256": "204cd4e55e61b2875141a18de0014e04fd1709b20b747770edd8d9595ee7a1c9"
         }
       ],
       "evidenceSources": [
@@ -125,7 +125,7 @@
       "canonicalSources": [
         {
           "path": "docs/architecture/01_DESIGN_CONTRACT.md",
-          "sha256": "81af84a4e026508986a752eca1675e59cd92829fd65dd4c929ab17736cb0d820"
+          "sha256": "204cd4e55e61b2875141a18de0014e04fd1709b20b747770edd8d9595ee7a1c9"
         }
       ],
       "evidenceSources": [
@@ -185,7 +185,7 @@
       "canonicalSources": [
         {
           "path": "docs/ai-foundation.md",
-          "sha256": "73936ed7b2d48775749b84579ee0be04941adbd08467fab8b4811805ed96e257"
+          "sha256": "927abc26ba8f2caa01831bb1c53f5fbfdfd1ffca82d005f2837053b344cc5a95"
         },
         {
           "path": "AGENTS.md",
