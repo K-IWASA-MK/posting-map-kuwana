@@ -795,8 +795,6 @@ window.submitFlyerStock = async function() {
 
 
 
-let lastSummaryData = null;
-
 /**
  * updateStats(summaryData) - 表示専用関数 (SystemSummaryService / AddressMasterService 参照)
  */
@@ -805,9 +803,9 @@ function updateStats(summaryData = null) {
   const pctEl = $('header-pct');
 
   if (summaryData) {
-    lastSummaryData = summaryData;
+    SummaryModule.setLastSummaryData(summaryData);
   } else {
-    summaryData = lastSummaryData;
+    summaryData = SummaryModule.getLastSummaryData();
   }
 
   if (!summaryData) {
@@ -839,21 +837,20 @@ function updateStats(summaryData = null) {
   // AddressMasterServiceが未ロードの場合は非同期取得後に自動再反映
   if (total === 0 && typeof AddressMasterService !== 'undefined' && AddressMasterService.getInstance) {
     AddressMasterService.getInstance().getAll().then(master => {
-      if (master && master.length > 0 && lastSummaryData) {
-        updateStats(lastSummaryData);
+      if (master && master.length > 0 && SummaryModule.getLastSummaryData()) {
+        updateStats(SummaryModule.getLastSummaryData());
       }
     }).catch(() => {});
   }
 }
 
-let _systemSummaryPromise = null;
-
 async function fetchSystemSummary(forceRefresh = false) {
-  if (_systemSummaryPromise && !forceRefresh) {
-    return _systemSummaryPromise;
+  const existingPromise = SummaryModule.getSystemSummaryPromise();
+  if (existingPromise && !forceRefresh) {
+    return existingPromise;
   }
 
-  _systemSummaryPromise = (async () => {
+  SummaryModule.setSystemSummaryPromise((async () => {
     try {
       const res = await callApiPost('getSystemSummary');
       if (res && (res.code === 'CONTRACT_EXPIRED' || res.contractStatus === 'EXPIRED' || res.isExpired === true)) {
@@ -888,11 +885,11 @@ async function fetchSystemSummary(forceRefresh = false) {
         }
       }
     }
-    _systemSummaryPromise = null;
+    SummaryModule.setSystemSummaryPromise(null);
     return null;
-  })();
+  })());
 
-  return _systemSummaryPromise;
+  return SummaryModule.getSystemSummaryPromise();
 }
 
 /**
@@ -915,8 +912,8 @@ async function fetchTier1() {
         renderAreas();
       }
 
-      if (lastSummaryData) {
-        updateStats(lastSummaryData);
+      if (SummaryModule.getLastSummaryData()) {
+        updateStats(SummaryModule.getLastSummaryData());
       }
 
       return tier1Cache;

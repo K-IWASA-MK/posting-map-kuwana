@@ -50,7 +50,8 @@ const testSuites = [
   'test_district_data_gate.mjs',
   'test_schema_provisioning_healing.mjs',
   'test_architecture_gate.mjs',
-  'test_auth_module_lifecycle.mjs'
+  'test_auth_module_lifecycle.mjs',
+  'test_summary_module_lifecycle.mjs'
 ];
 
 console.log("====================================================");
