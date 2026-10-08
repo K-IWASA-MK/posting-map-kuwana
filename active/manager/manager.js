@@ -338,7 +338,11 @@ async function startDashboardLifecycle() {
     renderPinsOnMap(DashboardState.map, DashboardState.markersLayer, DashboardState.masterPins);
   }
 
-  syncDashboardData();
+  syncDashboardData().finally(() => {
+    setTimeout(() => {
+      renderMainStageBulletin();
+    }, 0);
+  });
 
   setInterval(() => {
     syncDashboardData();
