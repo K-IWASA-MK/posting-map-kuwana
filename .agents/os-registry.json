@@ -1,7 +1,7 @@
 {
   "$schema": "./os-registry.schema.json",
   "version": "2.0.0",
-  "activationState": "staging",
+  "activationState": "active",
   "universalContract": {
     "oneDistrictOneApp": true,
     "zeroDistrictHardcodingInUniversal": true,
