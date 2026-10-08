@@ -1,3 +1,4 @@
 [
-  "active/manager/index.html"
+  "active/manager/manager.js",
+  "tests/test_manager_ui_interaction.mjs"
 ]
