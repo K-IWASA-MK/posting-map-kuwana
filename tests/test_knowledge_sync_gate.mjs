@@ -482,6 +482,202 @@ runTestCase('--root Isolation: fixture without .git does not leak host repositor
   });
 });
 
+// =============================================================================
+// 23. Versioned Supreme Principle Governance Tests
+// =============================================================================
+runTestCase('Principle Governance: clean Versioned Principle Contract passes', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, false, `Expected pass, got: ${res.errors.join('; ')}`);
+  });
+});
+
+runTestCase('Principle Governance: rejects missing principleContract in registry', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const regPath = path.join(dir, '.agents/os-registry.json');
+    const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+    delete reg.principleContract;
+    fs.writeFileSync(regPath, JSON.stringify(reg, null, 2), 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-01') || e.includes('K1-20')));
+  });
+});
+
+runTestCase('Principle Governance: rejects missing principle file on disk', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.rmSync(path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md'), { force: true });
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-16') || e.includes('K1-20')));
+  });
+});
+
+runTestCase('Principle Governance: rejects invalid principleVersion format', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const pPath = path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md');
+    let content = fs.readFileSync(pPath, 'utf8');
+    content = content.replace(/principleVersion:\s*"[^"]+"/, 'principleVersion: "2026_10_08"');
+    fs.writeFileSync(pPath, content, 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-20') && e.includes('invalid format')));
+  });
+});
+
+runTestCase('Principle Governance: rejects status != CURRENT', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const pPath = path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md');
+    let content = fs.readFileSync(pPath, 'utf8');
+    content = content.replace(/status:\s*"CURRENT"/, 'status: "DRAFT"');
+    fs.writeFileSync(pPath, content, 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-20') && e.includes('status must be "CURRENT"')));
+  });
+});
+
+runTestCase('Principle Governance: rejects version mismatch between principle and registry', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const regPath = path.join(dir, '.agents/os-registry.json');
+    const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+    reg.principleContract.expectedVersion = '2026-10-09';
+    fs.writeFileSync(regPath, JSON.stringify(reg, null, 2), 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-20') && e.includes('Version mismatch')));
+  });
+});
+
+runTestCase('Principle Governance: rejects principle digest mismatch in principleContract', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const pPath = path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md');
+    fs.appendFileSync(pPath, '\n<!-- tamper -->\n');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-12') && e.includes('principleContract')));
+  });
+});
+
+runTestCase('Principle Governance: rejects behavior-preservation digest mismatch on principle tampering', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const regPath = path.join(dir, '.agents/os-registry.json');
+    const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+    const dummySha = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const pSrc = reg.capabilityPacks['behavior-preservation'].canonicalSources.find(s => s.path === 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md');
+    if (pSrc) pSrc.sha256 = dummySha;
+    fs.writeFileSync(regPath, JSON.stringify(reg, null, 2), 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-12') && e.includes('behavior-preservation')));
+  });
+});
+
+runTestCase('Principle Governance: rejects district token in Supreme Principle', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    const cfgPath = path.join(dir, 'data/config.js');
+    fs.writeFileSync(cfgPath, 'window.PMS_CONFIG = { districtId: "TARGET_DISTRICT_SENTINEL" };\n', 'utf8');
+
+    const pPath = path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md');
+    fs.appendFileSync(pPath, '\nTARGET_DISTRICT_SENTINEL\n');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-11') && e.includes('TARGET_DISTRICT_SENTINEL')));
+  });
+});
+
+runTestCase('K1-09: rejects .agents/old-principles directory and does not trigger K1-17', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.mkdirSync(path.join(dir, '.agents/old-principles'), { recursive: true });
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-09')), 'Must fail K1-09');
+    assert.ok(!res.errors.some(e => e.includes('K1-17')), 'Must NOT fail K1-17 (owned by K1-09)');
+  });
+});
+
+runTestCase('K1-09: rejects docs/old-principles directory and does not trigger K1-17', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.mkdirSync(path.join(dir, 'docs/old-principles'), { recursive: true });
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-09')), 'Must fail K1-09');
+    assert.ok(!res.errors.some(e => e.includes('K1-17')), 'Must NOT fail K1-17 (owned by K1-09)');
+  });
+});
+
+runTestCase('K1-09: rejects docs/architecture/old-principles directory and does not trigger K1-17', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.mkdirSync(path.join(dir, 'docs/architecture/old-principles'), { recursive: true });
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-09')), 'Must fail K1-09');
+    assert.ok(!res.errors.some(e => e.includes('K1-17')), 'Must NOT fail K1-17 (owned by K1-09)');
+  });
+});
+
+runTestCase('K1-09: rejects Supreme Principle .bak file', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.writeFileSync(path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md.bak'), 'stale backup', 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-09')));
+  });
+});
+
+runTestCase('K1-09: rejects Supreme Principle .old file', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.writeFileSync(path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md.old'), 'stale backup', 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-09')));
+  });
+});
+
+runTestCase('K1-09: rejects Supreme Principle .copy file', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.writeFileSync(path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md.copy'), 'stale copy', 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-09')));
+  });
+});
+
+runTestCase('K1-09: rejects Supreme Principle versioned alias', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.writeFileSync(path.join(dir, 'docs/architecture/SUPREME_PRODUCT_PRINCIPLES_2026_10_08.md'), 'versioned alias', 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, true);
+    assert.ok(res.errors.some(e => e.includes('K1-09')));
+  });
+});
+
+runTestCase('K1-09: unrelated legitimate filename containing "copy" must NOT fail', () => {
+  withFixture(createBaseValidTree, (dir) => {
+    fs.writeFileSync(path.join(dir, 'docs/architecture/copy_strategy.md'), '# Copy Strategy\n', 'utf8');
+    fs.writeFileSync(path.join(dir, '.agents/skills/behavior-preservation/sample_copy.md'), '# Sample Copy\n', 'utf8');
+
+    const res = runKnowledgeGate({ root: dir });
+    assert.strictEqual(res.hasError, false, `Unrelated copy files must not cause error: ${res.errors ? res.errors.join(', ') : ''}`);
+    assert.ok(!res.errors.some(e => e.includes('K1-09')));
+  });
+});
+
 console.log('====================================================');
 console.log(`📊 K1 TEST SUITE SUMMARY: ${passCount} / ${testCount} PASSED (100%)`);
 console.log('====================================================');

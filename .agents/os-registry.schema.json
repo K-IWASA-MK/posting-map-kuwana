@@ -7,6 +7,7 @@
     "$schema",
     "version",
     "activationState",
+    "principleContract",
     "universalContract",
     "physicalRoles",
     "authorities",
@@ -22,6 +23,26 @@
     "activationState": {
       "type": "string",
       "enum": ["staging", "active"]
+    },
+    "principleContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalSource",
+        "expectedVersion",
+        "sha256"
+      ],
+      "properties": {
+        "canonicalSource": { "type": "string" },
+        "expectedVersion": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}(\\.\\d{2})?$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
     },
     "universalContract": {
       "type": "object",

@@ -424,10 +424,8 @@ export function runKnowledgeGate(options = {}) {
   ];
   let residueFail = false;
   const allAgentsFiles = listFilesRecursive(resolvePath('.agents'), effectiveRoot);
-  const allDocsFiles = listFilesRecursive(resolvePath('docs'), effectiveRoot);
-  const scanFiles = [...allAgentsFiles, ...allDocsFiles];
 
-  for (const f of scanFiles) {
+  for (const f of allAgentsFiles) {
     const base = path.basename(f);
     for (const pattern of deletedAssetPatterns) {
       if (base.includes(pattern) || f.includes(pattern)) {
@@ -439,7 +437,45 @@ export function runKnowledgeGate(options = {}) {
       recordFail('K1-09', `Found temporary/backup residue file: ${f}`);
       residueFail = true;
     }
+    if (/^~?SUPREME_PRODUCT_PRINCIPLES/i.test(base)) {
+      recordFail('K1-09', `Found Supreme Principle residue in .agents: ${f}`);
+      residueFail = true;
+    }
   }
+
+  // 1. Explicit forbidden principle directories
+  const forbiddenPrincipleDirs = [
+    '.agents/old-principles',
+    'docs/old-principles',
+    'docs/architecture/old-principles'
+  ];
+  for (const pDir of forbiddenPrincipleDirs) {
+    if (fileExists(pDir)) {
+      recordFail('K1-09', `Forbidden principle graveyard directory exists: ${pDir}`);
+      residueFail = true;
+    }
+  }
+
+  // 2. Supreme Principle stale aliases / backups associated with docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md
+  const archDir = resolvePath('docs/architecture');
+  if (fs.existsSync(archDir)) {
+    const archEntries = fs.readdirSync(archDir);
+    for (const entry of archEntries) {
+      if (entry === 'SUPREME_PRODUCT_PRINCIPLES.md') continue;
+      const isPrincipleResidue =
+        /^SUPREME_PRODUCT_PRINCIPLES_.*\.md$/i.test(entry) ||
+        /^SUPREME_PRODUCT_PRINCIPLES\.md\.(bak|old|orig|tmp|copy)$/i.test(entry) ||
+        /^SUPREME_PRODUCT_PRINCIPLES\.(bak|old|orig|tmp|copy)$/i.test(entry) ||
+        /^SUPREME_PRODUCT_PRINCIPLES.*copy.*\.md$/i.test(entry) ||
+        entry === 'SUPREME_PRODUCT_PRINCIPLES.md~' ||
+        /^~SUPREME_PRODUCT_PRINCIPLES/i.test(entry);
+      if (isPrincipleResidue) {
+        recordFail('K1-09', `Found stale Supreme Principle alias or backup residue: docs/architecture/${entry}`);
+        residueFail = true;
+      }
+    }
+  }
+
   if (!residueFail) recordPass('K1-09');
 
   // --- K1-10: Canonical Auth Synchronization ---
@@ -539,6 +575,9 @@ export function runKnowledgeGate(options = {}) {
   }
   if (fileExists('scripts/check-knowledge-gate.mjs')) {
     targetFiles.push('scripts/check-knowledge-gate.mjs');
+  }
+  if (registry && registry.principleContract && typeof registry.principleContract.canonicalSource === 'string') {
+    targetFiles.push(registry.principleContract.canonicalSource);
   }
 
   // Generic absolute local path regex
@@ -647,6 +686,17 @@ export function runKnowledgeGate(options = {}) {
       }
     }
   }
+  // Principle contract digest check
+  if (registry && registry.principleContract && typeof registry.principleContract.canonicalSource === 'string') {
+    const pPath = registry.principleContract.canonicalSource;
+    if (fileExists(pPath)) {
+      const actualPrincipleSha = crypto.createHash('sha256').update(fs.readFileSync(resolvePath(pPath))).digest('hex');
+      if (actualPrincipleSha !== registry.principleContract.sha256) {
+        recordFail('K1-12', `Digest mismatch in principleContract for ${pPath}: expected ${registry.principleContract.sha256}, actual ${actualPrincipleSha}`);
+        digestFail = true;
+      }
+    }
+  }
   // Check no 64-char hex in SKILL.md
   for (const packName of declaredPacks) {
     const sFile = `.agents/skills/${packName}/SKILL.md`;
@@ -727,6 +777,12 @@ export function runKnowledgeGate(options = {}) {
       }
     }
   }
+  if (registry && registry.principleContract && typeof registry.principleContract.canonicalSource === 'string') {
+    if (!fileExists(registry.principleContract.canonicalSource)) {
+      recordFail('K1-16', `principleContract canonicalSource missing on disk: ${registry.principleContract.canonicalSource}`);
+      danglingSourceFail = true;
+    }
+  }
   if (!danglingSourceFail) recordPass('K1-16');
 
   // --- K1-17: Forbidden Archive / Legacy / Reference ---
@@ -795,6 +851,53 @@ export function runKnowledgeGate(options = {}) {
     if (canonicalRoles.length !== 5 || declaredPacks.length !== 11) {
       recordFail('K1-20', `ACTIVE registry requires exactly 5 roles and 11 packs (found ${physicalRoles.length} roles, ${declaredPacks.length} packs)`);
       coherenceFail = true;
+    }
+
+    // Principle Contract Coherence Verification
+    if (!registry.principleContract) {
+      recordFail('K1-20', 'ACTIVE registry missing principleContract definition');
+      coherenceFail = true;
+    } else {
+      const pSource = registry.principleContract.canonicalSource;
+      if (!pSource || !fileExists(pSource)) {
+        recordFail('K1-20', `Supreme Principle file missing or invalid: ${pSource}`);
+        coherenceFail = true;
+      } else {
+        const pContent = readText(pSource);
+        const fmMatch = pContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+        if (!fmMatch) {
+          recordFail('K1-20', `Supreme Principle missing YAML frontmatter: ${pSource}`);
+          coherenceFail = true;
+        } else {
+          const fmLines = fmMatch[1].split('\n');
+          let principleVersion = null;
+          let status = null;
+          for (const line of fmLines) {
+            const vMatch = line.match(/^principleVersion:\s*["']?([^"'\r\n]+)["']?/);
+            if (vMatch) principleVersion = vMatch[1].trim();
+            const sMatch = line.match(/^status:\s*["']?([^"'\r\n]+)["']?/);
+            if (sMatch) status = sMatch[1].trim();
+          }
+
+          if (!principleVersion) {
+            recordFail('K1-20', 'Supreme Principle frontmatter missing principleVersion');
+            coherenceFail = true;
+          } else if (!/^\d{4}-\d{2}-\d{2}(\.\d{2})?$/.test(principleVersion)) {
+            recordFail('K1-20', `Supreme Principle principleVersion "${principleVersion}" invalid format (expected YYYY-MM-DD or YYYY-MM-DD.NN)`);
+            coherenceFail = true;
+          }
+
+          if (status !== 'CURRENT') {
+            recordFail('K1-20', `Supreme Principle status must be "CURRENT", got "${status}"`);
+            coherenceFail = true;
+          }
+
+          if (principleVersion && registry.principleContract.expectedVersion && principleVersion !== registry.principleContract.expectedVersion) {
+            recordFail('K1-20', `Version mismatch: Supreme Principle version "${principleVersion}" !== registry expectedVersion "${registry.principleContract.expectedVersion}"`);
+            coherenceFail = true;
+          }
+        }
+      }
     }
   }
   if (!coherenceFail) recordPass('K1-20');

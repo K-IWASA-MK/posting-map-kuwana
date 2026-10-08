@@ -9,11 +9,13 @@ description: 既存挙動維持規範。リファクタリング時のUI/UX完�
 本 Pack は、コードの分割・整理・リファクタリングにおいて、ユーザーから見た機能・操作感・見た目・挙動を 100% 維持（副作用ゼロ）することを保証するための品質保証規格である。
 
 ## 2. 正本仕様依存 (Canonical Sources)
+- [SUPREME_PRODUCT_PRINCIPLES.md](../../../docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md): 最高位プロダクト原則 (Level 0 SSOT)
 - [UNIVERSAL_QUALITY_DOCTRINE.md](../../../docs/architecture/UNIVERSAL_QUALITY_DOCTRINE.md): Universal 品質ドクトリン
 
 ## 3. 遵守すべき絶対規範
-1. **既存挙動の不可侵性**:
-   - モジュール分割や内部リファクタリングは、外部から見たインターフェースおよびエンドユーザーの操作挙動を変更してはならない。
+1. **最高位プロダクト挙動の絶対不可侵性 (Product Behavior Preservation)**:
+   - 最高位原則第1条に基づき、現在完成しているHアプリ・Dashboardの機能、操作、表示、タイミングを1つも変えてはならない。
+   - 不可侵対象には、UI、操作順、表示内容、画面遷移、Loading、Modal、Error、Optimistic First Paint、API firing order、await / no-await、Promise ordering、Concurrency、Timers、Existing quirks（既存の癖・特殊仕様）を全て含む。
    - 勝手なUI改善、アニメーション変更、エラーメッセージ変更を「ついで」に行うことを禁止する。
 2. **回帰防止の自己検証**:
    - 変更後は必ず既存テスト（`npm test`）を実行し、全テストケースが 100% PASS することを確認する。

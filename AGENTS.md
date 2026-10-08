@@ -1,5 +1,12 @@
 # POSTING MAP — AGENTS.md (最上位基本就業規則)
 
+## 0. Supreme Principles — ABSOLUTE
+- 本リポジトリにおけるすべての工学契約、就業規則、開発ガバナンスは、最高位存在規範である **Supreme Product Principles**（正本ポインタ: [.agents/os-registry.json](.agents/os-registry.json) `principleContract.canonicalSource` ➔ [docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md](docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md)）に絶対従属する。
+- **Product Behavior Preservation**: 現在完成しているHアプリ・Dashboardの機能、操作、表示、タイミング（UI, 操作順, 表示内容, 画面遷移, Loading, Modal, Error, Optimistic First Paint, API firing order, await / no-await, Promise ordering, Concurrency, Timers, Existing quirks）を1つも変えてはならない。
+- **Universal Product Model & 物理製品境界**: 1地区 = 1完成アプリ = 1単独フォルダー = 1単独リポジトリ = 1単独ドメイン。共通Runtime（`active/**`）の個別改変・分岐を永久に禁止する。
+- **No Autonomous Principle Change**: 原則の更新起点は MASTER explicit decision のみとする。AIによる原則の自律改定は永久に禁止する。
+- **Version Resolution**: 各AI社員は原則バージョンを直接保持せず、Current Role ➔ Canonical Pointer ➔ Registry ➔ Supreme Principle SSOT の一方向チェーンによって一意に解決する。
+
 ## 1. Architecture — ABSOLUTE
 - **1地区 = 1完成アプリ = 1単独フォルダー = 1単独リポジトリ = 1単独ドメイン**。
 - 共通Runtime（`active/`）は **Universal Engine** として全地区共通であり、コピーして変更しない。
@@ -114,6 +121,7 @@ AI社員は以下の条件に抵触する変更を新規にコミットしては
 
 ## 12. Detailed Rules & Workflows
 AI社員は作業フェーズに応じて、必ず以下の詳細規程・ワークフローを参照・遵守すること。
+- 最高位存在規範 (Supreme Product Principles): [docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md](docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md)
 - 最高位設計契約 (Supreme Design Contract): [docs/architecture/01_DESIGN_CONTRACT.md](docs/architecture/01_DESIGN_CONTRACT.md)
 - 現行アーキテクチャ定義: [docs/architecture/CURRENT_ARCHITECTURE.md](docs/architecture/CURRENT_ARCHITECTURE.md)
 - AI社員基盤・正本仕様書 (Canonical SSOT): [docs/ai-foundation.md](docs/ai-foundation.md)
