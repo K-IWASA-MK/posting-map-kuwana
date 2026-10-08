@@ -391,7 +391,7 @@
         text-align: right !important;
       }
 
-      /* 4. Ranking Feed: override inline 28px / 72px and internal badge margins */
+      /* 4. Ranking Feed Baseline (History-free feed preserve) */
       .ranking-col-feed {
         padding-left: 0 !important;
         padding-right: 0 !important;
@@ -404,28 +404,100 @@
         min-width: 1.5rem !important;
         flex-shrink: 0 !important;
       }
-      .ranking-col-feed > div:nth-child(2) {
-        min-width: 0 !important;
-        flex-shrink: 1 !important;
+
+      /* 4-B. Ranking Feed: 2-Row 5-Column Grid (Limited to feeds with records) */
+      .ranking-col-feed.overflow-hidden {
+        display: grid !important;
+        grid-template-columns: auto minmax(0, 1fr) auto auto auto !important;
+        grid-template-rows: auto auto !important;
+        row-gap: 0.25rem !important;
+        column-gap: 0.375rem !important;
+        padding: 0.375rem 0.5rem !important;
+        background-color: #0B1019 !important;
+        border: 1px solid rgba(36, 48, 68, 0.6) !important;
+        border-radius: 0.5rem !important;
         overflow: hidden !important;
+        width: 100% !important;
+        align-items: center !important;
       }
-      .ranking-col-feed > div:last-child {
-        width: auto !important;
-        min-width: 3.5rem !important;
-        flex-shrink: 0 !important;
+      .ranking-col-feed.overflow-hidden > div:first-child,
+      .ranking-col-feed.overflow-hidden > div:nth-child(2),
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\],
+      .ranking-col-feed.overflow-hidden > div:last-child,
+      .ranking-col-feed.overflow-hidden > div:last-child > div {
+        display: contents !important;
       }
-      .ranking-col-feed .bg-\[\#0B1019\] {
-        padding-left: 0.375rem !important;
-        padding-right: 0.375rem !important;
-        gap: 0.25rem !important;
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(5) {
+        display: none !important;
+      }
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(1) {
+        grid-row: 1 !important;
+        grid-column: 1 !important;
+        align-self: center !important;
+        justify-self: start !important;
+      }
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(2) {
+        grid-row: 1 !important;
+        grid-column: 1 !important;
+        align-self: center !important;
+        margin-left: 0.625rem !important;
+        font-size: 11px !important;
+        color: #94A3B8 !important;
+      }
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(3) {
+        grid-row: 1 !important;
+        grid-column: 2 !important;
         min-width: 0 !important;
-        flex-shrink: 1 !important;
-        overflow: hidden !important;
+        max-width: 100% !important;
+        font-weight: 500 !important;
+        font-size: 12px !important;
+        color: #FFFFFF !important;
+        align-self: center !important;
       }
-      .ranking-col-feed .bg-\[\#0B1019\] span.truncate {
-        min-width: 0 !important;
-        flex-shrink: 1 !important;
-        max-width: clamp(45px, 16vw, 110px) !important;
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(4) {
+        grid-row: 1 !important;
+        grid-column: 3 / 6 !important;
+        justify-self: end !important;
+        align-self: center !important;
+        font-size: 12px !important;
+      }
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(6) {
+        grid-row: 2 !important;
+        grid-column: 1 !important;
+        align-self: center !important;
+        font-size: 11px !important;
+      }
+      .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(7) {
+        grid-row: 2 !important;
+        grid-column: 2 !important;
+        justify-self: start !important;
+        align-self: center !important;
+        font-size: 11px !important;
+      }
+      .ranking-col-feed.overflow-hidden > div:first-child > button {
+        grid-row: 2 !important;
+        grid-column: 3 !important;
+        width: 1.5rem !important;
+        min-width: 1.5rem !important;
+        align-self: center !important;
+        justify-self: center !important;
+      }
+      .ranking-col-feed.overflow-hidden > div:first-child > span {
+        display: none !important;
+      }
+      .ranking-col-feed.overflow-hidden > div:last-child > div > span {
+        grid-row: 2 !important;
+        grid-column: 4 !important;
+        align-self: center !important;
+        justify-self: center !important;
+        font-size: 11px !important;
+        padding: 0 0.125rem !important;
+      }
+      .ranking-col-feed.overflow-hidden > div:last-child > div > button {
+        grid-row: 2 !important;
+        grid-column: 5 !important;
+        align-self: center !important;
+        justify-self: end !important;
       }
 
       /* 5. PDF & CSV Report buttons fluid fit in mobile */
@@ -445,18 +517,6 @@
       }
       #mobile-situation-bar > div {
         padding: 0.25rem 0.375rem !important;
-      }
-      .ranking-col-feed > div:last-child {
-        min-width: 2.75rem !important;
-      }
-      .ranking-col-feed .bg-\[\#0B1019\] {
-        font-size: 10px !important;
-        padding-left: 0.25rem !important;
-        padding-right: 0.25rem !important;
-        gap: 0.125rem !important;
-      }
-      .ranking-col-feed .bg-\[\#0B1019\] span.truncate {
-        max-width: 42px !important;
       }
     }
   </style>
