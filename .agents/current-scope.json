@@ -1,14 +1,7 @@
 [
   ".agents/current-scope.json",
   "docs/ai-foundation.md",
-  ".agents/agents/execution/agent.md",
-  ".agents/agents/auditor/agent.md",
-  ".agents/agents/architect/agent.md",
-  ".agents/agents/deployer/agent.md",
-  ".agents/agents/worker/agent.md",
-  ".agents/rules/agent-authority.md",
-  ".agents/workflows/development/workflow.md",
-  ".agents/rules/security-rule.md",
-  ".agents/rules/district-data-transition-rule.md",
+  "docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md",
+  "docs/architecture/01_DESIGN_CONTRACT.md",
   ".agents/os-registry.json"
 ]
