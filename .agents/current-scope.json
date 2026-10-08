@@ -1,7 +1,9 @@
 [
   ".agents/current-scope.json",
-  "docs/ai-foundation.md",
-  "docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md",
-  "docs/architecture/01_DESIGN_CONTRACT.md",
-  ".agents/os-registry.json"
+  ".agents/os-registry.json",
+  ".agents/rules/core-rules.md",
+  ".agents/skills/official-data-confirmation-audit/SKILL.md",
+  ".agents/skills/census-small-area-master/SKILL.md",
+  ".agents/skills/h-app-auth-boundary/SKILL.md",
+  "docs/architecture/02_LESSONS_FROM_KUWANA.md"
 ]
