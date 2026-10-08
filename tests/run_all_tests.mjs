@@ -49,7 +49,8 @@ const testSuites = [
   'test_registry_provisioning_gate.mjs',
   'test_district_data_gate.mjs',
   'test_schema_provisioning_healing.mjs',
-  'test_architecture_gate.mjs'
+  'test_architecture_gate.mjs',
+  'test_auth_module_lifecycle.mjs'
 ];
 
 console.log("====================================================");

@@ -170,6 +170,12 @@ function createBulletinTestContext(customConfig = {}) {
   const context = vm.createContext(sandbox);
 
   // ソース読み込み順序の完全再現
+  const authModulePath = path.join(REPO_ROOT, 'active/h-app/modules/auth.js');
+  if (fs.existsSync(authModulePath)) {
+    const authSrc = fs.readFileSync(authModulePath, 'utf8');
+    vm.runInContext(authSrc, context);
+  }
+
   const renderSrc = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/render.js'), 'utf8');
   vm.runInContext(renderSrc, context);
 
@@ -182,8 +188,8 @@ function createBulletinTestContext(customConfig = {}) {
   const appSrc = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/app.js'), 'utf8');
   vm.runInContext(appSrc, context);
 
-  // app.js の Identity Gate をデフォルトで認証済みに設定
-  vm.runInContext("_identityVerified = true;", context);
+  // AuthModule の Identity Gate をデフォルトで認証済みに設定
+  vm.runInContext("AuthModule.setIdentityVerified(true);", context);
 
   // window に公開された entry point を sandbox 側にも同期
   Object.assign(sandbox, windowObj);
@@ -200,7 +206,7 @@ function createBulletinTestContext(customConfig = {}) {
     setApiHandler: (fn) => { apiHandler = fn; },
     setIdentityVerifiedPass: (pass) => {
       identityVerifiedShouldPass = pass;
-      vm.runInContext(`_identityVerified = ${pass ? 'true' : 'false'}; _identitySyncPromise = null;`, context);
+      vm.runInContext(`AuthModule.setIdentityVerified(${pass ? 'true' : 'false'}); AuthModule.setIdentitySyncPromise(null);`, context);
     }
   };
 }

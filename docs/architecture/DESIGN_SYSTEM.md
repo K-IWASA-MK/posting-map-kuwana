@@ -35,7 +35,7 @@ Composition Root / Boot (active/h-app/app.js)
    - Domain StateやDomain/Feature Logic（固有のビジネスロジック・ステート管理）は一切持たない。
 2. **`active/h-app/modules/` (Feature / Lifecycle Modules)**:
    - **Foundation Modules** (`api.js`, `device.js`, `navigation.js`)
-   - **Feature / Lifecycle Modules** (`storage.js`, `bulletin.js`, `activity.js`, `pin-status.js`, および後期候補の `auth.js`, `identity.js` 等)
+   - **Feature / Lifecycle Modules** (`storage.js`, `bulletin.js`, `activity.js`, `pin-status.js`, `transfer.js`, `staff-registration.js`, `ranking.js`, `auth.js`)
    - Feature State（ドメイン特有の状態）、キャッシュ、in-flight lifecycle、Workflow coordination、API Coordinationをprivate stateとして所有する層。
 3. **`active/h-app/render.js` (Presentation Layer)**:
    - Map / Page presentation、レンダリング、Visual interactionを担当する。

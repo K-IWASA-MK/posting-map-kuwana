@@ -69,7 +69,7 @@ test('3. Optimistic First Paint: hasExistingStaffId 時に非同期 API を待�
   assert.ok(appJs.includes('showMainApp()'), 'app.js must invoke showMainApp() optimistically');
 
   // getStaffIdentity はバックグラウンド Promise として非ブロッキング実行されること
-  assert.ok(appJs.includes('_identitySyncPromise = callApiPost(\'getStaffIdentity\''), 'Identity sync must be assigned to background promise');
+  assert.ok(appJs.includes('AuthModule.setIdentitySyncPromise(callApiPost(\'getStaffIdentity\''), 'Identity sync must be assigned to background promise');
 });
 
 // ─── 4. Cold Start 非ブロッキング検証 ─────────────────────────────

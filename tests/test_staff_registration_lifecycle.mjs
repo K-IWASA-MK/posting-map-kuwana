@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 const staffRegistrationModuleCode = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/modules/staff-registration.js'), 'utf8');
+const authModuleCode = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/modules/auth.js'), 'utf8');
 const staffComponentCode = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/components/staff.js'), 'utf8');
 const renderCode = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/render.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(REPO_ROOT, 'active/h-app/app.js'), 'utf8');
@@ -123,7 +124,10 @@ function createTestEnvironment(options = {}) {
   sandbox.globalThis = windowObj;
 
   const ctx = vm.createContext(sandbox);
+  ctx.AuthModule = undefined;
 
+  // 0. Auth Module
+  vm.runInContext(authModuleCode, ctx);
   // 1. Module
   vm.runInContext(staffRegistrationModuleCode, ctx);
   // 2. Staff Component
@@ -278,7 +282,7 @@ console.log('🚀 RUNNING STAFF REGISTRATION LIFECYCLE TESTS (11 GATES)');
   await ctx.window.retryRegistration();
 
   assert.strictEqual(ctx.getStaffRegistrationStatus().registrationError, false, 'Gate 4: retry succeeded');
-  assert.strictEqual(vm.runInContext('_identityVerified', ctx), true, 'Gate 4: _identityVerified is true');
+  assert.strictEqual(vm.runInContext('AuthModule.isIdentityVerified()', ctx), true, 'Gate 4: _identityVerified is true');
 
   const savedUser = JSON.parse(ctx.localStorage.getItem('user_info'));
   assert.strictEqual(savedUser.id, 'STF_RETRY_OK', 'Gate 4: staff ID saved on retry');
@@ -458,7 +462,7 @@ console.log('🚀 RUNNING STAFF REGISTRATION LIFECYCLE TESTS (11 GATES)');
 
   assert.ok(idxReady !== -1, 'Gate 11: SET_LOADING_PROGRESS called');
   assert.ok(idxShowApp > idxReady, 'Gate 11: showMainApp called after SET_LOADING_PROGRESS');
-  assert.strictEqual(vm.runInContext('_identityVerified', ctx), true, 'Gate 11: _identityVerified true');
+  assert.strictEqual(vm.runInContext('AuthModule.isIdentityVerified()', ctx), true, 'Gate 11: _identityVerified true');
 
   console.log('  ✅ Gate 11 PASS: Retry成功時起動順序 (READY ➔ identityVerified ➔ showMainApp)');
 }

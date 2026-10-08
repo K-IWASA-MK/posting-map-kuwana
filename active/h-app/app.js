@@ -120,84 +120,32 @@ window.fetchGlobalPinStatus = async function() {
   });
 };
 
-// --- Auth Readiness Gate (LIFF認証完了待機: PENDING / READY / FAILED) ---
-let _liffAuthState = 'PENDING'; // 'PENDING' | 'READY' | 'FAILED'
-let _liffAuthError = null;
-let _liffAuthReadyResolver = null;
-let _liffAuthReadyRejecter = null;
-const _liffAuthReadyPromise = new Promise((resolve, reject) => {
-  _liffAuthReadyResolver = resolve;
-  _liffAuthReadyRejecter = reject;
-});
-// 未購読rejectによる unhandledrejection 警告を防止
-_liffAuthReadyPromise.catch(() => {});
+// =====================================
+// Wave 15: Auth & Identity Gate Wiring (Compatibility Wrappers & DI)
+// =====================================
+if (typeof AuthModule !== 'undefined' && typeof AuthModule.configure === 'function') {
+  AuthModule.configure({
+    getLiffAuthToken: () => (typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null),
+    isLiffLoggedIn: () => (typeof liff !== 'undefined' && typeof liff.isLoggedIn === 'function' && liff.isLoggedIn())
+  });
+}
 
 function waitForLiffAuthReady() {
-  const currentToken = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
-  const hasValidToken = typeof currentToken === 'string' && currentToken.trim().length > 0;
-
-  // 1. 現時点で有効な token が存在し、かつログイン済みなら即時 resolve
-  if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn() && hasValidToken) {
-    return Promise.resolve(true);
-  }
-
-  // 2. 過去に READY に遷移していたとしても、現時点で token が失われていれば過去の resolve を信用せず即時 reject
-  if (_liffAuthState === 'READY') {
-    const err = new Error("LIFF_TOKEN_MISSING");
-    err.code = "UNAUTHORIZED";
-    err.errorType = "PERMANENT";
-    err.retryable = false;
-    return Promise.reject(err);
-  }
-
-  // 3. FAILED 状態なら明示的 reject
-  if (_liffAuthState === 'FAILED') {
-    return Promise.reject(_liffAuthError || new Error("LIFF_AUTH_FAILED"));
-  }
-
-  // 4. PENDING 状態（init実行中）なら Promise 待機
-  return _liffAuthReadyPromise;
+  return AuthModule.waitForLiffAuthReady();
 }
 window.waitForLiffAuthReady = waitForLiffAuthReady;
 
-// 明示的な Read-only Accessor (Fail-Closed)
 window.isLiffAuthReady = function() {
-  if (typeof liff === 'undefined' || !liff.isLoggedIn || !liff.isLoggedIn()) return false;
-  const token = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
-  return typeof token === 'string' && token.trim().length > 0;
+  return AuthModule.isLiffAuthReady();
 };
 
-// --- Identity Safety Gate (Verified後のみ業務Write許可) ---
-let _identityVerified = false;
-let _identitySyncPromise = null;
-let _identityLastError = null;
-
-async function waitForIdentityVerified() {
-  if (_identityVerified === true) return true;
-
-  if (_identitySyncPromise) {
-    await _identitySyncPromise;
-
-    if (_identityVerified === true) return true;
-
-    throw _identityLastError ||
-      Object.assign(new Error('IDENTITY_NOT_VERIFIED'), {
-        code: 'UNAUTHORIZED',
-        errorType: 'PERMANENT',
-        retryable: false
-      });
-  }
-
-  throw Object.assign(new Error('IDENTITY_NOT_INITIALIZED'), {
-    code: 'UNAUTHORIZED',
-    errorType: 'PERMANENT',
-    retryable: false
-  });
+function waitForIdentityVerified() {
+  return AuthModule.waitForIdentityVerified();
 }
 window.waitForIdentityVerified = waitForIdentityVerified;
 
 window.isIdentityVerifiedReady = function() {
-  return window.isLiffAuthReady() && _identityVerified === true;
+  return AuthModule.isIdentityVerifiedReady();
 };
 
 // =====================================
@@ -448,7 +396,7 @@ window.retryRegistration = () => {
       const verifiedInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
       if (verifiedInfo && verifiedInfo.id) {
         setLoadingProgress(100, 'READY');
-        _identityVerified = true;
+        AuthModule.setIdentityVerified(true);
         showMainApp();
       }
     }).catch(err => {
@@ -1047,20 +995,13 @@ async function safeInitApp() {
 
         const currentToken = typeof getLiffAuthToken === 'function' ? getLiffAuthToken() : null;
         if (typeof currentToken === 'string' && currentToken.trim().length > 0) {
-          _liffAuthState = 'READY';
-          if (typeof _liffAuthReadyResolver === 'function') {
-            _liffAuthReadyResolver(true);
-          }
+          AuthModule.markAuthReady();
         } else {
-          _liffAuthState = 'FAILED';
           const tokenErr = new Error("LIFF_TOKEN_MISSING");
           tokenErr.code = "UNAUTHORIZED";
           tokenErr.errorType = "PERMANENT";
           tokenErr.retryable = false;
-          _liffAuthError = tokenErr;
-          if (typeof _liffAuthReadyRejecter === 'function') {
-            _liffAuthReadyRejecter(tokenErr);
-          }
+          AuthModule.markAuthFailed(tokenErr);
         }
 
         // ★ MASTER指示 ①: fetchSystemSummary() は liff.isLoggedIn() 成立直後、await liff.getProfile() より前に非同期発火すること。HeaderをProfile取得に依存させない。
@@ -1087,8 +1028,8 @@ async function safeInitApp() {
           }
 
           // 【Backend Identity 非同期同期】getStaffIdentity をバックグラウンド Promise で実行
-          _identityLastError = null;
-          _identitySyncPromise = callApiPost('getStaffIdentity', {})
+          AuthModule.setIdentityLastError(null);
+          AuthModule.setIdentitySyncPromise(callApiPost('getStaffIdentity', {})
             .then(identityRes => {
               if (identityRes && identityRes.success && identityRes.registered && identityRes.staffId && String(identityRes.staffId).trim() !== '') {
                 // ① 登録済み: Backend の検証済み Identity を正として localStorage へ同期（lineUserId は保存しない）
@@ -1100,8 +1041,8 @@ async function safeInitApp() {
                   picture: profile.pictureUrl || ''
                 };
                 localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
-                _identityVerified = true;
-                _identityLastError = null;
+                AuthModule.setIdentityVerified(true);
+                AuthModule.setIdentityLastError(null);
 
                 if (typeof renderSettings === 'function') {
                   renderSettings();
@@ -1122,7 +1063,7 @@ async function safeInitApp() {
               } else {
                 // ② 未登録または不一致: キャッシュを無効化し、初回登録フローへ
                 logDebug("STAFF NOT REGISTERED OR IDENTITY MISMATCH. PROCEEDING TO REGISTRATION...");
-                _identityVerified = false;
+                AuthModule.setIdentityVerified(false);
 
                 const initialUserInfo = {
                   last: profile.displayName || '',
@@ -1145,8 +1086,8 @@ async function safeInitApp() {
                   if (!verifiedInfo.id) {
                     throw new Error("Registration finished but staffId is missing in storage");
                   }
-                  _identityVerified = true;
-                  _identityLastError = null;
+                  AuthModule.setIdentityVerified(true);
+                  AuthModule.setIdentityLastError(null);
 
                   // 登録完了に伴う未送信Queue Flush再発火
                   if (typeof processQueue === 'function') {
@@ -1157,8 +1098,8 @@ async function safeInitApp() {
                   showMainApp();
                   return true;
                 }).catch(rErr => {
-                  _identityVerified = false;
-                  _identityLastError = rErr;
+                  AuthModule.setIdentityVerified(false);
+                  AuthModule.setIdentityLastError(rErr);
                   logDebug("Registration halted: " + (rErr ? rErr.message : rErr));
                   throw rErr;
                 });
@@ -1167,16 +1108,16 @@ async function safeInitApp() {
             .catch(err => {
               console.warn("Identity verification failed:", err);
               logDebug("Identity verification failed: " + err.message);
-              _identityVerified = false;
-              _identityLastError = err;
+              AuthModule.setIdentityVerified(false);
+              AuthModule.setIdentityLastError(err);
               showIdentityErrorUI(err);
               return false;
-            });
+            }));
 
           // 初回起動時のみ、非同期 Promise の完了を待ってから抜ける
           if (!hasExistingStaffId) {
-            await _identitySyncPromise;
-            if (!_identityVerified) {
+            await AuthModule.getIdentitySyncPromise();
+            if (!AuthModule.isIdentityVerified()) {
               return;
             }
           }
@@ -1221,11 +1162,7 @@ async function safeInitApp() {
     } catch (err) {
       console.error("LIFF Init Error:", err);
       logDebug("LIFF Error: " + err.message);
-      _liffAuthState = 'FAILED';
-      _liffAuthError = err;
-      if (typeof _liffAuthReadyRejecter === 'function') {
-        _liffAuthReadyRejecter(err);
-      }
+      AuthModule.markAuthFailed(err);
       showIdentityErrorUI(err);
     }
   } else {
@@ -1234,11 +1171,7 @@ async function safeInitApp() {
     standaloneErr.code = "UNAUTHORIZED";
     standaloneErr.errorType = "PERMANENT";
     standaloneErr.retryable = false;
-    _liffAuthState = 'FAILED';
-    _liffAuthError = standaloneErr;
-    if (typeof _liffAuthReadyRejecter === 'function') {
-      _liffAuthReadyRejecter(standaloneErr);
-    }
+    AuthModule.markAuthFailed(standaloneErr);
     $('loading-status').textContent = "エラー: LINEアプリ内から起動してください。";
   }
 }
@@ -1290,7 +1223,7 @@ function showIdentityErrorUI(err) {
   }
 
   // 3. LIFF init timeout / init reject / FAILED: App遮断、「タップして再接続」でページreload
-  const isLiffInitFailure = _liffAuthState === 'FAILED' || (err && (err.isLiffInitError || (err.message && err.message.includes('LINEログインの応答がタイムアウト'))));
+  const isLiffInitFailure = AuthModule.getAuthState() === 'FAILED' || (err && (err.isLiffInitError || (err.message && err.message.includes('LINEログインの応答がタイムアウト'))));
   if (isLiffInitFailure) {
     let msg = "接続エラー: ";
     msg += (err ? err.message : "LINE初期化に失敗しました") + "\n(タップして再接続)";
@@ -1331,8 +1264,8 @@ window.retryIdentityVerification = function() {
   } : null);
 
   // 新規 Promise を生成して再試行（reject済みの古いPromiseは再利用しない）
-  _identityLastError = null;
-  _identitySyncPromise = callApiPost('getStaffIdentity', {})
+  AuthModule.setIdentityLastError(null);
+  AuthModule.setIdentitySyncPromise(callApiPost('getStaffIdentity', {})
     .then(identityRes => {
       if (identityRes && identityRes.success && identityRes.registered && identityRes.staffId && String(identityRes.staffId).trim() !== '') {
         logDebug("RETRY STAFF IDENTITY VERIFIED: " + identityRes.staffId);
@@ -1343,8 +1276,8 @@ window.retryIdentityVerification = function() {
           picture: (profile ? profile.pictureUrl : '') || ''
         };
         localStorage.setItem('user_info', JSON.stringify(verifiedUserInfo));
-        _identityVerified = true;
-        _identityLastError = null;
+        AuthModule.setIdentityVerified(true);
+        AuthModule.setIdentityLastError(null);
         if (typeof renderSettings === 'function') renderSettings();
         updateBottomNavVisibility();
         if (typeof processQueue === 'function') processQueue();
@@ -1354,14 +1287,14 @@ window.retryIdentityVerification = function() {
       } else {
         // 未登録分岐の完結: registerStaff -> 成功 -> staffId確認 -> Verified -> Queue flush -> READY -> showMainApp
         logDebug("RETRY STAFF NOT REGISTERED. PROCEEDING TO REGISTRATION...");
-        _identityVerified = false;
+        AuthModule.setIdentityVerified(false);
         return triggerBackgroundRegistration(profile).then(() => {
           const verifiedInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
           if (!verifiedInfo.id) {
             throw new Error("Registration finished but staffId is missing in storage");
           }
-          _identityVerified = true;
-          _identityLastError = null;
+          AuthModule.setIdentityVerified(true);
+          AuthModule.setIdentityLastError(null);
           if (typeof processQueue === 'function') processQueue();
           setLoadingProgress(100, 'READY');
           showMainApp();
@@ -1371,11 +1304,11 @@ window.retryIdentityVerification = function() {
     })
     .catch(err => {
       console.warn("Retry identity verification failed:", err);
-      _identityVerified = false;
-      _identityLastError = err;
+      AuthModule.setIdentityVerified(false);
+      AuthModule.setIdentityLastError(err);
       showIdentityErrorUI(err);
       return false;
-    });
+    }));
 };
 
 if (document.readyState === 'complete') {

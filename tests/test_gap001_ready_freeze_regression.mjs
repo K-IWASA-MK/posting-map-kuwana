@@ -30,6 +30,8 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
 const staffRegistrationJsPath = path.join(REPO_ROOT, 'active/h-app/modules/staff-registration.js');
 const staffRegistrationJsContent = fs.readFileSync(staffRegistrationJsPath, 'utf8');
+const authJsPath = path.join(REPO_ROOT, 'active/h-app/modules/auth.js');
+const authJsContent = fs.readFileSync(authJsPath, 'utf8');
 const renderJsPath = path.join(REPO_ROOT, 'active/h-app/render.js');
 const renderJsContent = fs.readFileSync(renderJsPath, 'utf8');
 const appJsPath = path.join(REPO_ROOT, 'active/h-app/app.js');
@@ -137,14 +139,23 @@ function createHAppTestContext() {
   assert.ok(p3 !== -1 && p4 !== -1 && p4 > p3, 'reg block must exist');
   const regCode = appJsContent.slice(p3, p4);
 
-  // StaffRegistrationModule と RenderView をテストコンテキストへ先行ロード
+  // AuthModule, StaffRegistrationModule, RenderView をテストコンテキストへ先行ロード
+  vm.runInContext(authJsContent, testVmContext);
   vm.runInContext(staffRegistrationJsContent, testVmContext);
   vm.runInContext(renderJsContent, testVmContext);
   testVmContext.renderSettings = () => {};
 
   const harnessCode = [
-    'let _identityVerified = false;',
-    'let _identitySyncPromise = null;',
+    'Object.defineProperty(this, "_identityVerified", {',
+    '  get: () => AuthModule.isIdentityVerified(),',
+    '  set: (v) => { AuthModule.setIdentityVerified(v); },',
+    '  configurable: true',
+    '});',
+    'Object.defineProperty(this, "_identitySyncPromise", {',
+    '  get: () => AuthModule.getIdentitySyncPromise(),',
+    '  set: (p) => { AuthModule.setIdentitySyncPromise(p); },',
+    '  configurable: true',
+    '});',
     'let __contractExpired = false;',
     showMainAppCode,
     regCode,
@@ -153,10 +164,10 @@ function createHAppTestContext() {
     '  isRegistering: StaffRegistrationModule.getStatus().isRegistering,',
     '  registrationError: StaffRegistrationModule.getStatus().registrationError,',
     '  activeRegistrationPromise: null,',
-    '  _identityVerified,',
-    '  _identitySyncPromise',
+    '  _identityVerified: AuthModule.isIdentityVerified(),',
+    '  _identitySyncPromise: AuthModule.getIdentitySyncPromise()',
     '});',
-    'this.setIdentityVerified = (v) => { _identityVerified = v; };',
+    'this.setIdentityVerified = (v) => { AuthModule.setIdentityVerified(v); };',
     'this.setMainAppVisible = (v) => { mainAppVisible = v; };'
   ].join('\n');
 

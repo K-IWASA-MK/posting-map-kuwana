@@ -46,6 +46,7 @@ class MockElement {
   }
 }
 
+const authSrc = fs.readFileSync('active/h-app/modules/auth.js', 'utf8');
 const storageSrc = fs.readFileSync('active/h-app/modules/storage.js', 'utf8');
 const renderSrc = fs.readFileSync('active/h-app/render.js', 'utf8');
 const appSrc = fs.readFileSync('active/h-app/app.js', 'utf8');
@@ -137,11 +138,11 @@ function createTestEnvironment() {
   sandbox.renderStorageListCallCount = 0;
 
   vm.createContext(sandbox);
+  vm.runInContext(authSrc, sandbox);
   vm.runInContext(storageSrc, sandbox);
   vm.runInContext(renderSrc, sandbox);
   vm.runInContext(appSrc, sandbox);
-  vm.runInContext("_identityVerified = true;", sandbox);
-  sandbox._identityVerified = true;
+  vm.runInContext("AuthModule.setIdentityVerified(true);", sandbox);
 
   return { sandbox, state, $, document: mockDocument };
 }

@@ -260,10 +260,19 @@ test('app.js [Source-Bound]: waitForIdentityVerified requires _identityVerified 
   const gateSource = extractFunction(appJs, 'waitForIdentityVerified');
   assert.ok(gateSource, 'waitForIdentityVerified must be present in app.js');
 
+  const authModulePath = path.join(REPO_ROOT, 'active/h-app/modules/auth.js');
+  const authModuleCode = fs.readFileSync(authModulePath, 'utf8');
+
+  const authSandbox = { console, Promise, Error, Object, Boolean, module: { exports: {} } };
+  vm.runInNewContext(authModuleCode, authSandbox);
+  const AuthModule = authSandbox.module.exports;
+
+  AuthModule.setIdentityVerified(false);
+  AuthModule.setIdentitySyncPromise(Promise.resolve(false)); // Promise resolved to false!
+  AuthModule.setIdentityLastError(Object.assign(new Error("AUTH_REJECTED"), { code: "UNAUTHORIZED", retryable: false }));
+
   const sandbox = {
-    _identityVerified: false,
-    _identitySyncPromise: Promise.resolve(false), // Promise resolved to false!
-    _identityLastError: Object.assign(new Error("AUTH_REJECTED"), { code: "UNAUTHORIZED", retryable: false }),
+    AuthModule,
     Error,
     Object
   };
@@ -284,7 +293,7 @@ test('app.js [Source-Bound]: waitForIdentityVerified requires _identityVerified 
   assert.equal(caughtErr.code, 'UNAUTHORIZED');
 
   // Now verify that when _identityVerified is true, it passes
-  sandbox._identityVerified = true;
+  AuthModule.setIdentityVerified(true);
   const passResult = await gateFn();
   assert.equal(passResult, true, 'Must pass when _identityVerified is true');
 });
@@ -353,6 +362,9 @@ test('app.js [Source-Bound]: showIdentityErrorUI hides #app, shows #loading, and
       sessionStorage: mockSessionStorage,
       setSyncStatus: () => {},
       _liffAuthState: liffAuthState,
+      AuthModule: {
+        getAuthState: () => liffAuthState
+      },
       liff: mockLiff
     };
 
@@ -413,12 +425,12 @@ test('app.js [Source-Bound]: showIdentityErrorUI hides #app, shows #loading, and
 
 test('app.js [Source-Bound]: safeInitApp identity sync error handling eliminated unhandled rethrows', () => {
   // Verify that _identitySyncPromise catch block invokes showIdentityErrorUI and sets _identityLastError
-  assert.ok(appJs.includes('_identityLastError = err;'), 'Must record _identityLastError on failure');
+  assert.ok(appJs.includes('AuthModule.setIdentityLastError(err);'), 'Must record _identityLastError on failure');
   assert.ok(appJs.includes('showIdentityErrorUI(err);'), 'Must call showIdentityErrorUI on failure');
 
   // Verify that safeInitApp catches liff.init error and invokes showIdentityErrorUI
   assert.ok(
-    appJs.includes("_liffAuthState = 'FAILED';\n      _liffAuthError = err;\n      if (typeof _liffAuthReadyRejecter === 'function') {\n        _liffAuthReadyRejecter(err);\n      }\n      showIdentityErrorUI(err);"),
+    appJs.includes("AuthModule.markAuthFailed(err);\n      showIdentityErrorUI(err);"),
     'LIFF init error block must call showIdentityErrorUI'
   );
 });
