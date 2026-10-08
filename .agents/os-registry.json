@@ -26,6 +26,38 @@
       "requiresMasterExplicitApproval": true
     }
   },
+  "rolePackAssignments": {
+    "architect": [
+      "h-app-architecture",
+      "manager-architecture",
+      "backend-architecture",
+      "knowledge-governance",
+      "behavior-preservation"
+    ],
+    "execution": [
+      "release-integrity",
+      "knowledge-governance",
+      "behavior-preservation"
+    ],
+    "worker": [
+      "h-app-architecture",
+      "backend-architecture",
+      "async-lifecycle",
+      "behavior-preservation",
+      "durable-client-runtime",
+      "auth-security"
+    ],
+    "auditor": [
+      "release-integrity",
+      "official-data-audit",
+      "auth-security",
+      "behavior-preservation"
+    ],
+    "deployer": [
+      "official-data-audit",
+      "district-data-provisioning"
+    ]
+  },
   "capabilityPacks": {
     "h-app-architecture": {
       "manifestPath": ".agents/skills/h-app-architecture/SKILL.md",
@@ -140,7 +172,7 @@
         },
         {
           "path": ".agents/workflows/development/workflow.md",
-          "sha256": "406f56ccd143f40fb2fb6111d07b9c7d55cad69a652729711f141eacccd0f084"
+          "sha256": "77dda111dfd77389f09a3f98d82c34dd6da9ab4cb0507f58aa9bfe331def90f0"
         }
       ],
       "evidenceSources": [
@@ -153,7 +185,7 @@
       "canonicalSources": [
         {
           "path": "docs/ai-foundation.md",
-          "sha256": "1d41117b39d90cf13546d489ba6c1760110f145eb890654c781bd57f4db9c305"
+          "sha256": "73936ed7b2d48775749b84579ee0be04941adbd08467fab8b4811805ed96e257"
         },
         {
           "path": "AGENTS.md",
@@ -183,7 +215,7 @@
       "canonicalSources": [
         {
           "path": ".agents/rules/district-data-transition-rule.md",
-          "sha256": "61e68940f025218ddff3841a1fc6bcffaf99c9d23c0f8cefa450726f5e4c56af"
+          "sha256": "4a2e2bfbd104d2c41b510b1f0f9bacff6ad7be78f3c3b8320914f36a9f254f35"
         }
       ],
       "evidenceSources": [

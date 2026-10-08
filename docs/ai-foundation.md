@@ -19,7 +19,7 @@ POSTING MAP の開発・保守・展開は、厳格な関門分離（Separation 
          ▼                               ▼                               ▼
 ┌──────────────────┐            ┌──────────────────┐            ┌────────────────────────┐
 │ Design/Direction │            │   Execution AI   │            │  District Provisioning │
-│        AI        │            │(窓口AI・Orchestr)│            │           AI           │
+│        AI        │            │(Chief Orchestr.) │            │           AI           │
 │ (Policy ZeroWrite│            │ (実装統括・親)   │            │ (data/展開・受入検証)  │
 └────────┬─────────┘            └────────┬─────────┘            └───────────┬────────────┘
          │ Blueprint Handoff             │ 承認Scope割当 / ディスパッチ     │ Handover Package
@@ -31,28 +31,38 @@ POSTING MAP の開発・保守・展開は、厳格な関門分離（Separation 
          │                               │ [WORKER REPORT] (send_message)   │
          │                               ▼                                  │
          │                      ┌──────────────────┐                        │
-         │                      │ 親Flash統合検証  │                        │
+         │                      │ 統合自己検証     │                        │
+         │                      │ (V1-V3, Scope)   │                        │
          │                      └────────┬─────────┘                        │
-         │                               │ 要件・実差分・検証証跡（Context Isolation）
+         │                               │ [EXECUTION HANDOVER] (チャット出力)│
          │                               ▼                                  │
          │                      ┌──────────────────┐                        │
-         │                      │    監査AI査読    │◄───────────────────────┘
-         │                      │(Independent Audit│
-         │                      │ Policy ZeroWrite)│
+         │                      │    HARD STOP     │                        │
+         │                      └────────┬─────────┘                        │
+         │                               │                                  │
+         │                               ▼                                  │
+         │                     MASTER launches Auditor                      │
+         │                       in NEW Conversation                        │
+         │                               │                                  │
+         │                               ▼                                  │
+         │                      ┌──────────────────┐                        │
+         │                      │ Independent      │◄───────────────────────┘
+         │                      │ Auditor AI       │
+         │                      │ (Policy ZeroWrite│
+         │                      │  Context Isolate)│
          │                      └────────┬─────────┘
-         │                               │ PASS / REJECT
+         │                               │ PASS / REJECT (チャット出力)
          │                               ▼
          │                      ┌──────────────────┐
-         │                      │ 窓口AI判定集約   │
-         │                      │   & HARD STOP    │
+         │                      │    HARD STOP     │
          │                      └────────┬─────────┘
-         │                               │ 監査結果・客観的証跡提示
+         │                               │
          │                               ▼
          │                      ┌──────────────────┐
-         │                      │ MASTER最終承認   │
-         │                      │ (Commit Proceed) │
+         │                      │ MASTER最終確認   │
+         │                      │ (Resume/Proceed) │
          │                      └────────┬─────────┘
-         │                               │ 明示的 Commit Proceed 受領
+         │                               │ 明示的 Resume / Commit Proceed 受領
          ▼                               ▼
          └──────────────────────────────►┌──────────────────────────────┐
                                          │      Commit & Push Gate      │
@@ -67,14 +77,14 @@ POSTING MAP の開発・保守・展開は、厳格な関門分離（Separation 
 
 | 仕様軸 (Specification Axis) | 1. Design / Direction AI | 2. Execution AI (Orchestrator) | 3. Parallel Worker (Subagent) | 4. Independent Auditor AI | 5. District Provisioning AI |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **① Entry Point**<br>(起動条件・契機) | MASTER からの新機能要求、アーキテクチャ再設計、構造改革、または Universal Gap 発生時の設計指示。 | MASTER 承認済みタスク、または Design/Direction AI が策定し MASTER が承認した Blueprint / 仕様に基づく実装指示。 | 親Flash（Orchestrator）から `invoke_subagent` により、排他的担当Scopeおよび固定テスト情報を受領した時。 | 窓口AI（Orchestrator）から実装担当とは分離された文脈（Context Isolation）で「検品依頼パッケージ（要件・実差分・検証証跡）」を受領した時。 | MASTER から新地区コードおよび外部リソース情報（Spreadsheet ID, Drive Folder ID, LIFF ID 等）を受領した時。 |
-| **② Authority**<br>(付与権限) | 全体構造設計、アーキテクチャレビュー、Scope 判断、方針指示、Lean Blueprint 策定、技術負債・足場の抽出と引き算設計。 | 調査、実装計画策定（Stage 1）、事前Scope固定（`current-scope.json`）、Worker割当・並列ディスパッチ、成果回収・統合検証、監査AIへの査読依頼、Git Commit/Push（MASTER Resume後）。 | 親から割り当てられた**排他的単一ファイルのみの実装・編集**、親指定の固定単体テスト実行、親への定型成果報告（`[WORKER REPORT]`）。 | 提示された差分・客観的エビデンスの完全独立査読、allowlist 検証コマンド実行、客観的証跡に基づく独立判定（PASS / REJECT）のチャット/レスポンス出力。 | 新地区プロビジョニング手順（RUNBOOK）に従う自律パイプライン執行、公式生データ調達、マスターデータ生成、親GAS Registry バインド、受入ゲート機械検証。 |
-| **③ Prohibited Actions**<br>(絶対禁止事項) | ・**Policy-Level Zero Write**（ファイル編集・コミット・プッシュ・デプロイの絶対禁止）<br>・自己判断による実装着手<br>・削除機構の代替新設<br>・他地区参照（永久原則） | ・MASTER 承認前の実装（1文字も不可）<br>・承認 Scope 外の変更<br>・子Workerへの勝手なScope拡張許可<br>・自己検品（監査AIを経ない完了判定）<br>・Auditor PASS / MASTER Resume無しのCommit/Push<br>・未承認 Deploy<br>・他地区参照（永久原則） | ・**担当外ファイルの編集（Scope外変更）**<br>・**任意シェルコマンドの実行**<br>・同一ファイルの複数Worker同時編集<br>・共有設定ファイル（`current-scope.json`等）の改変<br>・Git変更操作（`git add/commit/push`）<br>・**再委任（`invoke_subagent`, `manage_subagents`）の絶対禁止**<br>・別Workerとの直接通信<br>・自律的なScope拡張（親へ報告して停止） | ・プロダクトコード・設定の編集<br>・リポジトリへのファイル生成・verdict書込（Policy-Level Zero Write）<br>・Git Commit / Push / Deploy 実行<br>・非 allowlist コマンド実行<br>・忖度・推測判定（No Evidence No PASS）<br>・自身でのコード修正<br>・他地区参照（永久原則） | ・外部リソースの勝手な推測・作成<br>・`active/`（共通プロダクト）の改変<br>・`tests/**`（共通テスト）の改変<br>・Auditor 独立検品なしの完了報告<br>・7大不純物の混入<br>・他地区参照（永久原則） |
+| **① Entry Point**<br>(起動条件・契機) | MASTER からの新機能要求、アーキテクチャ再設計、構造改革、または Universal Gap 発生時の設計指示。 | MASTER 承認済みタスク、または Design/Direction AI が策定し MASTER が承認した Blueprint / 仕様に基づく実装指示。 | 親Flash（Orchestrator）から `invoke_subagent` により、排他的担当Scopeおよび固定テスト情報を受領した時。 | MASTER が新規 Conversation を作成し（Context Isolation）、検品対象情報（HEAD, Changed Files, Handover等）を指定して起動した時。 | MASTER から新地区コードおよび外部リソース情報（Spreadsheet ID, Drive Folder ID, LIFF ID 等）を受領した時。 |
+| **② Authority**<br>(付与権限) | 全体構造設計、アーキテクチャレビュー、Scope 判断、方針指示、Lean Blueprint 策定、技術負債・足場の抽出と引き算設計。 | 調査、Knowledge Impact Analysis、実装計画策定（Stage 1: チャット出力）、事前Scope固定（`current-scope.json`）、Worker割当・並列ディスパッチ、統合自己検証、Handover提出、Git Commit/Push（MASTER Resume受領後）。 | 親から割り当てられた**排他的単一ファイルのみの実装・編集**、親指定の固定単体テスト実行、親への定型成果報告（`[WORKER REPORT]`）。 | 提示された差分・客観的エビデンスの完全独立査読、allowlist 検証コマンド実行、客観的証跡に基づく独立判定（PASS / REJECT）のチャット出力。 | 新地区プロビジョニング手順（RUNBOOK）に従う自律パイプライン執行、公式生データ調達、マスターデータ生成、親GAS Registry バインド、受入ゲート機械検証。 |
+| **③ Prohibited Actions**<br>(絶対禁止事項) | ・**Policy-Level Zero Write**（ファイル編集・コミット・プッシュ・デプロイの絶対禁止）<br>・自己判断による実装着手<br>・削除機構の代替新設<br>・他地区参照（永久原則） | ・MASTER 承認前の実装（1文字も不可）<br>・承認 Scope 外の変更<br>・子Workerへの勝手なScope拡張許可<br>・自己検品（監査AIを経ない完了判定）<br>・監査AIの起動・直接委任（MASTERによる起動のみ）<br>・Auditor PASS / MASTER Resume無しのCommit/Push<br>・未承認 Deploy<br>・他地区参照（永久原則） | ・**担当外ファイルの編集（Scope外変更）**<br>・**任意シェルコマンドの実行**<br>・同一ファイルの複数Worker同時編集<br>・共有設定ファイル（`current-scope.json`等）の改変<br>・Git変更操作（`git add/commit/push`）<br>・**再委任（`invoke_subagent`, `manage_subagents`）の絶対禁止**<br>・別Workerとの直接通信<br>・自律的なScope拡張（親へ報告して停止） | ・プロダクトコード・設定の編集<br>・リポジトリへのファイル生成・verdict書込（Policy-Level Zero Write）<br>・Git Commit / Push / Deploy 実行<br>・非 allowlist コマンド実行<br>・忖度・推測判定（No Evidence No PASS）<br>・自身でのコード修正<br>・Execution AI からの直接起動・委任受領<br>・他地区参照（永久原則） | ・外部リソースの勝手な推測・作成<br>・`active/`（共通プロダクト）の改変<br>・`tests/**`（共通テスト）の改変<br>・Auditor 独立検品なしの完了報告<br>・7大不純物の混入<br>・他地区参照（永久原則） |
 | **④ Required SSOT**<br>(準拠正本) | ・`AGENTS.md`<br>・`docs/architecture/01_DESIGN_CONTRACT.md`<br>・`docs/architecture/CURRENT_ARCHITECTURE.md`<br>・`docs/architecture/DESIGN_SYSTEM.md` | ・`AGENTS.md`<br>・`docs/ai-foundation.md`<br>・`.agents/rules/agent-authority.md`<br>・`.agents/rules/verification-gates.md`<br>・`.agents/workflows/development/workflow.md`<br>・`.agents/current-scope.json` | ・`AGENTS.md`<br>・`docs/ai-foundation.md`<br>・`.agents/rules/agent-authority.md`<br>・`.agents/current-scope.json` | ・`AGENTS.md`<br>・`docs/ai-foundation.md`<br>・`.agents/rules/verification-gates.md`<br>・`.agents/rules/agent-authority.md`<br>・`.agents/skills/official-data-confirmation-audit/SKILL.md`<br>・`.agents/current-scope.json` | ・`AGENTS.md`<br>・`docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md`<br>・`.agents/skills/census-small-area-master/SKILL.md`<br>・`.agents/rules/district-data-transition-rule.md`<br>・`docs/architecture/UNIVERSAL_RELEASE_BASELINE.md` |
 | **⑤ Allowed Tools**<br>(許可ツール) | **Policy READ ONLY**:<br>`view_file`, `grep_search`, `list_dir`<br>※編集・コマンドは**Policy禁止**。 | `invoke_subagent`, `manage_subagents`, `send_message`, `view_file`, `grep_search`, `list_dir`, `write_to_file`, `replace_file_content`, `run_command`（承認Scope内） | **排他割当内限定**:<br>`write_to_file`, `replace_file_content`（割当ファイルのみ）<br>`run_command`（固定テストのみ）<br>`send_message`（親報告用）<br>`view_file`, `grep_search`, `list_dir`<br>※再委任ツールは非提供 | **Policy READ ONLY + 検証コマンド**:<br>`view_file`, `grep_search`, `list_dir`<br>`run_command`（**READ ONLY allowlist 方式** に厳格限定）<br>※ファイル編集・作成ツール、Git変更・Deploy コマンドは**Policy禁止**。 | **データ・プロビジョニング限定**:<br>`run_command`（調達・生成スクリプト、受入テスト）<br>`write_to_file`, `replace_file_content`（`data/**`, `CNAME`, `data/config.js` のみ）<br>`view_file`, `grep_search`, `list_dir`<br>※`active/**` および `tests/**` は**書込禁止**。 |
 | **⑥ Approval Boundary**<br>(承認境界) | 設計書・Blueprint を MASTER へ提示し、MASTER の明示承認（Proceed）を得るまでが境界。実装着手は不可。 | MASTER Proceed 受領後に Scope 固定・実装。異常時は Worker を強制停止。Stage 4 ➔ Stage 5: **Auditor PASS + MASTER Resume Gate（必須）**。 | 親から割り当てられた単一ファイルの範囲内。Scope拡張が必要な場合は作業を停止し親へ報告。 | 自律的に PASS / REJECT を判定する完全独立権限。判定はチャット/レスポンス出力のみとし、事前・事後の承認不要。紛争発生時のみ MASTER が調停。 | 外部リソース受領をもって着手。パイプライン完走後、**Auditor PASS + MASTER Resume** が絶対関門。 |
-| **⑦ Verification Responsibility**<br>(検証責任) | 構造的整合性、Universal Engine 非侵襲性、最高位設計契約との適合性の論理的検証。 | **自己検証責任**:<br>・V1 Static Verification<br>・V2 Runtime Verification（Maps 実描画含む）<br>・V3 Regression Verification（`npm test`）<br>・Scope Guard（check-scope）<br>・監査AI査読依頼 & 判定集約責任 | **単体確認責任**:<br>・親指定固定単体テストの実行・PASS確認<br>・変更行・概要の証跡採取<br>・`[WORKER REPORT]` 返却責任 | **独立検品責任（5大固定観点）**:<br>1. 最上位絶対原則（Universal Engine・コピー原則）<br>2. Scope 厳守・余計な差分排除<br>3. No Evidence No PASS（独立再実行）<br>4. Zero Avoidable Manual（可避な手作業要求の排除）<br>5. 公式データ確定品質ゲート<br>※該当なし観点は `N/A + 理由` を認容。 | **受入・整合検証責任**:<br>・7大受入ゲート全件 PASS<br>・公式データ品質ゲート（境界・住所・人口）<br>・実機稼働検証（HTTP 200, 認証, Maps）<br>・`active/` 差分 0 バイト検証 |
-| **⑧ Handoff**<br>(引渡し・連携) | **Input**: MASTER 指示。<br>**Output**: 承認済み Blueprint / 設計書 ➔ MASTER 承認を経て Execution AI へ引渡し。 | **Input**: MASTER 指示 / Design AI 設計書。<br>**Output to Worker**: 割当Scope指示。<br>**Output to Auditor**: 分離文脈での査読依頼パッケージ。<br>**Output to MASTER**: 監査判定・証跡提示 ➔ Commit承認要請 ➔ Push 後の完了報告。 | **Input**: 親Flashからの割当指示。<br>**Output to 親Flash**: `send_message` による `[WORKER REPORT]` 返却 ➔ 待機。 | **Input**: 窓口AIからの検品依頼パッケージ（要件・実差分・検証証跡）。<br>**Output**: 判定書（PASS または REJECT + 指摘事項）を出力 ➔ HARD STOP。 | **Input**: MASTER からの地区コード・リソース情報。<br>**Output to Auditor**: プロビジョニング検品パッケージ。<br>**Output to MASTER**: 監査判定提示 ➔ 開通完了報告書。 |
+| **⑦ Verification Responsibility**<br>(検証責任) | 構造的整合性、Universal Engine 非侵襲性、最高位設計契約との適合性の論理的検証。 | **自己検証責任**:<br>・V1 Static Verification<br>・V2 Runtime Verification（Maps 実描画含む）<br>・V3 Regression Verification（`npm test`）<br>・Scope Guard（check-scope）<br>・Handover チャット出力 & HARD STOP 責任 | **単体確認責任**:<br>・親指定固定単体テストの実行・PASS確認<br>・変更行・概要の証跡採取<br>・`[WORKER REPORT]` 返却責任 | **独立検品責任（5大固定観点）**:<br>1. 最上位絶対原則（Universal Engine・コピー原則）<br>2. Scope 厳守・余計な差分排除<br>3. No Evidence No PASS（独立再実行）<br>4. Zero Avoidable Manual（可避な手作業要求の排除）<br>5. 公式データ確定品質ゲート<br>※該当なし観点は `N/A + 理由` を認容。 | **受入・整合検証責任**:<br>・7大受入ゲート全件 PASS<br>・公式データ品質ゲート（境界・住所・人口）<br>・実機稼働検証（HTTP 200, 認証, Maps）<br>・`active/` 差分 0 バイト検証 |
+| **⑧ Handoff**<br>(引渡し・連携) | **Input**: MASTER 指示。<br>**Output**: 承認済み Blueprint / 設計書 ➔ MASTER 承認を経て Execution AI へ引渡し。 | **Input**: MASTER 指示 / Design AI 設計書。<br>**Output to Worker**: 割当Scope指示。<br>**Output to MASTER**: Handover チャット提出 ➔ HARD STOP。MASTER Resume 受領後に Commit / Push 執行。 | **Input**: 親Flashからの割当指示。<br>**Output to 親Flash**: `send_message` による `[WORKER REPORT]` 返却 ➔ 待機。 | **Input**: MASTER からの監査起動指示（新規Conversation）。<br>**Output to MASTER**: チャット画面への判定出力（PASS または REJECT + 指摘事項） ➔ HARD STOP。 | **Input**: MASTER からの地区コード・リソース情報。<br>**Output to Auditor**: プロビジョニング検品パッケージ。<br>**Output to MASTER**: 監査判定提示 ➔ 開通完了報告書。 |
 
 ---
 
@@ -131,7 +141,7 @@ head -n ... / tail -n ... / wc -l ...
 [MASTER Directive] 
        │
        ▼
-[Stage 1: Plan] (Execution AI: READ ONLY 調査・実装計画策定)
+[Stage 1: Plan] (Execution AI: READ ONLY 調査 + Knowledge Impact Analysis + チャット計画策定 ➔ HARD STOP)
        │
        ▼
  🛑 MASTER Proceed Gate (MASTER による明示着手承認)
@@ -140,50 +150,52 @@ head -n ... / tail -n ... / wc -l ...
 [Stage 2: Scope Commit] (.agents/current-scope.json の単独ローカルコミット・特別Governance Transaction)
        │
        ▼
-[Stage 3: Implement] (Execution AI: 承認 Scope 内最小侵襲実装)
+[Stage 3: Implement] (Execution AI: 承認 Scope 内最小侵襲実装・並列ディスパッチ)
        │
        ▼
-[Stage 4: Self Verify & Independent Audit]
+[Stage 4: Self Verify & Handover]
        ├─ Stage 4A: Execution Self Verify (V1〜V3自己検証, Scope Guard, Evidence採取)
-       ├─ Stage 4B: Context-Isolated Audit Delegation (窓口AIが分離文脈で監査AIへ査読依頼)
-       ├─ Stage 4C: Independent Audit Execution (監査AIによる独立再検証・客観的証跡照合)
-       └─ Stage 4D: Auditor Verdict & HARD STOP (判定受領後、窓口AIがMASTERへ提示して完全停止)
+       └─ Stage 4B: Handover & HARD STOP (窓口AIが [EXECUTION HANDOVER] をチャット提出して完全停止)
+              │
+              ▼ (HARD STOP 待機)
+[Stage 5: Independent Audit in NEW Conversation]
+       ├─ MASTER が新規 Conversation を作成 (Context Isolation: 過去ログ遮断)
+       ├─ Independent Auditor AI を起動 (Policy-Level Zero Write)
+       ├─ allowlist コマンドによる独立再検証・客観的証跡照合
+       └─ Auditor Verdict 出力 (チャット画面に PASS / REJECT 提示 ➔ HARD STOP)
               │
               ▼ PASS (MASTERが監査判定・客観的証跡を目視確認)
  🛑 MASTER Resume / Commit Proceed Gate (MASTERによる最終コミット明示承認)
        │
        ▼
-[Stage 5: Commit Gate] (Execution AI: MASTER Resume受領後に git commit)
+[Stage 6: Commit Gate] (Execution AI: MASTER Resume受領後に git commit)
        │
        ▼
-[Stage 6: Push Gate] (Execution AI: Scope Commitと合わせて最終 git push)
+[Stage 7: Push Gate] (Execution AI: Scope Commitと合わせて最終 git push)
        │
        ▼
-[Stage 7: Deployment Gate] (判定: 対象外なら Deploy N/A と記録)
-       │
-       ▼
-[Stage 8: V4 Verification & Completion Report] (完了報告)
+[Stage 8: Deployment Gate & Remote Sync Verification] (判定: 対象外なら Deploy N/A と記録, Wave CLOSED)
 ```
 
-### 4.1 窓口AIオーケストレーションと文脈分離仕様 (Window AI Orchestration & Context Isolation Specification)
+### 4.1 人手による独立監査オーケストレーションと文脈分離仕様 (Human-Orchestrated Independent Audit & Context Isolation)
 
-1. **窓口AI一元化と手動起動規程の撤回**:
-   - MASTER の対話窓口は指示を受けた AI（窓口AI / Execution AI）が一元的に担う。
-   - 窓口AIが Worker への割当・並列起動・成果回収・統合検証、および「別の監査AIへの査読依頼」までを担当する。
-   - **MASTER による AI 選択・別チャットへの移動・Auditor 手動起動を必須とする旧規程は撤回された**。
+1. **Human-Orchestrated Independent Audit (人手オーケストレーション独立監査)**:
+   - Execution AI が監査AIを自律起動することは、推論バイアスの伝播防止および実環境の制約から固く禁止される。
+   - 実装および自己検証が完了した Execution AI は、チャット画面に `[EXECUTION HANDOVER]` を出力して直ちに作業を**完全停止（HARD STOP）** する。
+   - MASTER が自ら **新規 Conversation（Context Isolation: 過去の試行錯誤ログやプロンプト履歴を遮断した独立セッション）** を作成し、Independent Auditor AI を起動する。
+   - 監査AIは提示された報告値を信用せず、リポジトリ実物から allowlist コマンドを実行して独立再検証を行い、判定（PASS / REJECT）をチャット画面に出力して HARD STOP する。
 2. **実環境における文脈分離の保証範囲 (Scope of Context Isolation Guarantee)**:
-   - 監査AIには、実装担当とは分離した文脈（独立したサブエージェントセッション等）で、要件・実差分・検証証跡を渡す。
-   - 実環境において文脈分離が客観的に保証される範囲は、**「監査AIが実装担当の過去ログ・試行錯誤プロンプト・推論履歴を引き継がず、渡された要件・差分・証跡およびリポジトリ実ファイルのみを参照して独立に検証・推論を行うこと」** に限定される。
+   - MASTER による新規 Conversation 起動により、監査AIは実装担当の思考ログ・試行錯誤プロンプト・推論履歴を引き継がず、渡された要件・差分・証跡およびリポジトリ実ファイルのみを参照して独立に検証・推論を行うことが客観的に保証される。
    - 同一マシン・同一OS・同一UID（ユーザー権限）環境であるため、OSレベルの完全プロセス隔離や物理的ネットワーク遮断等の未確認の能力は断定しない。
 3. **Auditor Output (Policy-Level Zero Write)**:
-   - Auditor の PASS / REJECT 判定はすべてレスポンス／チャット画面へのテキスト出力のみとする。
+   - Auditor の PASS / REJECT 判定はすべてチャット画面へのテキスト出力のみとする。
    - リポジトリ内への判定ファイル（`.agents/audit-verdict.json` 等）の書き込み・保存は一切禁止する（Working Tree を汚さず、偽造ファイル問題を作らない）。
 4. **Commit Authorization (MASTER Commit／Push 最終承認の維持)**:
-   - Auditor が PASS を返却した後も、窓口AIは自動でコミットを執行してはならず、停止状態を継続しなければならない（自動コミットの禁止）。
-   - 窓口AIは監査判定および客観的証跡をチャット画面で MASTER に提示し、完全停止（HARD STOP）する。
-   - MASTER が PASS 判定および証跡を目視確認し、明示的な **「Resume / Commit Proceed」** を発令した場合にのみ、窓口AIは Commit および Push を執行できる。Commit／Push の最終承認権限は厳格に MASTER に残す。
-5. **Future Hard Enforcement**:
-   - Remote CI（GitHub Actions 等）による隔離環境での自動検査や Branch Protection Rules（直接 Push の遮断）等の Hard Isolation は将来検討事項とし、現時点では未実装とする。
+   - Auditor が PASS を返却した後も、自動でコミットが執行されてはならず、停止状態を継続しなければならない（自動コミットの禁止）。
+   - MASTER が新規 Conversation で Auditor PASS 判定および客観的証跡を目視確認し、Execution セッション側で明示的な **「Resume / Commit Proceed」** を発令した場合にのみ、Execution AI は Commit および Push を執行できる。Commit／Push の最終承認権限は厳格に MASTER に帰属する。
+5. **Stage 1 Knowledge Impact Analysis の義務化**:
+   - Stage 1（調査・計画策定）において、変更予定の Canonical Source（正本仕様書・基本就業規則・規程群）が `.agents/os-registry.json` 内のどの Capability Pack に影響を及ぼすかを事前に特定・宣言しなければならない。
+   - Stage 1 は **READ ONLY 調査 ➔ チャット画面での計画提示 ➔ HARD STOP** であり、リポジトリ内に `implementation_plan.md` などの作業ファイルを書き込むことは固く禁止される。
 
 ### 4.2 並列ディスパッチ手順と排他原則 (Parallel Dispatch & Exclusion Protocol)
 
@@ -219,8 +231,8 @@ head -n ... / tail -n ... / wc -l ...
   2. 変更対象ファイルリスト（Scope）
   3. 完了条件および検証要件
 
-### 5.2 窓口AI (Execution AI) ➔ 監査AI (Audit Delegation Handoff)
-窓口AI（Execution AI）は統合自己検証完了後、実装担当とは分離された文脈（Context Isolation）で別の監査AIへ以下の Canonical フォーマットで査読依頼パッケージ（要件・実差分・検証証跡）を渡して査読を依頼する。
+### 5.2 Execution AI ➔ MASTER (Execution Handover)
+Execution AI は統合自己検証完了後、リポジトリにファイルを一切生成せず、チャット画面に以下の Canonical フォーマットで `[EXECUTION HANDOVER]` を出力して、直ちに作業を**完全停止（HARD STOP）** する（Auditor を直接起動しない）。
 
 ```text
 [EXECUTION HANDOVER]
@@ -247,15 +259,15 @@ Deployment Classification:
 Working Tree Status:
 
 AUDITOR REQUIRED:
-YES
+YES (MASTER to launch in NEW Conversation)
 
 Execution Status:
-AUDIT REQUESTED
+HARD STOP
 ```
 
-### 5.3 監査AI (Independent Auditor) ➔ 窓口AI / MASTER: 判定出力フォーマット (Auditor Verdict)
-監査AIは分離された文脈で依頼を受領後、自ら独立コマンド（READ ONLY allowlist）を実行して精査し、リポジトリにファイルを生成せず、以下の Canonical フォーマットで判定を出力し、直ちに作業を完全停止（HARD STOP）する。
-窓口AIは監査判定および客観的証跡を集約してチャット画面で MASTER に提示し、**完全停止（HARD STOP）** して MASTER による明示的な Commit Proceed（最終コミット承認）を待つ。
+### 5.3 監査AI (Independent Auditor) ➔ MASTER: 判定出力フォーマット (Auditor Verdict)
+MASTER により新規 Conversation（Context Isolation）で起動された監査AIは、自ら独立コマンド（READ ONLY allowlist）を実行して精査し、リポジトリにファイルを一切生成せず、以下の Canonical フォーマットで判定を出力し、直ちに作業を完全停止（HARD STOP）する。
+MASTER がチャット画面で Auditor PASS および客観的証跡を目視確認し、Execution セッション側で明示的な **Resume / Commit Proceed** を発令する。
 
 ```text
 [AUDITOR VERDICT]
@@ -283,7 +295,7 @@ HARD STOP
 ```
 
 ※該当しない観点には `N/A + その客観的理由` を明記すること。
-※PASS 判定の場合も、Auditor 自身がコミットを実行することは Policy 上厳禁である。判定受領後、窓口AIが MASTER へ提示し、MASTER の明示的承認を経て初めてコミットが執行される。
+※PASS 判定の場合も、Auditor 自身がコミットを実行することは Policy 上厳禁である。MASTER が新規 Conversation で判定を目視確認後、Execution セッション側で明示的な Resume / Commit Proceed を発令して初めて Execution AI によるコミットが執行される。
 
 ---
 
