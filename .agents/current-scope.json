@@ -1,6 +1,4 @@
 [
-  "active/infrastructure/spreadsheet/spreadsheet_adapter.js",
   "active/business/system/system_info_service.js",
-  "active/business/system/system_summary_service.js",
   "tests/test_contract_expiry.mjs"
 ]
