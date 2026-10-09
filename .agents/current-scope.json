@@ -1,14 +1,7 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/app.js",
-  "active/h-app/components/sync-status.js",
-  "active/h-app/index.html",
-  "scripts/stamp-h-app-token.mjs",
-  "tests/test_sync_status_view_lifecycle.mjs",
-  "tests/run_all_tests.mjs",
-  "tests/test_h_app_core_verification.mjs",
-  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
-  "docs/architecture/CURRENT_ARCHITECTURE.md",
-  "docs/architecture/DESIGN_SYSTEM.md",
-  ".agents/os-registry.json"
+  "active/manager/manager.js",
+  "active/manager/manager-export.js",
+  "active/manager/index.html",
+  "tests/test_manager_export.mjs"
 ]
