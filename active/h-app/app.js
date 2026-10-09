@@ -320,34 +320,7 @@ async function startApp() {
 }
 
 function setSyncStatus(state) {
-  const statusEl = $('sync-status');
-  const textEl = $('sync-text');
-  if (!statusEl) return;
-  statusEl.className = 'w-2 h-2 rounded-full transition-all duration-300';
-
-  if (textEl) {
-    textEl.className = 'text-[8px] font-black uppercase tracking-[0.2em] transition-all duration-300';
-  }
-
-  if (state === 'online') {
-    statusEl.classList.add('bg-[#22c55e]', 'shadow-[0_0_8px_#22c55e]', 'animate-soft-pulse');
-    if (textEl) {
-      textEl.textContent = 'ONLINE';
-      textEl.classList.add('text-[#22c55e]');
-    }
-  } else if (state === 'offline') {
-    statusEl.classList.add('bg-[#f59e0b]', 'shadow-[0_0_8px_#f59e0b]');
-    if (textEl) {
-      textEl.textContent = 'OFFLINE';
-      textEl.classList.add('text-[#f59e0b]');
-    }
-  } else if (state === 'syncing') {
-    statusEl.classList.add('bg-[#2563eb]', 'shadow-[0_0_8px_#2563eb]', 'animate-pulse');
-    if (textEl) {
-      textEl.textContent = 'SYNCING';
-      textEl.classList.add('text-[#2563eb]', 'animate-pulse');
-    }
-  }
+  window.SyncStatusView.setStatus(state);
 }
 
 // =====================================

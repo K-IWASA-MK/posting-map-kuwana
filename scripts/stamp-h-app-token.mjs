@@ -34,6 +34,7 @@ export const REQUIRED_LOCAL_CODE_ASSETS = [
   './components/navigation.js',
   './components/staff.js',
   './components/ranking.js',
+  './components/sync-status.js',
   '../business/area/address_master_service.js',
   './modules/storage.js',
   './modules/bulletin.js',

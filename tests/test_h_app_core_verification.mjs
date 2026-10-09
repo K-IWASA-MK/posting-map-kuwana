@@ -231,11 +231,22 @@ test('6. 状態表示: Backend/CSV由来のSSOT境界とONLINE/OFFLINE表示', a
   assert.equal(stats.text, '45/ 150', '件数フォーマットが一致すること');
   assert.equal(stats.percent, '30%', '進捗率が正しく計算されること');
 
-  // ③ 通信状態表示
-  assert.ok(appJs.includes('function setSyncStatus(state)'), 'setSyncStatus 関数が存在すること');
-  assert.ok(appJs.includes("'ONLINE'"), 'ONLINE 状態の表示定義が存在すること');
-  assert.ok(appJs.includes("'OFFLINE'"), 'OFFLINE 状態の表示定義が存在すること');
-  assert.ok(appJs.includes("'SYNCING'"), 'SYNCING 状態の表示定義が存在すること');
+  // ③ 通信状態表示 (Wave 17: Composition Root Wrapper ➔ Presentation Component 委譲検証)
+  assert.ok(appJs.includes('function setSyncStatus(state)'), 'app.js に setSyncStatus wrapper が存在すること');
+  assert.ok(appJs.includes('window.SyncStatusView.setStatus(state);'), 'app.js wrapper が window.SyncStatusView へ同期直接呼出していること');
+  assert.ok(!appJs.includes("'ONLINE'"), 'app.js に ONLINE 表示文字列が残存していないこと');
+  assert.ok(!appJs.includes("'OFFLINE'"), 'app.js に OFFLINE 表示文字列が残存していないこと');
+  assert.ok(!appJs.includes("'SYNCING'"), 'app.js に SYNCING 表示文字列が残存していないこと');
+
+  const syncStatusJsPath = path.join(rootDir, 'active/h-app/components/sync-status.js');
+  const syncStatusJs = fs.readFileSync(syncStatusJsPath, 'utf8');
+  assert.ok(syncStatusJs.includes("'ONLINE'"), 'components/sync-status.js に ONLINE 状態の表示定義が存在すること');
+  assert.ok(syncStatusJs.includes("'OFFLINE'"), 'components/sync-status.js に OFFLINE 状態の表示定義が存在すること');
+  assert.ok(syncStatusJs.includes("'SYNCING'"), 'components/sync-status.js に SYNCING 状態の表示定義が存在すること');
+
+  const syncStatusPos = dashboardHtml.indexOf('./components/sync-status.js');
+  const appJsPos = dashboardHtml.indexOf('./app.js');
+  assert.ok(syncStatusPos !== -1 && appJsPos !== -1 && syncStatusPos < appJsPos, 'index.html で sync-status.js が app.js より前にロードされること');
 });
 
 // ----------------------------------------------------------------------------

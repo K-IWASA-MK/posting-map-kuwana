@@ -52,6 +52,7 @@ const testSuites = [
   'test_architecture_gate.mjs',
   'test_auth_module_lifecycle.mjs',
   'test_summary_module_lifecycle.mjs',
+  'test_sync_status_view_lifecycle.mjs',
   'test_knowledge_sync_gate.mjs',
   'test_cleanup_gate.mjs'
 ];

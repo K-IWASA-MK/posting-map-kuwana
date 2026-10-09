@@ -147,6 +147,12 @@ Composition Root / Boot (active/h-app/app.js)
 - **入力**: `userInfo` (Object: `{ id, last, first, picture, registrationDate }`), `options` (Object: `{ districtName, branchName, lastSyncTime }`)
 - **出力**: 配布員認証カードの HTML 文字列。
 
+### ④ Sync Status Component (`active/h-app/components/sync-status.js`)
+- **責務**: ヘッダー通信状態（ONLINE / OFFLINE / SYNCING）の表示・DOM スタイル制御。
+- **インターフェース**: `window.SyncStatusView.setStatus(state)`
+- **入力**: `state` (`'online' | 'offline' | 'syncing'`)
+- **出力**: DOM (`#sync-status`, `#sync-text`) のスタイルクラスおよびラベル直接更新。
+
 ---
 
 ## 6. UI ガバナンス規則 (UI Governance Rules)

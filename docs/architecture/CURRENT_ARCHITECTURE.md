@@ -96,6 +96,7 @@
 - `active/h-app/db.js` から `app.js` 内部の Lifecycle/UI 関数への逆依存（`window.isIdentityVerifiedReady`, `window.triggerUISyncRefresh`, `loadData` の直接参照）は、Wave 14 にて Dependency Injection（DI: `setQueueLifecycleGates`）を通じて解消済み。
 - `app.js` に残留していた Auth / Identity private state（`_liffAuthState`, `_liffAuthReadyPromise`, `_identityVerified`, `_identityLastError`, `_identitySyncPromise` 等）および Gate（`waitForLiffAuthReady`, `waitForIdentityVerified`, `isLiffAuthReady`, `isIdentityVerifiedReady`）の所有権は、Wave 15 にて `active/h-app/modules/auth.js` (`AuthModule`) へ完全移管済み。`app.js` 側は薄い Compatibility Wrapper による delegate と DI 注入のみを担う Composition Root へ純化。
 - `app.js` に残留していた System Summary private state（`lastSummaryData`）および in-flight/cached Promise（`_systemSummaryPromise`）の所有権は、Wave 16 にて `active/h-app/modules/summary.js` (`SummaryModule`) へ完全移管済み。`app.js` 側は production fallback を一切持たず `SummaryModule` へ直接 delegate する純粋な Composition Root へ純化。
+- `app.js` に残留していた通信状態表示（`setSyncStatus`: ONLINE / OFFLINE / SYNCING）の DOM 操作責務は、Wave 17 にて `active/h-app/components/sync-status.js` (`SyncStatusView`) へ完全移管済み。`index.html` 上で `app.js` より前に物理先行ロードされ、`app.js` 側は production fallback や typeof guard を持たず `window.SyncStatusView.setStatus(state)` へ直接同期 delegate する薄い Compatibility Wrapper へ純化。
 
 ### 2. Dashboard (統括管理者用UI: `active/manager/`)
 - PC/タブレット向けの進捗管理・チラシ在庫・配布員名簿・受渡要請の統括管理画面。
