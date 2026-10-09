@@ -358,26 +358,13 @@
       try {
         const endDateStr = this.getContractEndDateFromData(data);
         const isExpired = endDateStr ? (todayStr > endDateStr) : false;
-        const result = {
+        return {
           status: isExpired ? 'EXPIRED' : 'ACTIVE',
           isExpired: isExpired,
           endDate: endDateStr,
           today: todayStr,
           code: isExpired ? 'CONTRACT_EXPIRED' : 'ACTIVE'
         };
-
-        try {
-          if (typeof CacheService !== 'undefined' && CacheService.getScriptCache) {
-            const cache = CacheService.getScriptCache();
-            if (cache) {
-              cache.put(this.getContractCacheKey(districtId), JSON.stringify({ endDate: endDateStr }), 21600);
-            }
-          }
-        } catch (putErr) {
-          console.warn("[SystemInfoService] Contract cache put warning:", putErr);
-        }
-
-        return result;
       } catch (readErr) {
         console.error("[SystemInfoService] FAIL-CLOSED: Contract status check failed:", readErr);
         return {

@@ -178,12 +178,29 @@ const preloadedData = [
   ['契約終了日', '2026-10-12']
 ];
 
+let cacheAccessCount71 = 0;
+let cachePutCount71 = 0;
+const previousCacheService = global.CacheService;
+global.CacheService = {
+  getScriptCache: () => {
+    cacheAccessCount71++;
+    return {
+      get: () => null,
+      put: () => { cachePutCount71++; }
+    };
+  }
+};
+
 const res71 = service.getContractStatusFromData(preloadedData, nowBefore, 'TEST-DISTRICT');
 assert.strictEqual(res71.status, 'ACTIVE');
 assert.strictEqual(res71.isExpired, false);
 assert.strictEqual(res71.endDate, '2026-10-12');
 assert.strictEqual(getValuesCount71, 0, 'FromData実行時にシートへの getValues() 追加呼び出しが0件であること');
-console.log("    ✅ [7-1] PASS: dataあり ➔ getValues() I/Oゼロ件で正常ACTIVE判定");
+assert.strictEqual(cacheAccessCount71, 0, 'FromData実行時にCacheServiceへアクセスしないこと');
+assert.strictEqual(cachePutCount71, 0, 'FromData実行時にCacheService.putしないこと');
+
+global.CacheService = previousCacheService;
+console.log("    ✅ [7-1] PASS: dataあり ➔ getValues() 0件 & CacheServiceアクセス0件(副作用ゼロ)で正常ACTIVE判定");
 
 // 7-2: resolver cache hit / dataなし → 既存fallback使用、同結果
 console.log("  ▶ [7-2] resolver cache hit / dataなし → 既存fallback使用、同結果検証 (最重要)");
