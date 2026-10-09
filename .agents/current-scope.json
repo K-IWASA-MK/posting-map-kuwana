@@ -1,13 +1,14 @@
 [
   ".agents/current-scope.json",
-  "scripts/check-cleanup-gate.mjs",
-  "tests/test_cleanup_gate.mjs",
+  "active/h-app/app.js",
+  "active/h-app/components/sync-status.js",
+  "active/h-app/index.html",
+  "scripts/stamp-h-app-token.mjs",
+  "tests/test_sync_status_view_lifecycle.mjs",
   "tests/run_all_tests.mjs",
-  "package.json",
-  ".agents/agents/execution/agent.md",
-  ".agents/workflows/development/workflow.md",
-  "AGENTS.md",
-  "docs/ai-foundation.md",
-  ".agents/rules/verification-gates.md",
+  "tests/test_h_app_core_verification.mjs",
+  "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
+  "docs/architecture/CURRENT_ARCHITECTURE.md",
+  "docs/architecture/DESIGN_SYSTEM.md",
   ".agents/os-registry.json"
 ]
