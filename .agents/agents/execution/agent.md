@@ -45,6 +45,7 @@ MASTER（人間）から指示を受け、READ ONLY 調査および Knowledge Im
    2. Worker成果回収 & 統合検証 (V1-V3, Scope Guard)
    3. チャット画面へ `[EXECUTION HANDOVER]` を出力し **🛑 HARD STOP**（完全停止）
    4. MASTER による明示的な Resume / Commit Proceed 受領後に Commit / Push を執行する。
+   5. Stage 8 実機PASS後、全Missionで必ず Stage 9 Cleanup Worker を起動し、三者バインド確認および `npm run gate:cleanup -- --base <ORIGINAL_BASE> --target <TARGET>` (Exit 0) を通過させ、`[MISSION COMPLETION REPORT]` を提出して Wave CLOSED とする。
 
 ---
 
@@ -74,7 +75,7 @@ MASTER（人間）から指示を受け、READ ONLY 調査および Knowledge Im
 
 ---
 
-## 📋 8-Stage Execution 実行手順
+## 📋 9-Stage Execution 実行手順
 
 1. **Stage 1: Plan**: READ ONLY で調査し、Knowledge Impact Analysis を実施の上、実装計画と最小 Scope を策定 ➔ チャット提示して **🛑 HARD STOP**（ファイル生成禁止）。
 2. **Stage 2: Approve & Scope Lock**: MASTER の `Proceed` を受領後、`.agents/current-scope.json` を単独ローカルコミット。
@@ -87,7 +88,14 @@ MASTER（人間）から指示を受け、READ ONLY 調査および Knowledge Im
 6. **Stage 6: Commit Gate**:
    - MASTER による Auditor PASS 目視確認および明示的な **Resume / Commit Proceed** 発令受領後、Execution AI が作業を再開して `git commit`。
 7. **Stage 7: Push Gate**: Scope Commit を含めて `git push`。
-8. **Stage 8: Deployment Gate & Remote Sync Verification**: 対象外変更なら「Deployment対象外 (N/A)」と記録し、remote sync を確認して Wave CLOSED。
+8. **Stage 8: Deployment Gate & Remote Sync Verification**: 対象外変更なら「Deployment対象外 (N/A)」と記録し、remote sync を確認して実機検証（V4）を実施（※ここではWave CLOSEDとせず、直列でStage 9へ進む）。
+9. **Stage 9: Post-Verification Residual Cleanup & Completion Gate**:
+   - 全Missionにおいて必ず Cleanup Worker（Residual Cleanup Auditor Profile）を起動し、ORIGINAL_BASE から latest TARGET までの累積差分を監査。
+   - `invoke_subagent` の Prompt に ORIGINAL_BASE / TARGET / APPROVED_DIFF を明示バインド。
+   - `[CLEANUP REPORT]` 回収後、`npm run gate:cleanup -- --base <ORIGINAL_BASE> --target <TARGET>` を実行。
+   - 三者完全一致（Event A == CLI == Event C）および `DELETE-CANDIDATE: 0` の Exit 0 を確認。
+   - `DELETE-CANDIDATE > 0` の場合は自律削除せず MASTER へエスカレーションし HARD STOP。
+   - `[MISSION COMPLETION REPORT]` に Exit 0 証跡を埋め込み提出して初めて Wave CLOSED。
 
 ---
 
@@ -124,4 +132,40 @@ YES (MASTER to launch in NEW Conversation)
 
 Execution Status:
 HARD STOP
+```
+
+---
+
+## 📦 Mission Completion Report 固定フォーマット (Canonical)
+
+Stage 9 完了後、自由文での完了報告は絶対禁止とする。必ず以下の固定フォーマットを出力すること。
+`gate:cleanup` の Exit 0 証跡または `[CLEANUP REPORT]` のいずれかが欠落している報告は無効（即時 REJECT & HARD STOP）とする。
+
+```text
+[MISSION COMPLETION REPORT]
+
+Mission: <Mission Title>
+Original Base: <ORIGINAL_BASE>
+Target Commit: <TARGET>
+Audited Scope: <Files Changed>
+
+Stage 8 Production Evidence:
+- Remote Sync: HEAD == origin/main (MATCH)
+- Working Tree: Clean
+- Production Verification: PASS (Evidence Log)
+
+Stage 9 Residual Cleanup Verification:
+- Cleanup Worker Conversation ID: <childConversationId>
+- Cleanup Worker Invocation Verified: YES
+- Three-Way Exact Match: YES (Event A == CLI == Event C)
+- [CLEANUP REPORT] Summary:
+  - DELETE-CANDIDATE: 0
+  - KEEP: K
+  - OUT-OF-SCOPE: O
+  - Overall Verdict: NO_CLEANUP_NEEDED
+- Mechanical Gate Command: `npm run gate:cleanup -- --base <ORIGINAL_BASE> --target <TARGET>`
+- Mechanical Gate Output: 🟢 [Cleanup Gate] PASSED (Exit Code: 0)
+
+Mission Status:
+Wave CLOSED
 ```

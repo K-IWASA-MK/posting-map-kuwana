@@ -143,6 +143,18 @@ POSTING MAP の開発・保守・展開は、厳格な関門分離（Separation 
 > Markdown / YAML frontmatter の構文パースが成功していることのみをもって、実行環境への権限設定の反映が証明されたとはみなさない。
 > PreToolUse Hook やガードスクリプト等による「実際の機械的強制・遮断能力」は、Phase 3 以降の検証フェーズにおいて実機実証される。
 
+> [!CAUTION]
+> **Repository Boundary 専用極小例外 (Stage 9 Cleanup Evidence Verification)**
+> 原則としてリポジトリ Git root 外の探索・参照は絶対禁止であるが、Stage 9 機械検証可能証跡ゲート（`scripts/check-cleanup-gate.mjs`）の執行に限り、以下の極小例外を認める：
+> 1. **目的限定**: Stage 9 Cleanup Evidence Verification のみ。
+> 2. **対象限定**: `ANTIGRAVITY_CONVERSATION_ID` で特定される「現在Conversation自身」の `.system_generated/logs/transcript.jsonl` 1ファイルのみ（READ ONLY）。
+> 3. **探索禁止**: 親ディレクトリの探索・列挙（`list_dir` 等）の禁止。
+> 4. **他Conversation禁止**: 他Conversationのbrain/log参照の禁止。
+> 5. **他地区repo禁止**: 他地区repo参照の禁止（永久原則・例外なし）。
+> 6. **repo内保存禁止**: `transcript.jsonl` のリポジトリ内へのコピー・保存・commit の禁止。
+> 7. **Fail-Closed 原則**: 環境変数欠損、path不一致、file不存在、JSONL parse失敗はすべて Fail-Closed（exit 1）とする。
+> 8. **拡張禁止**: 本例外を一般的なリポジトリ外読み取り許可へ拡大解釈することを永久に禁止する。
+
 ### 3.2 Independent Auditor AI: READ ONLY allowlist 仕様
 
 Independent Auditor AI が `run_command` で実行できるコマンドは、以下の **READ ONLY allowlist** に限定される。
@@ -210,11 +222,16 @@ head -n ... / tail -n ... / wc -l ...
 [Stage 8: Deployment Gate & Remote Sync Verification] (判定: 対象外なら Deploy N/A と記録, 実機確認)
        │
        ▼ (実機稼働確認PASS後)
-[Stage 9: Post-Verification Residual Cleanup] (Cleanup Worker: 確定差分残骸監査・Policy-Level Zero Write)
+[Stage 9: Post-Verification Residual Cleanup] (親Execution: Cleanup Worker起動必須・Stage 9 N/A禁止)
        │
-       ▼ [CLEANUP REPORT] 提出 ➔ 🛑 HARD STOP ➔ MASTER判定
-       ├─ DELETE-CANDIDATE 0件 ➔ Wave 完全終了
+       ▼ [CLEANUP REPORT] 提出 ➔ 待機
+[Machine-verifiable Evidence Gate] (親Execution: npm run gate:cleanup -- --base <BASE> --target <HEAD>)
+       │
+       ├─ Exit 0 & DELETE-CANDIDATE 0件 ➔ [MISSION COMPLETION REPORT] 提出 ➔ Mission CLOSED
+       │
        └─ DELETE-CANDIDATE 承認 ➔ 独立Cleanup Scope Commit ➔ 通常Worker削除 ➔ 回帰テスト ➔ Auditor ➔ Commit/Push
+              │
+              └─ 累積差分 (ORIGINAL_BASE ➔ latest TARGET) に対して Stage 9 を再実行 (累積監査ループ)
 ```
 
 ### 4.1 人手による独立監査オーケストレーションと文脈分離仕様 (Human-Orchestrated Independent Audit & Context Isolation)
@@ -262,19 +279,44 @@ head -n ... / tail -n ... / wc -l ...
 
 ### 4.4 実機PASS後 残骸監査プロトコル (Post-Verification Residual Cleanup Protocol)
 
-1. **起動タイミングと目的**:
-   - Stage 8 本番/実機確認 PASS 直後に親Executionにより起動される。
+1. **起動タイミングと目的 (全Mission必須・Stage 9 N/A禁止)**:
+   - Stage 8 本番/実機確認 PASS 直後に親Executionにより**全Missionで例外なく**起動される（Stage 9 N/A は全面禁止）。
    - 目的は美化やリファクタリングではなく、「今回の実装差分によって直接不要化した残骸」を機械的に検出し、客観的証拠を提示すること。
-2. **Policy-Level Zero Write とツール限定**:
+2. **起動プロンプト要件 (Three-Way Exact Match)**:
+   - 親Executionは `invoke_subagent` の指示プロンプト（Event A）に `ORIGINAL_BASE`、`HEAD_COMMIT`、`APPROVED_DIFF` を完全一致で明記しなければならない。
+3. **Policy-Level Zero Write とツール限定**:
    - 書込ツール（`write_to_file`, `replace_file_content`）はWorkerに物理提供されているが、Cleanup Profileでは使用禁止（Policy-Level Zero Write）。
    - `run_command` は使用禁止（テスト再実行・任意コマンド禁止）。確定差分（`APPROVED_DIFF`）およびテスト成功証跡は親Executionから受領する。
    - 使用可能ツールは `view_file`, `grep_search`, `list_dir`（および報告用 `send_message`）に厳格限定される。
-3. **探索境界とFinding 3大分類**:
+4. **探索境界とFinding 3大分類**:
    - 能動的なScope外探索は禁止。監査過程で偶発的に発見された不要コードは `OUT-OF-SCOPE Finding` として報告のみ行う。
    - 各候補を `DELETE-CANDIDATE`, `KEEP`, `OUT-OF-SCOPE` のいずれかに客観的に分類する（疑わしきは必ず `KEEP`）。
-4. **削除実装との物理的分離**:
+5. **機械検証可能証跡ゲート (Machine-verifiable Evidence Gate)**:
+   - 親Executionは Cleanup Worker から `[CLEANUP REPORT]` を受領後、`npm run gate:cleanup -- --base <BASE> --target <HEAD>` を実行する。
+   - Gate は現在Conversationの transcript から Event A（`invoke_subagent`）➔ Event B（tool_result with `conversationId`）➔ Event C（childからの `[CLEANUP REPORT]`）の構造化相関、イベント順序（`stepA < stepB < stepC`）、および三者完全一致（Event A == CLI args == Event C report）を厳格に機械検証する。
+   - Fail-Closed: ログパス欠損・環境変数欠損・ファイル不存在・JSONLパースエラーは即時失敗（exit 1）とする。
+   - Stale成功チェーンへのfallbackは禁止（最新チェーンのみ評価）。
+6. **削除実装との物理的分離と累積再監査 (Cumulative Re-audit)**:
    - Cleanup Worker は自律削除を行わない。
    - 削除は MASTER 承認後、独立した **Cleanup Scope Commit** を経て、通常の **Implementation Worker**（動作モード1）が別Scopeで執行する。
+   - 削除コミット完了後は、必ず `ORIGINAL_BASE ➔ latest TARGET` の全累積差分に対して Stage 9 を再実行し、最終的に `DELETE-CANDIDATE: 0 / NO_CLEANUP_NEEDED` を得るまで Mission CLOSED とすることはできない。
+
+### 4.5 ロールバック・ガバナンス仕様 (History-Preserving Rollback Protocol)
+
+重大障害や運用上の問題により変更の取り消しが必要となった場合、履歴保持型revertのみを公式ロールバック手段として許可する。
+
+1. **ロールバック実行手順 (明示的逆順 revert)**:
+   - Step 1: `git revert --no-edit <C_impl>` （実装コミットの明示的反転）
+   - Step 2: `git revert --no-edit <C_scope>` （Scope コミットの明示的反転）
+   ※ Implementation Commit ➔ Scope Commit の明示的逆順で1コミットずつ確実にrevertする。曖昧な commit range revert は禁止。
+
+2. **履歴破壊型操作の絶対禁止**:
+   - `git reset --hard`
+   - `git reset --mixed`
+   - `git reset --soft`
+   - `git push --force`
+   - `git push --force-with-lease`
+   - その他履歴破壊型rollback（`rebase`, `commit --amend` 等の既出コミット改変）は永久に禁止する。
 
 ---
 
@@ -387,6 +429,41 @@ Overall Verdict: [ CLEANUP_RECOMMENDED / NO_CLEANUP_NEEDED ]
 - Proposed Cleanup Scope: [ <file1>, <file2> ]
 - Estimated Lines Removed: -X lines
 - Risk Assessment: [ NONE / LOW / MEDIUM ]
+```
+
+### 5.5 Execution AI ➔ MASTER: 最終完了報告フォーマット (Mission Completion Report)
+Stage 9 機械検証可能証跡ゲート（`npm run gate:cleanup`）の Exit 0、および `DELETE-CANDIDATE: 0 / NO_CLEANUP_NEEDED` を確認した親Execution AIは、チャット画面に以下の Canonical フォーマットで `[MISSION COMPLETION REPORT]` を出力し、ミッションを CLOSED とする。
+
+```text
+[MISSION COMPLETION REPORT]
+
+Mission Name:
+Mission Base Commit:
+Final Target Commit:
+Approved Scope:
+All Changed Files:
+
+--- STAGE VERIFICATION EVIDENCE ---
+Stage 4 Self Verify (V1-V3): PASS
+Stage 5 Independent Audit: PASS (Auditor: <conversationId / details>)
+Stage 6 Commit Gate: PASS (MASTER Resume received)
+Stage 7 Push Gate: PASS (HEAD == origin/main)
+Stage 8 Deployment Gate: PASS / N/A (<URL / evidence>)
+Stage 9 Cleanup Gate: PASS (npm run gate:cleanup exit 0)
+
+--- RESIDUAL CLEANUP STATUS ---
+Residual Cleanup Auditor ConversationId: <conversationId>
+Cleanup Report Base..Target: <BASE>..<TARGET>
+Total Residuals Found: 0
+DELETE-CANDIDATE: 0 (NO_CLEANUP_NEEDED)
+
+--- FINAL WORKING TREE STATUS ---
+git status: clean
+HEAD: <commit_hash>
+origin/main: <commit_hash>
+
+Mission Status:
+CLOSED
 ```
 
 ---

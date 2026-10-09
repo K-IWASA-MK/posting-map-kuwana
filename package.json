@@ -16,6 +16,7 @@
     "deploy:gas": "node scripts/safe-deploy.mjs",
     "stamp:assets": "node scripts/stamp-h-app-token.mjs",
     "audit:gate": "node scripts/check-scope.mjs",
+    "gate:cleanup": "node scripts/check-cleanup-gate.mjs",
     "check:knowledge": "node scripts/check-knowledge-gate.mjs",
     "build:manager-css": "tailwindcss -i ./active/manager/tailwind-input.css -o ./active/manager/assets/manager.tailwind.css --minify"
   },

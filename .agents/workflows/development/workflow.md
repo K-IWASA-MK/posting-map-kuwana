@@ -1,15 +1,15 @@
 ---
 name: development
-description: 開発・完了報告手順 (8-Stage Protocol)。Stage 1 調査・Knowledge Impact Analysis から MASTER 承認、Scope Lock、実装、自己検証、Handover、MASTER新規会話監査、Commit/Push、Remote Syncまでの全行程を規定。
+description: 開発・完了報告手順 (9-Stage Protocol)。Stage 1 調査・Knowledge Impact Analysis から MASTER 承認、Scope Lock、実装、自己検証、Handover、MASTER新規会話監査、Commit/Push、Remote Sync、Stage 9 残骸監査ゲートまでの全行程を規定。
 ---
 
 # Workflow: Development (開発・完了報告フロー)
 
-AI社員の作業は、必ず以下の「8-Stage Execution Protocol」と「Verification Gate」に従う。この順序の省略・逆転・自己判断による短縮は絶対禁止とする。
+AI社員の作業は、必ず以下の「9-Stage Execution Protocol」と「Verification Gate」に従う。この順序の省略・逆転・自己判断による短縮は絶対禁止とする。
 
 ---
 
-## 8-Stage Execution Protocol (正式開発フロー)
+## 9-Stage Execution Protocol (正式開発フロー)
 ※ AI役職定義およびツール統制の詳細は Canonical SSOT である [docs/ai-foundation.md](../../../docs/ai-foundation.md) を参照すること。
 
 ### Stage 1: Plan (調査・計画策定 & Knowledge Impact Analysis) — [主担当: Execution AI]
@@ -64,10 +64,13 @@ AI社員の作業は、必ず以下の「8-Stage Execution Protocol」と「Veri
 - Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）である場合のみ、独立工程として実際の稼働環境へのデプロイを実施する。
 - 実環境への反映を必要としない変更（ドキュメント、テスト、設定のみ等）は **「Deployment対象外 (N/A)」** と明示的に判定・記録すること。
 - Remote Sync 確認（HEAD == origin/main, clean working tree）を行い、実機確認へ移行する。
+- 実機確認が PASS 完了した時点で、直ちに **Stage 9** へ移行する（Stage 9 の省略・自己判断による終了は絶対禁止）。
 
-### Stage 9: Post-Verification Residual Cleanup (実機PASS後 残骸監査・クリーンアップ工程) — [主担当: Cleanup Worker (Residual Cleanup Auditor Profile)]
-- **起動条件**: Stage 8 の実稼働・実機確認（実機動作確認）が PASS 完了した直後に親Executionより起動される。
+### Stage 9: Post-Verification Residual Cleanup (実機PASS後 残骸監査・機械検証可能証跡ゲート) — [主担当: Cleanup Worker (Residual Cleanup Auditor Profile) & Execution AI]
+- **起動条件**: Stage 8 の実稼働・実機確認（実機動作確認）が PASS 完了した直後に、親Executionが必ず Cleanup Worker を起動する（**全Missionで必須執行。Stage 9 N/A は全面禁止**）。
 - **入力情報**: 親Executionより確定差分（`BASE_COMMIT` ➔ `HEAD_COMMIT`）、`MISSION_SCOPE`、`APPROVED_DIFF`、実機PASS証跡を受領。
+- **起動プロンプト要件 (Three-Way Exact Match)**:
+  - 親Executionは `invoke_subagent` のプロンプト（Event A）に `BASE_COMMIT`、`HEAD_COMMIT`、`APPROVED_DIFF` を完全一致で明示指定すること。
 - **監査行動規範 (Policy-Level ZERO WRITE)**:
   - 書込ツール（`write_to_file`, `replace_file_content`）はWorkerに物理提供されているが、本工程での使用を禁止する（Policy-Level Zero Write）。
   - `run_command` は使用禁止とする（テスト再実行・任意コマンド禁止）。
@@ -75,21 +78,50 @@ AI社員の作業は、必ず以下の「8-Stage Execution Protocol」と「Veri
   - 能動的なScope外探索は禁止。監査過程で偶発的に発見された不要コードは `OUT-OF-SCOPE Finding` として報告のみ行う。
   - 自律削除は絶対禁止とする。
 - **報告と判定フロー**:
-  1. Cleanup Worker はチャット画面に `[CLEANUP REPORT]`（`DELETE-CANDIDATE`, `KEEP`, `OUT-OF-SCOPE`）を出力し、直ちに **🛑 HARD STOP** する。
-  2. `DELETE-CANDIDATE` が0件の場合、Cleanup不要としてミッション全完結とする。
-  3. `DELETE-CANDIDATE` が存在し MASTER が削除を承認した場合、削除実装との物理的分離原則に従い、以下の独立Cleanupサイクルへと移行する：
-     - Stage 2: `Cleanup Scope Commit`（MASTER承認の削除対象ファイルのみを `.agents/current-scope.json` に設定・単独コミット）
-     - Stage 3: 通常の `Implementation Worker`（動作モード1）による残骸コードの最小削除
-     - Stage 4: `Self Verify`（`npm test` 全回帰テスト PASS、`check-scope.mjs` 通過）
-     - Stage 5: `Independent Auditor AI` による削除適正性の独立再検品
-     - Stage 6/7: `Commit & Push`
+  1. Cleanup Worker はチャット画面（親Execution宛て）に `[CLEANUP REPORT]`（`DELETE-CANDIDATE`, `KEEP`, `OUT-OF-SCOPE`）を出力し、待機状態に入る。
+  2. 親Executionは、機械検証可能証跡ゲート（Machine-verifiable Evidence Gate）を実行する：
+     ```bash
+     npm run gate:cleanup -- --base <BASE_COMMIT> --target <HEAD_COMMIT>
+     ```
+     - Gate は現在Conversationの transcript から Event A（`invoke_subagent`）➔ Event B（tool_result with `conversationId`）➔ Event C（childからの `[CLEANUP REPORT]`）の構造化相関チェーン、イベント順序（`stepA < stepB < stepC`）、および三者完全一致（Event A == CLI args == Event C report）を厳格に機械検証する。
+     - Fail-Closed: ログパス欠損・環境変数欠損・ファイル不存在・JSONLパースエラーは即時失敗（exit 1）とする。
+     - Stale成功チェーンへのfallbackは禁止（最新チェーンのみ評価）。
+  3. **残骸解消の累積サイクル (Cumulative Re-audit)**:
+     - `DELETE-CANDIDATE` が0件（`Overall Verdict: NO_CLEANUP_NEEDED`）かつ `gate:cleanup` が Exit 0 で通過した場合に限り、親Executionは `[MISSION COMPLETION REPORT]` を提出し Mission CLOSED を宣言できる。
+     - `DELETE-CANDIDATE` が存在（> 0）し MASTER が削除を承認した場合、削除実装との物理的分離原則に従い以下の独立Cleanupサイクルを実行する：
+       - Stage 2: `Cleanup Scope Commit`（MASTER承認の削除対象ファイルのみを `.agents/current-scope.json` に設定・単独コミット）
+       - Stage 3: 通常の `Implementation Worker`（動作モード1）による残骸コードの最小削除
+       - Stage 4: `Self Verify`（`npm test` 全回帰テスト PASS、`check-scope.mjs` 通過）
+       - Stage 5: `Independent Auditor AI` による削除適正性の独立再検品
+       - Stage 6/7: `Commit & Push`
+       - **累積再監査の義務**: 削除コミット完了後、必ず `ORIGINAL_BASE ➔ latest TARGET` の全累積差分に対して Stage 9（Cleanup Worker 起動 ➔ `[CLEANUP REPORT]` ➔ `gate:cleanup` PASS）を再実行する。最終的に `DELETE-CANDIDATE: 0 / NO_CLEANUP_NEEDED` を得るまで Mission CLOSED とすることはできない。
+
+### Rollback ガバナンス規程 (History-Preserving Rollback Protocol)
+万一、本番・検証・運用のいずれかで重大な障害が発生しロールバックが必要となった場合、履歴保持型revertのみを許可する。
+
+1. **ロールバック実行手順 (明示的逆順 revert)**:
+   - Step 1: `git revert --no-edit <C_impl>` （実装コミットの明示的反転）
+   - Step 2: `git revert --no-edit <C_scope>` （Scope コミットの明示的反転）
+   ※ Implementation Commit ➔ Scope Commit の明示的逆順で1コミットずつ確実にrevertする。曖昧な commit range revert は禁止。
+
+2. **履歴破壊型操作の絶対禁止**:
+   - `git reset --hard`
+   - `git reset --mixed`
+   - `git reset --soft`
+   - `git push --force`
+   - `git push --force-with-lease`
+   - その他履歴破壊型rollback（`rebase`, `commit --amend` 等の既出コミット改変）は永久に禁止する。
 
 ---
 
 ## 完了報告の禁止事項
 
-以下の状態で「完了報告」として提出することは絶対禁止とする：
+以下の状態で「完了報告」（Mission CLOSED / 完全終了 / 全工程完了 / Release Complete / 最終PASS等）として提出することは絶対禁止とする：
 - 「あとでcommitします」「あとでpushします」という状態。
 - 「ユーザーに実機確認してもらう」「検証は別途行う」状態。
 - 「問題ないと思われる」「コード上は正しいはず」という推測状態。
 - 報告時点で未解決のエラーが存在する状態。
+- Stage 8 実機PASS後に Stage 9 Cleanup Worker（Residual Cleanup Auditor Profile）を起動していない状態。
+- Cleanup Worker からの正式な `[CLEANUP REPORT]` を受領していない状態。
+- `npm run gate:cleanup -- --base <BASE> --target <TARGET>` による機械検証（Exit 0）を通過していない状態。
+- `DELETE-CANDIDATE > 0` の残骸候補が存在したまま、または削除サイクル後の累積全差分に対する再Stage 9監査を完了していない状態。

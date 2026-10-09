@@ -41,6 +41,17 @@
 - SSD上に存在する他地区（OKAYAMA-02、KUWANA等）のリポジトリやフォルダーを、通常時・監査時・実装時・比較時を問わず一切参照・探索・検索・読み取りしない。
 - 「参考」「比較」「検証」の目的でも他リポジトリを見ない。他リポジトリのコード、データ、設定、Git履歴、監査結果、Runtime情報等を判断材料に使用しない。
 - リポジトリ内部だけでは判断できない事項は、他地区を見て補完・推測せず「UNDETERMINED」とする。複数リポジトリを同時に参照しない。
+- **Stage 9 Cleanup Evidence Verification 専用極小例外**:
+  - `check-cleanup-gate.mjs` による Stage 9 機械検証可能証跡ゲートに限り、`ANTIGRAVITY_CONVERSATION_ID` で特定される「現在Conversation自身」の `.system_generated/logs/transcript.jsonl` 1ファイルのみに対する READ ONLY アクセスを限定的に認める。
+  - 許可条件:
+    1. 目的は Stage 9 Cleanup Evidence Verification のみ。
+    2. 対象は現在Conversation自身の `transcript.jsonl` 1ファイルのみ（READ ONLY）。
+    3. 親ディレクトリの探索・列挙（`list_dir` 等）の禁止。
+    4. 他Conversationのbrain/log参照の禁止。
+    5. 他地区repo参照の禁止（永久原則・例外なし）。
+    6. `transcript.jsonl` のリポジトリ内へのコピー・保存・commit の禁止。
+    7. 環境変数欠損、path不一致、file不存在、JSONL parse失敗はすべて Fail-Closed（exit 1）とする。
+    8. 本例外を一般的なリポジトリ外読み取り許可へ拡大・解釈してはならない。
 
 ## 6. Execution Governance & Approval Gates — ABSOLUTE
 1. **Implementation Approval Gate**:
@@ -71,9 +82,10 @@
    - 「Proceed → Implement → Self Verify → Auditor PASS → Commit → Push → Deploy」を無条件の一連シーケンスとしてはならない。
    - ドキュメント改定や内部テスト追加など、実稼働環境への反映を必要としない変更は「Deployment対象外 (N/A)」と明示的に判定・記録し、Push完了をもって完了報告へ進むこと。
 3. **Definition of Done**:
-   - Proceed ➔ Implement ➔ Self Verify (`npm test`, Scope Guard) ➔ Handover提出 ➔ HARD STOP ➔ (MASTER起動) Auditor PASS ➔ (MASTER) Resume ➔ Commit ➔ Push (➔ Deploy ※対象時のみ) ➔ Evidence Verification.
+   - Proceed ➔ Implement ➔ Self Verify (`npm test`, Scope Guard) ➔ Handover提出 ➔ HARD STOP ➔ (MASTER起動) Auditor PASS ➔ (MASTER) Resume ➔ Commit ➔ Push (➔ Deploy ※対象時のみ) ➔ Stage 8 実機動作検証 PASS ➔ Stage 9 Cleanup Worker起動 ➔ `[CLEANUP REPORT]` 受領 ➔ Machine-verifiable Evidence Gate (`npm run gate:cleanup -- --base <BASE> --target <TARGET>`) PASS ➔ Mission CLOSED.
    - If any required verification FAILS: STOP.
    - Git PASS is not deployment PASS. Production deployment requires production runtime evidence.
+   - Stage 8 PASS is not Mission CLOSED. Cleanup Dispatch Evidence Verification PASS is strictly required.
 
 ## 8. AI Role Boundary & Authority — ABSOLUTE
 各AI役職の4役職×8軸仕様、ツール統制、Handoffプロトコルの詳細契約は、Canonical SSOT である [docs/ai-foundation.md](docs/ai-foundation.md) を唯一の正本とする。各役職の絶対境界は以下の通りである。
@@ -125,7 +137,7 @@ AI社員は作業フェーズに応じて、必ず以下の詳細規程・ワー
 - 最高位設計契約 (Supreme Design Contract): [docs/architecture/01_DESIGN_CONTRACT.md](docs/architecture/01_DESIGN_CONTRACT.md)
 - 現行アーキテクチャ定義: [docs/architecture/CURRENT_ARCHITECTURE.md](docs/architecture/CURRENT_ARCHITECTURE.md)
 - AI社員基盤・正本仕様書 (Canonical SSOT): [docs/ai-foundation.md](docs/ai-foundation.md)
-- 開発・完了報告手順 (8-Stage Protocol): [.agents/workflows/development/workflow.md](.agents/workflows/development/workflow.md)
+- 開発・完了報告手順 (9-Stage Protocol): [.agents/workflows/development/workflow.md](.agents/workflows/development/workflow.md)
 - 検証・検品規程 & HARD STOP条件 (V1〜V4): [.agents/rules/verification-gates.md](.agents/rules/verification-gates.md)
 - 権限境界・Scope最小化・詳細禁止事項: [.agents/rules/agent-authority.md](.agents/rules/agent-authority.md)
 - リポジトリ内知識体系:

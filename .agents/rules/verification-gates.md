@@ -71,6 +71,49 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
   - **Evidence不足の場合**: PASSせず即時HARD STOPし、MASTERへ報告すること。Evidence不足を補うための実装・修正をAIが勝手に開始してはならない。
   - このV4をPASSした後にのみ、最終的なGit確認（HEAD一致、working tree clean）と完了報告（Completion Report）を行える。
 
+### Stage 9 Post-Verification Residual Cleanup Gate (Machine-verifiable Evidence Gate)
+- **目的と拘束力**: Stage 8 本番/実機確認 PASS 後、全Missionにおいて必ず Cleanup Worker（Residual Cleanup Auditor Profile）を起動する（**全Mission必須・Stage 9 N/A 禁止**）。
+- **起動プロンプト要件 (Three-Way Exact Match)**: 親Executionの `invoke_subagent` プロンプト（Event A）に `ORIGINAL_BASE`、`HEAD_COMMIT`、`APPROVED_DIFF` を完全一致で明記する。
+- **機械検証可能証跡関門**:
+  Cleanup Worker からチャット画面（親宛て）に `[CLEANUP REPORT]` を受領後、親Executionは機械検証ゲートを実行する：
+  ```bash
+  npm run gate:cleanup -- --base <BASE_COMMIT> --target <HEAD_COMMIT>
+  ```
+  - Gate は現在Conversationの transcript から Event A（`invoke_subagent`）➔ Event B（tool_result with `conversationId`）➔ Event C（childからの `[CLEANUP REPORT]`）の構造化相関チェーン、イベント順序（`stepA < stepB < stepC`）、および三者完全一致（Event A == CLI args == Event C report）を厳格に機械検証する。
+  - Fail-Closed: ログパス欠損・環境変数欠損・ファイル不存在・JSONLパースエラーは即時失敗（exit 1）とする。
+  - Stale成功チェーンへのfallbackは禁止（最新チェーンのみ評価）。
+- **累積再監査の義務 (Cumulative Re-audit)**:
+  - `DELETE-CANDIDATE` が0件（`Overall Verdict: NO_CLEANUP_NEEDED`）かつ `gate:cleanup` が Exit 0 で通過した場合に限り、`[MISSION COMPLETION REPORT]` を提出し Mission CLOSED を宣言できる。
+  - `DELETE-CANDIDATE > 0` の場合は、削除サイクル（Stage 2-7）完了後、必ず `ORIGINAL_BASE ➔ latest TARGET` の全累積差分に対して Stage 9 を再実行し、最終的に `DELETE-CANDIDATE: 0 / NO_CLEANUP_NEEDED` を得るまで Mission CLOSED とすることはできない。
+
+### Rollback ガバナンス規程 (History-Preserving Rollback Protocol)
+万一、本番・検証・運用のいずれかで重大な障害が発生しロールバックが必要となった場合、履歴保持型revertのみを許可する。
+
+1. **ロールバック実行手順 (明示的逆順 revert)**:
+   - Step 1: `git revert --no-edit <C_impl>` （実装コミットの明示的反転）
+   - Step 2: `git revert --no-edit <C_scope>` （Scope コミットの明示的反転）
+   ※ Implementation Commit ➔ Scope Commit の明示的逆順で1コミットずつ確実にrevertする。曖昧な commit range revert は禁止。
+
+2. **履歴破壊型操作の絶対禁止**:
+   - `git reset --hard`
+   - `git reset --mixed`
+   - `git reset --soft`
+   - `git push --force`
+   - `git push --force-with-lease`
+   - その他履歴破壊型rollback（`rebase`, `commit --amend` 等の既出コミット改変）は永久に禁止する。
+
+### Repository Boundary 専用極小例外 (Stage 9 Cleanup Evidence Verification)
+- `scripts/check-cleanup-gate.mjs` による Stage 9 機械検証可能証跡ゲートに限り、`ANTIGRAVITY_CONVERSATION_ID` で特定される「現在Conversation自身」の `.system_generated/logs/transcript.jsonl` 1ファイルのみに対する READ ONLY アクセスを限定的に認める。
+- 許可条件:
+  1. 目的は Stage 9 Cleanup Evidence Verification のみ。
+  2. 対象は現在Conversation自身の `transcript.jsonl` 1ファイルのみ（READ ONLY）。
+  3. 親ディレクトリの探索・列挙（`list_dir` 等）の禁止。
+  4. 他Conversationのbrain/log参照の禁止。
+  5. 他地区repo参照の禁止（永久原則・例外なし）。
+  6. `transcript.jsonl` のリポジトリ内へのコピー・保存・commit の禁止。
+  7. 環境変数欠損、path不一致、file不存在、JSONL parse失敗はすべて Fail-Closed（exit 1）とする。
+  8. 本例外を一般的なリポジトリ外読み取り許可へ拡大解釈することを永久に禁止する。
+
 ### Report Truth Gate（完了報告値直接機械取得・突合関門）
 - **義務**: 完了報告（Completion Report / `walkthrough.md` / チャット報告）を作成する際、AI社員が自身の記憶や過去のコンテキストから数値を記述することを絶対禁止とする。
 - **Action**: その時点の実ファイル（`data/address_master.csv` 等）を直接コマンド（`head`, `tail`, `wc -l` 等）で機械抽出し、先頭行ID/町名、末尾行ID/町名、総件数、合計人口、世帯数、代表座標等の確定値を報告書に埋め込み、1文字の狂いもなく実ファイルと完全一致することを検証・提示する。
@@ -108,6 +151,9 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 - ユーザー確認待ち状態で完了報告する
 - あとでcommitする、など未確定状態での報告
 - 「スクリーンショットを要求する」「画面を想像する」「実機確認をユーザーに任せる」形での検証完了報告は絶対禁止とする。
+- Stage 8 実機PASS後に Stage 9 Cleanup Worker（Residual Cleanup Auditor Profile）を起動せずに完了宣言を出すこと
+- Cleanup Worker からの正式な `[CLEANUP REPORT]` 受領および `npm run gate:cleanup` PASS 前に Mission CLOSED を宣言すること
+- `DELETE-CANDIDATE > 0` の残骸候補が存在する状態で Mission CLOSED とすること
 
 ### 客観的証跡の義務
 AI社員自身がローカルで起動・操作し、DOM/Console/Networkなどの客観的証跡を取得しなければならない。
