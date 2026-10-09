@@ -63,7 +63,26 @@ AI社員の作業は、必ず以下の「8-Stage Execution Protocol」と「Veri
 ### Stage 8: Deployment Gate & Remote Sync Verification — [主担当: Execution AI]
 - Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）である場合のみ、独立工程として実際の稼働環境へのデプロイを実施する。
 - 実環境への反映を必要としない変更（ドキュメント、テスト、設定のみ等）は **「Deployment対象外 (N/A)」** と明示的に判定・記録すること。
-- Remote Sync 確認（HEAD == origin/main, clean working tree）を行い、Wave CLOSED とする。
+- Remote Sync 確認（HEAD == origin/main, clean working tree）を行い、実機確認へ移行する。
+
+### Stage 9: Post-Verification Residual Cleanup (実機PASS後 残骸監査・クリーンアップ工程) — [主担当: Cleanup Worker (Residual Cleanup Auditor Profile)]
+- **起動条件**: Stage 8 の実稼働・実機確認（実機動作確認）が PASS 完了した直後に親Executionより起動される。
+- **入力情報**: 親Executionより確定差分（`BASE_COMMIT` ➔ `HEAD_COMMIT`）、`MISSION_SCOPE`、`APPROVED_DIFF`、実機PASS証跡を受領。
+- **監査行動規範 (Policy-Level ZERO WRITE)**:
+  - 書込ツール（`write_to_file`, `replace_file_content`）はWorkerに物理提供されているが、本工程での使用を禁止する（Policy-Level Zero Write）。
+  - `run_command` は使用禁止とする（テスト再実行・任意コマンド禁止）。
+  - 監査ツールは `view_file`, `grep_search`, `list_dir` に限定し、確定差分に起因する残骸（7類型）のcall-siteを静的に精査する。
+  - 能動的なScope外探索は禁止。監査過程で偶発的に発見された不要コードは `OUT-OF-SCOPE Finding` として報告のみ行う。
+  - 自律削除は絶対禁止とする。
+- **報告と判定フロー**:
+  1. Cleanup Worker はチャット画面に `[CLEANUP REPORT]`（`DELETE-CANDIDATE`, `KEEP`, `OUT-OF-SCOPE`）を出力し、直ちに **🛑 HARD STOP** する。
+  2. `DELETE-CANDIDATE` が0件の場合、Cleanup不要としてミッション全完結とする。
+  3. `DELETE-CANDIDATE` が存在し MASTER が削除を承認した場合、削除実装との物理的分離原則に従い、以下の独立Cleanupサイクルへと移行する：
+     - Stage 2: `Cleanup Scope Commit`（MASTER承認の削除対象ファイルのみを `.agents/current-scope.json` に設定・単独コミット）
+     - Stage 3: 通常の `Implementation Worker`（動作モード1）による残骸コードの最小削除
+     - Stage 4: `Self Verify`（`npm test` 全回帰テスト PASS、`check-scope.mjs` 通過）
+     - Stage 5: `Independent Auditor AI` による削除適正性の独立再検品
+     - Stage 6/7: `Commit & Push`
 
 ---
 

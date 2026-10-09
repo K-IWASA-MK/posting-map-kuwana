@@ -181,7 +181,7 @@
         },
         {
           "path": ".agents/workflows/development/workflow.md",
-          "sha256": "77dda111dfd77389f09a3f98d82c34dd6da9ab4cb0507f58aa9bfe331def90f0"
+          "sha256": "270ac2df7c93c19d0df753f746ce30cf13ac3c947a5a3b5c070e7925a1524e6f"
         }
       ],
       "evidenceSources": [
@@ -194,7 +194,7 @@
       "canonicalSources": [
         {
           "path": "docs/ai-foundation.md",
-          "sha256": "20e52e7bceffd4183eab735b02220816b0c452f2f49d9e3922df36d945c31ec4"
+          "sha256": "fa72b049f3bc3e67fcc750be67b830ea0e55e9a75e6e80d24f7beb93a5d857f5"
         },
         {
           "path": "AGENTS.md",

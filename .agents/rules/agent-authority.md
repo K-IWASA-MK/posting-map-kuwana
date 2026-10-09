@@ -95,6 +95,21 @@ Google Drive / Google Sheets / Google Apps Script等のGoogleサービスを操�
 - Workerは直ちに作業を停止し、親Flashへ `SCOPE_EXPANSION_REQUEST` を返却する。
 - 親Flashは自己判断でこれを許可してはならず、必ず MASTER へエスカレーションして再承認（Proceed）を仰がなければならない。
 
+### Cleanup Worker 専任プロファイル行動原則 (Residual Cleanup Auditor Profile)
+1. **Policy-Level ZERO WRITE 原則**:
+   - `write_to_file` および `replace_file_content` はWorkerに物理提供されているが、Cleanup Profileでの呼び出しは固く禁止される（Policy-Level Zero Write）。
+   - コードの直接編集、自律削除、リポジトリ内へのファイル生成は一切禁止とする。
+2. **`run_command` の全面禁止**:
+   - Cleanup Profileにおいて `run_command` は使用禁止とする。任意シェルコマンドの実行およびテスト再実行を行ってはならない。確定差分（`APPROVED_DIFF`）およびテスト成功証跡は親Executionから受領する。
+3. **許可ツールの厳格限定**:
+   - 使用可能ツールは `view_file`, `grep_search`, `list_dir`（および報告返却用 `send_message`）に厳格限定される。
+4. **能動的Scope外探索の禁止**:
+   - 自律的・意図的に今回の差分と無関係な領域や過去の歴史的負債を粗探しすることは全面禁止とする。
+   - ただし、差分の監査過程において偶発的に発見された不要コードについては、`OUT-OF-SCOPE Finding` として報告のみを許可する（変更・削除提案は禁止）。
+5. **削除実装との物理的分離原則**:
+   - Cleanup Worker 自身は削除を実行しない。
+   - 削除は MASTER が `[CLEANUP REPORT]` を承認した後、独立した **Cleanup Scope Commit** を経て、通常の **Implementation Worker** が別Scopeで執行する。
+
 ### 安全ロック時の行動規程 & MASTER承認復旧プロトコル (Safety Lock & Recovery Protocol — MASTER条件反映)
 - **主体識別の先行化（Fail-Closed 原則）**:
   - すべてのツール実行において、許可判定に先立ち「登録済み親・Worker・Auditor」の厳格な主体識別を行う。自己申告の `payload.role` 単体では権限を付与せず、未登録者を親扱いすることは絶対禁止とする。未登録者は即時 `deny` とする。
