@@ -119,7 +119,7 @@ class SpreadsheetResolver {
   }
 
   verifyIntegrityGuard(ss, districtId) {
-    if (!ss || !districtId) return;
+    if (!ss || !districtId) return null;
     const cleanDistrictId = String(districtId).trim().toUpperCase();
     const sheet = ss.getSheetByName("SYSTEM_INFO");
     if (!sheet) {
@@ -148,12 +148,15 @@ class SpreadsheetResolver {
       console.error(`[SpreadsheetResolver] DISTRICT_MISMATCH: requested "${cleanDistrictId}" !== sheet code "${sheetDistrictCode}"`);
       throw new Error(`[SpreadsheetResolver] DISTRICT_MISMATCH: Requested districtId "${cleanDistrictId}" does not match spreadsheet SYSTEM_INFO district code "${sheetDistrictCode}".`);
     }
+
+    return data;
   }
 
-  getSpreadsheet(districtId) {
+  getSpreadsheet(districtId, context = null) {
     const cleanDistrictId = String(districtId || "").trim().toUpperCase();
     const cacheKey = cleanDistrictId || '__DEFAULT__';
     if (this.spreadsheetCacheByDistrict[cacheKey]) {
+      // NOTE: Resolver cache hit時は context.systemInfoData を設定しない（呼び出し側は既存fallbackを使用）
       return this.spreadsheetCacheByDistrict[cacheKey];
     }
 
@@ -162,7 +165,10 @@ class SpreadsheetResolver {
       try {
         const ss = SpreadsheetApp.openById(ssId);
         if (cleanDistrictId) {
-          this.verifyIntegrityGuard(ss, cleanDistrictId);
+          const systemInfoData = this.verifyIntegrityGuard(ss, cleanDistrictId);
+          if (context && typeof context === 'object') {
+            context.systemInfoData = systemInfoData;
+          }
         }
         this.spreadsheetCacheByDistrict[cacheKey] = ss;
         return ss;
@@ -191,8 +197,8 @@ class SpreadsheetResolver {
 
 SpreadsheetResolver.instance = null;
 
-function getSS(districtId) {
-  return SpreadsheetResolver.getInstance().getSpreadsheet(districtId);
+function getSS(districtId, context = null) {
+  return SpreadsheetResolver.getInstance().getSpreadsheet(districtId, context);
 }
 
 class SpreadsheetBatchReader {

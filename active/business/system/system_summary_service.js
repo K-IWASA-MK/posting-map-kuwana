@@ -22,10 +22,12 @@
 
         let ss = null;
 
+        const resolverContext = {};
+
         // SSOT: Spreadsheetファイル名および実在シートから動的に総件数・完了数を取得
         try {
           if (typeof getSS === 'function') {
-            ss = getSS(districtId);
+            ss = getSS(districtId, resolverContext);
             if (ss) {
               districtName = ss.getName();
 
@@ -63,9 +65,15 @@
 
         const percent = totalPoints > 0 ? Math.round((totalDone / totalPoints) * 100) : 0;
 
-        const contract = (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance)
-          ? SystemInfoService.getInstance().getContractStatus(ss ? ss.getSheetByName('SYSTEM_INFO') : null, new Date(), districtId)
-          : { status: 'ACTIVE', isExpired: false, endDate: '' };
+        let contract = { status: 'ACTIVE', isExpired: false, endDate: '' };
+        if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
+          const sysInfo = SystemInfoService.getInstance();
+          if (resolverContext && resolverContext.systemInfoData && typeof sysInfo.getContractStatusFromData === 'function') {
+            contract = sysInfo.getContractStatusFromData(resolverContext.systemInfoData, new Date(), districtId);
+          } else {
+            contract = sysInfo.getContractStatus(ss ? ss.getSheetByName('SYSTEM_INFO') : null, new Date(), districtId);
+          }
+        }
 
         if (contract.isExpired) {
           return {

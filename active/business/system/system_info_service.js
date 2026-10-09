@@ -187,6 +187,34 @@
       return '';
     }
 
+    getContractEndDateFromData(data) {
+      if (!Array.isArray(data) || data.length < 2) {
+        throw new Error('SYSTEM_INFO data has no data rows or invalid format');
+      }
+      let foundRow = false;
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === '契約終了日') {
+          foundRow = true;
+          const val = data[i][1];
+          if (val instanceof Date) {
+            if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
+              return Utilities.formatDate(val, "JST", "yyyy-MM-dd");
+            }
+            const jst = new Date(val.getTime() + (9 * 60 * 60 * 1000));
+            return jst.toISOString().slice(0, 10);
+          }
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            return String(val).trim().replace(/\//g, '-');
+          }
+          return '';
+        }
+      }
+      if (!foundRow) {
+        throw new Error('契約終了日 row missing in SYSTEM_INFO');
+      }
+      return '';
+    }
+
     ensureContractEndDateRow(existingSheet) {
       try {
         const s = existingSheet || (this.getSS() ? this.getSS().getSheetByName('SYSTEM_INFO') : null);
@@ -306,6 +334,51 @@
       } catch (readErr) {
         // 4. SYSTEM_INFO 読込失敗 / シート不在 / 例外: fail-closed (安全側遮断)
         // 【ACTIVEを推定して返すfail-openは禁止】
+        console.error("[SystemInfoService] FAIL-CLOSED: Contract status check failed:", readErr);
+        return {
+          status: 'EXPIRED',
+          isExpired: true,
+          endDate: '',
+          today: todayStr,
+          code: 'CONTRACT_CHECK_FAILED',
+          message: '契約情報の検証に失敗したため安全のためアクセスを遮断しました。'
+        };
+      }
+    }
+
+    getContractStatusFromData(data, now = new Date(), districtId = "") {
+      let todayStr = '';
+      if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
+        todayStr = Utilities.formatDate(now, "JST", "yyyy-MM-dd");
+      } else {
+        const jst = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+        todayStr = jst.toISOString().slice(0, 10);
+      }
+
+      try {
+        const endDateStr = this.getContractEndDateFromData(data);
+        const isExpired = endDateStr ? (todayStr > endDateStr) : false;
+        const result = {
+          status: isExpired ? 'EXPIRED' : 'ACTIVE',
+          isExpired: isExpired,
+          endDate: endDateStr,
+          today: todayStr,
+          code: isExpired ? 'CONTRACT_EXPIRED' : 'ACTIVE'
+        };
+
+        try {
+          if (typeof CacheService !== 'undefined' && CacheService.getScriptCache) {
+            const cache = CacheService.getScriptCache();
+            if (cache) {
+              cache.put(this.getContractCacheKey(districtId), JSON.stringify({ endDate: endDateStr }), 21600);
+            }
+          }
+        } catch (putErr) {
+          console.warn("[SystemInfoService] Contract cache put warning:", putErr);
+        }
+
+        return result;
+      } catch (readErr) {
         console.error("[SystemInfoService] FAIL-CLOSED: Contract status check failed:", readErr);
         return {
           status: 'EXPIRED',

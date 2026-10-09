@@ -153,4 +153,187 @@ const contractRowCount = mockSheet.data.filter(row => row[0] === '契約終了�
 assert.strictEqual(contractRowCount, 1, '既存の場合は重複して追加されないこと');
 console.log("  ✅ SYSTEM_INFO「契約終了日」自動確保・重複防止 PASS");
 
+console.log("\n▶ [Test 7] 重複I/O削減・FromData & Fallback 統合テスト");
+
+// 7-1: dataあり → FromData使用、追加 getValues() なし
+console.log("  ▶ [7-1] dataあり → FromData使用、追加 getValues() なし検証");
+let getValuesCount71 = 0;
+const trackedSheet = {
+  getLastRow: () => 3,
+  getRange: () => ({
+    getValues: () => {
+      getValuesCount71++;
+      return [
+        ['項目', '内容'],
+        ['地区コード', 'TEST-DISTRICT'],
+        ['契約終了日', '2026-10-12']
+      ];
+    }
+  })
+};
+
+const preloadedData = [
+  ['項目', '内容'],
+  ['地区コード', 'TEST-DISTRICT'],
+  ['契約終了日', '2026-10-12']
+];
+
+const res71 = service.getContractStatusFromData(preloadedData, nowBefore, 'TEST-DISTRICT');
+assert.strictEqual(res71.status, 'ACTIVE');
+assert.strictEqual(res71.isExpired, false);
+assert.strictEqual(res71.endDate, '2026-10-12');
+assert.strictEqual(getValuesCount71, 0, 'FromData実行時にシートへの getValues() 追加呼び出しが0件であること');
+console.log("    ✅ [7-1] PASS: dataあり ➔ getValues() I/Oゼロ件で正常ACTIVE判定");
+
+// 7-2: resolver cache hit / dataなし → 既存fallback使用、同結果
+console.log("  ▶ [7-2] resolver cache hit / dataなし → 既存fallback使用、同結果検証 (最重要)");
+
+const adapterCode = fs.readFileSync('active/infrastructure/spreadsheet/spreadsheet_adapter.js', 'utf8');
+const summaryCode = fs.readFileSync('active/business/system/system_summary_service.js', 'utf8');
+
+let openByIdCallCount = 0;
+let systemInfoGetValuesCount = 0;
+
+const mockSystemInfoSheet = {
+  getLastRow: () => 3,
+  getRange: (r, c, nr, nc) => ({
+    getValues: () => {
+      systemInfoGetValuesCount++;
+      return [
+        ['項目', '内容'],
+        ['地区コード', 'TEST-DISTRICT'],
+        ['契約終了日', '2026-10-12']
+      ];
+    }
+  })
+};
+
+const mockSpreadsheetObj = {
+  getName: () => 'TEST-DISTRICT',
+  getSheetByName: (name) => {
+    if (name === 'SYSTEM_INFO') return mockSystemInfoSheet;
+    return null;
+  }
+};
+
+global.PropertiesService = {
+  getScriptProperties: () => ({
+    getProperty: (key) => {
+      if (key === 'DISTRICT_REGISTRY') {
+        return JSON.stringify({ 'TEST-DISTRICT': { spreadsheetId: 'ss-test-123' } });
+      }
+      return null;
+    }
+  })
+};
+
+global.SpreadsheetApp = {
+  openById: (id) => {
+    openByIdCallCount++;
+    return mockSpreadsheetObj;
+  }
+};
+
+const adapterFn = new Function('global', adapterCode + '; global.SpreadsheetResolver = SpreadsheetResolver; global.getSS = getSS;');
+adapterFn(global);
+
+const summaryFn = new Function('global', summaryCode + '; global.SystemSummaryService = global.SystemSummaryService || (typeof SystemSummaryService !== "undefined" ? SystemSummaryService : null);');
+summaryFn(global);
+
+global.SystemInfoService = SystemInfoService;
+
+const resolver = SpreadsheetResolver.getInstance();
+resolver.clearCache();
+
+// 1回目の解決 (Cache MISS): context.systemInfoData が設定されること
+const contextMiss = {};
+const ssMiss = resolver.getSpreadsheet('TEST-DISTRICT', contextMiss);
+assert.strictEqual(openByIdCallCount, 1, 'Cache miss: openById が1回呼ばれること');
+assert.ok(contextMiss.systemInfoData, 'Cache miss: context.systemInfoData が返されること');
+assert.strictEqual(Array.isArray(contextMiss.systemInfoData), true);
+
+// 2回目の解決 (Cache HIT): context.systemInfoData は設定されないこと
+const contextHit = {};
+const ssHit = resolver.getSpreadsheet('TEST-DISTRICT', contextHit);
+assert.strictEqual(openByIdCallCount, 1, 'Cache hit: openById は呼ばれないこと');
+assert.strictEqual(contextHit.systemInfoData, undefined, 'Cache hit: context.systemInfoData は設定されないこと');
+
+// SystemSummaryService での同一結果検証
+const summaryService = SystemSummaryService.getInstance();
+
+// Resolverキャッシュクリアして 1回目 (FromData 経路)
+resolver.clearCache();
+const summaryMiss = summaryService.getSystemSummary('TEST-DISTRICT');
+assert.strictEqual(summaryMiss.contractStatus, 'ACTIVE');
+assert.strictEqual(summaryMiss.isExpired, false);
+assert.strictEqual(summaryMiss.contractEndDate, '2026-10-12');
+
+// Resolverキャッシュ有効のまま 2回目 (Fallback 経路)
+const summaryHit = summaryService.getSystemSummary('TEST-DISTRICT');
+assert.strictEqual(summaryHit.contractStatus, 'ACTIVE');
+assert.strictEqual(summaryHit.isExpired, false);
+assert.strictEqual(summaryHit.contractEndDate, '2026-10-12');
+
+// 両者の結果が完全一致することを確認
+assert.strictEqual(summaryMiss.success, summaryHit.success);
+assert.strictEqual(summaryMiss.districtName, summaryHit.districtName);
+assert.strictEqual(summaryMiss.total, summaryHit.total);
+assert.strictEqual(summaryMiss.done, summaryHit.done);
+assert.strictEqual(summaryMiss.percent, summaryHit.percent);
+assert.strictEqual(summaryMiss.online, summaryHit.online);
+assert.strictEqual(summaryMiss.contractStatus, summaryHit.contractStatus);
+assert.strictEqual(summaryMiss.contractEndDate, summaryHit.contractEndDate);
+assert.strictEqual(summaryMiss.isExpired, summaryHit.isExpired);
+console.log("    ✅ [7-2] PASS: Cache Hit時のfallback呼び出しが同一結果を返し完全透過動作");
+
+// 7-3: corrupt / 契約終了日欠損 → Fail-Closedで EXPIRED / CONTRACT_CHECK_FAILED
+console.log("  ▶ [7-3] corrupt / 契約終了日欠損 → Fail-Closedで EXPIRED / CONTRACT_CHECK_FAILED検証");
+
+// 3a: 「契約終了日」行が欠損
+const missingContractRowData = [
+  ['項目', '内容'],
+  ['地区コード', 'TEST-DISTRICT'],
+  ['状態', 'ACTIVE']
+];
+const resMissingRow = service.getContractStatusFromData(missingContractRowData, nowBefore, 'TEST-DISTRICT');
+assert.strictEqual(resMissingRow.status, 'EXPIRED', '契約終了日行欠損時は EXPIRED');
+assert.strictEqual(resMissingRow.isExpired, true);
+assert.strictEqual(resMissingRow.code, 'CONTRACT_CHECK_FAILED');
+
+// 3b: 空配列 / 1行のみ / null など破損データ
+const resEmptyArr = service.getContractStatusFromData([], nowBefore, 'TEST-DISTRICT');
+assert.strictEqual(resEmptyArr.status, 'EXPIRED', '空配列データは EXPIRED (Fail-Closed)');
+assert.strictEqual(resEmptyArr.isExpired, true);
+assert.strictEqual(resEmptyArr.code, 'CONTRACT_CHECK_FAILED');
+
+const resNullData = service.getContractStatusFromData(null, nowBefore, 'TEST-DISTRICT');
+assert.strictEqual(resNullData.status, 'EXPIRED', 'null データは EXPIRED (Fail-Closed)');
+assert.strictEqual(resNullData.isExpired, true);
+assert.strictEqual(resNullData.code, 'CONTRACT_CHECK_FAILED');
+
+// 3c: SystemSummaryService 経由での Fail-Closed 遮断確認
+const corruptSystemInfoSheet = {
+  getLastRow: () => 2,
+  getRange: () => ({
+    getValues: () => [
+      ['項目', '内容'],
+      ['地区コード', 'TEST-DISTRICT']
+      // 契約終了日行なし
+    ]
+  })
+};
+const corruptSS = {
+  getName: () => 'TEST-DISTRICT',
+  getSheetByName: () => corruptSystemInfoSheet
+};
+resolver.clearCache();
+global.SpreadsheetApp.openById = () => corruptSS;
+const summaryCorrupt = summaryService.getSystemSummary('TEST-DISTRICT');
+assert.strictEqual(summaryCorrupt.success, false, '契約判定失敗時は success: false');
+assert.strictEqual(summaryCorrupt.online, false, '契約判定失敗時は online: false');
+assert.strictEqual(summaryCorrupt.contractStatus, 'EXPIRED');
+assert.strictEqual(summaryCorrupt.isExpired, true);
+assert.strictEqual(summaryCorrupt.code, 'CONTRACT_CHECK_FAILED');
+console.log("    ✅ [7-3] PASS: 契約終了日欠損・破損データ時に Fail-Closed で EXPIRED / CONTRACT_CHECK_FAILED 遮断");
+
 console.log("\n🎉 すべての契約終了日アクセスコントロール検証が PASS しました！");
