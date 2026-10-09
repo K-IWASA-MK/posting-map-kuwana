@@ -1748,6 +1748,16 @@ function showAreaDetail(data) {
       resultColEl.classList.add('hidden');
       resultColEl.innerHTML = '';
     }
+
+    if (detailEl) {
+      if (isCompleted || isInProgress) {
+        detailEl.classList.remove('w-auto', 'min-w-[150px]', 'max-w-[210px]');
+        detailEl.classList.add('w-[calc(100%_-_1.5rem)]', 'max-w-[340px]');
+      } else {
+        detailEl.classList.remove('w-[calc(100%_-_1.5rem)]', 'max-w-[340px]');
+        detailEl.classList.add('w-auto', 'min-w-[150px]', 'max-w-[210px]');
+      }
+    }
   }
 
   if (detailEl) detailEl.classList.remove('hidden');
