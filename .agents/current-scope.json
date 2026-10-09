@@ -1,4 +1,6 @@
 [
-  "active/manager/manager.js",
-  "tests/test_manager_ui_interaction.mjs"
+  ".agents/agents/worker/agent.md",
+  "docs/ai-foundation.md",
+  ".agents/workflows/development/workflow.md",
+  ".agents/rules/agent-authority.md"
 ]
