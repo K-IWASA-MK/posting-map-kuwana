@@ -1709,6 +1709,47 @@ function showAreaDetail(data) {
     }
   }
 
+  // --- スマホ詳細グリッド (PC右下と同じSSOT・フォールバック契約) ---
+  const basicColEl = document.getElementById('selected-area-basic-col');
+  const resultColEl = document.getElementById('selected-area-result-col');
+  const pin = DashboardState.selectedPin;
+
+  if (basicColEl && resultColEl && pin) {
+    const completedList = (DashboardState.globalPinStatus && DashboardState.globalPinStatus.completed) || [];
+    const inProgressList = (DashboardState.globalPinStatus && DashboardState.globalPinStatus.inProgress) || [];
+    const isCompleted = completedList.includes(pin.rowId);
+    const isInProgress = inProgressList.includes(pin.rowId);
+
+    if (isCompleted) {
+      const liveRec = (DashboardState.liveRecords || []).find(r => r.rowId === pin.rowId) || null;
+      const staffId = (liveRec && liveRec.staffId) ? liveRec.staffId : '--';
+      const rosterStaff = staffId !== '--' ? (DashboardState.roster || []).find(rs => rs.id === staffId) : null;
+      const staffName = rosterStaff ? rosterStaff.name : '';
+      const doneTime = (liveRec && liveRec.time) ? liveRec.time : '--';
+      const isCountValid = liveRec && liveRec.count !== undefined && liveRec.count !== null && !isNaN(Number(liveRec.count));
+      const doneCountStr = isCountValid ? `${Number(liveRec.count).toLocaleString()}枚` : '--';
+
+      basicColEl.classList.remove('col-span-2');
+      resultColEl.classList.remove('hidden');
+      resultColEl.innerHTML = `
+        <div class="truncate"><span class="text-textSub">📊 投函:</span> <span class="font-bold text-white font-mono">${doneCountStr}</span></div>
+        <div class="truncate" title="${escapeHtml(staffId)}${staffName ? ' ' + escapeHtml(staffName) : ''}"><span class="text-textSub">👤 担当:</span> <span class="text-white">${escapeHtml(staffId)}${staffName ? ' ' + escapeHtml(staffName) : ''}</span></div>
+        <div class="truncate text-[9px] text-textSub/70"><span class="text-textSub">完了:</span> <span class="font-mono">${escapeHtml(doneTime)}</span></div>
+      `;
+    } else if (isInProgress) {
+      basicColEl.classList.remove('col-span-2');
+      resultColEl.classList.remove('hidden');
+      resultColEl.innerHTML = `
+        <div class="text-[11px] text-blue-400 font-medium py-1">⏱️ 配布中...</div>
+      `;
+    } else {
+      // 未配布: 左カラムを全幅化し、右カラムは非表示
+      basicColEl.classList.add('col-span-2');
+      resultColEl.classList.add('hidden');
+      resultColEl.innerHTML = '';
+    }
+  }
+
   if (detailEl) detailEl.classList.remove('hidden');
 }
 

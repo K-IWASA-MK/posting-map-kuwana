@@ -425,7 +425,7 @@
       .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\],
       .ranking-col-feed.overflow-hidden > div:last-child,
       .ranking-col-feed.overflow-hidden > div:last-child > div {
-        display: contents !important;
+        display: \63 ontents !important;
       }
       .ranking-col-feed.overflow-hidden .bg-\[\#0B1019\] > span:nth-child(5) {
         display: none !important;
@@ -858,17 +858,24 @@
             <div id="map" class="w-full h-full"></div>
 
             <!-- マップ上ピンタップ時の詳細オーバーレイ -->
-            <div id="map-area-detail" class="absolute bottom-3 left-3 min-w-[150px] max-w-[210px] w-auto p-2.5 rounded-xl bg-containerBg/95 border border-borderHighlight backdrop-blur-md z-[1000] hidden transition-all shadow-2xl">
+            <div id="map-area-detail" class="absolute bottom-3 left-3 w-[calc(100%_-_1.5rem)] max-w-[340px] lg:w-auto lg:min-w-[150px] lg:max-w-[210px] p-2.5 rounded-xl bg-containerBg/95 border border-borderHighlight backdrop-blur-md z-[1000] hidden transition-all shadow-2xl">
               <div class="flex items-center justify-between gap-2">
-                <div class="min-w-0">
+                <div class="min-w-0 flex-1">
                   <div id="selected-area-name" class="font-bold text-xs text-white truncate">--</div>
                   <div class="text-[11px] text-textSub mt-0.5">
                     状態: <span id="selected-area-status" class="font-mono font-bold">--</span>
                   </div>
-                  <div id="selected-area-households" class="text-[10px] text-textSub/70 font-mono mt-0.5 lg:hidden"></div>
-                  <div id="selected-area-meta" class="text-[10px] text-textSub/70 font-mono mt-0.5 lg:hidden"></div>
                 </div>
                 <button onclick="closeAreaDetail()" class="text-textSub hover:text-white px-1.5 py-1 text-xs flex-shrink-0 cursor-pointer">✕</button>
+              </div>
+
+              <!-- スマホ詳細グリッド (世帯数・人口 / 実績) -->
+              <div id="selected-area-stats-grid" class="mt-2 pt-2 border-t border-borderNormal/60 grid grid-cols-2 gap-2 text-[10px] font-mono lg:hidden">
+                <div id="selected-area-basic-col" class="space-y-0.5 text-textSub">
+                  <div id="selected-area-households" class="text-textSub/70"></div>
+                  <div id="selected-area-meta" class="text-textSub/70"></div>
+                </div>
+                <div id="selected-area-result-col" class="space-y-0.5 text-textSub"></div>
               </div>
             </div>
           </div>
