@@ -1,5 +1,13 @@
 [
-  "active/manager/index.html",
-  "active/manager/manager.js",
-  "active/manager/assets/manager.tailwind.css"
+  ".agents/current-scope.json",
+  "scripts/check-cleanup-gate.mjs",
+  "tests/test_cleanup_gate.mjs",
+  "tests/run_all_tests.mjs",
+  "package.json",
+  ".agents/agents/execution/agent.md",
+  ".agents/workflows/development/workflow.md",
+  "AGENTS.md",
+  "docs/ai-foundation.md",
+  ".agents/rules/verification-gates.md",
+  ".agents/os-registry.json"
 ]
