@@ -20,5 +20,6 @@
   ".agents/os-registry.json",
   "tests/test_step3_rectification.mjs",
   "tests/test_sec001_dashboard_auth_fix.mjs",
-  "tests/test_dashboard_snapshot.mjs"
+  "tests/test_dashboard_snapshot.mjs",
+  "tests/test_phase21_multiregion_verification.mjs"
 ]
