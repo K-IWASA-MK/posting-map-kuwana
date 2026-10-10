@@ -16,5 +16,6 @@
   "tests/test_multi_district_routing_auth.mjs",
   "tests/test_schema_provisioning_healing.mjs",
   "tests/test_dual_lifecycle_mode.mjs",
-  "tests/test_phase18_migration_verification.mjs"
+  "tests/test_phase18_migration_verification.mjs",
+  ".agents/os-registry.json"
 ]
