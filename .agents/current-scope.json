@@ -7,6 +7,7 @@
   "active/gas/v2_batch.js",
   "active/gas/v2_migration.js",
   "active/h-app/modules/api.js",
+  "active/api/v2_api.js",
   "docs/data/DATA_DICTIONARY.md",
   "docs/api/API_CONTRACT.md",
   "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
