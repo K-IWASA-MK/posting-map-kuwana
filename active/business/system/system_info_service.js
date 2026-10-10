@@ -604,6 +604,10 @@
         ];
 
         sheet.clear();
+        const activeKeyRange = sheet.getRange(14, 2);
+        if (typeof activeKeyRange.setNumberFormat === 'function') {
+          activeKeyRange.setNumberFormat('@');
+        }
         sheet.getRange(1, 1, values.length, 2).setValues(values);
         sheet.getRange('A1:B1').setBackground('#1e293b').setFontColor('#ffffff').setFontWeight('bold');
         sheet.getRange(`A2:A${values.length}`).setFontWeight('bold');

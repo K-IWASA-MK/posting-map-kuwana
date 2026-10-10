@@ -75,6 +75,16 @@ class MockRange {
     this.sheet.grid[rIdx][cIdx] = val;
     return this;
   }
+  setNumberFormat(fmt) {
+    if (this.sheet && typeof this.sheet.setFormat === 'function') {
+      for (let r = 0; r < this.numRows; r++) {
+        for (let c = 0; c < this.numCols; c++) {
+          this.sheet.setFormat(this.row - 1 + r, this.col - 1 + c, fmt);
+        }
+      }
+    }
+    return this;
+  }
   setValues(vals) {
     this.sheet.ss.mutationCount++;
     this.sheet.mutationCount++;
@@ -84,7 +94,15 @@ class MockRange {
       for (let c = 0; c < vals[r].length; c++) {
         const cIdx = this.col - 1 + c;
         while (this.sheet.grid[rIdx].length <= cIdx) this.sheet.grid[rIdx].push("");
-        this.sheet.grid[rIdx][cIdx] = vals[r][c];
+        let val = vals[r][c];
+        const fmt = typeof this.sheet.getFormat === 'function' ? this.sheet.getFormat(rIdx, cIdx) : "";
+        // Google Sheets date auto-coercion simulation:
+        // When number format is NOT plain text '@', writing a YYYY-MM string causes Sheets
+        // to parse it into a Date object or serial number.
+        if (fmt !== '@' && typeof val === 'string' && /^\d{4}-\d{2}$/.test(val)) {
+          val = new Date(`${val}-01T00:00:00Z`);
+        }
+        this.sheet.grid[rIdx][cIdx] = val;
       }
     }
     return this;
@@ -115,8 +133,22 @@ class MockSheet {
     this.ss = ss;
     this.name = name;
     this.grid = grid.map(row => [...row]);
+    this.formats = {};
     this.maxColumns = maxColumns;
     this.mutationCount = 0;
+  }
+  setFormat(rIdx, cIdx, fmt) {
+    this.formats[`${rIdx},${cIdx}`] = fmt;
+  }
+  getFormat(rIdx, cIdx) {
+    return this.formats[`${rIdx},${cIdx}`] || '';
+  }
+  clear() {
+    this.ss.mutationCount++;
+    this.mutationCount++;
+    this.grid = [];
+    this.formats = {};
+    return this;
   }
   getName() { return this.name; }
   getLastRow() {
@@ -1145,6 +1177,63 @@ runCase("Case 20: Existing H-App URL Authority (Preserve existing URL, no distri
   // SYSTEM_INFO 内の HアプリURL も更新されずに保持されていること
   const storedHAppUrl = sysService.getHAppUrl(sysSheet);
   assert.equal(storedHAppUrl, "https://example-election.example/");
+});
+
+// =============================================================================
+// TEST 21: Case 21: Active Dataset Key Plain-Text Write-Boundary Enforcement & Sheets Date Coercion Immunity
+// =============================================================================
+runCase("Case 21: Active Dataset Key Plain-Text Write-Boundary Enforcement & Sheets Date Coercion Immunity", () => {
+  const ss = new MockSpreadsheet("ss-date-coercion", "POSTING_MAP_KUWANA");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "KUWANA"],
+    ["運用モード", "ELECTION"],
+    ["HアプリURL", "https://kuwana.postingmap.jp/"],
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+  const sysService = context.SystemInfoService.getInstance();
+
+  // 1. syncSystemInfo による書き込み境界の検証 (writeSystemInfo 経由)
+  const syncRes = sysService.syncSystemInfo({
+    provisioningToken: "valid-test-token",
+    activeDatasetKey: "2026-10",
+    operationMode: "ELECTION"
+  }, "KUWANA");
+
+  assert.equal(syncRes.success, true, "syncSystemInfo must succeed");
+
+  // A. B14 (row 14, col 2 => rIdx 13, cIdx 1) の書式が setValues 前に '@' (Plain Text) に設定されていること
+  assert.equal(sysSheet.getFormat(13, 1), "@", "Cell B14 number format must be explicitly set to plain text '@'");
+
+  // B. セル内の永続化値が Date オブジェクトやシリアル値ではなく、厳格に string 型の '2026-10' であること
+  const rawStoredVal = sysSheet.grid[13][1];
+  assert.equal(typeof rawStoredVal, "string", "Raw persisted value must be a primitive string, not a Date object");
+  assert.equal(rawStoredVal, "2026-10", "Raw persisted value must strictly match '2026-10'");
+  assert.ok(!(rawStoredVal instanceof Date), "Raw persisted value must NOT be a Date instance");
+
+  // C. getActiveDatasetKey() による再読取値が '2026-10' であること
+  const reReadVal = sysService.getActiveDatasetKey(sysSheet);
+  assert.equal(reReadVal, "2026-10", "Re-read Active Dataset Key must be '2026-10'");
+
+  // D. MonthlySheetResolver が '配布実績2026-10' を正常解決すること (日付変換による文字化けが無いこと)
+  const resolvedDistSheet = context.MonthlySheetResolver.getInstance().resolveSheetNameForSs(ss, "distribution");
+  assert.equal(resolvedDistSheet, "配布実績2026-10", "MonthlySheetResolver must resolve exact sheet name '配布実績2026-10'");
+
+  // E. 他の SYSTEM_INFO セマンティクスが不変であること
+  assert.equal(sysService.getOperationMode(sysSheet), "ELECTION", "Operation mode must remain ELECTION");
+  assert.equal(sysService.getContractStatus(sysSheet).status, "ACTIVE", "Contract status must remain ACTIVE");
+  assert.equal(sysService.getHAppUrl(sysSheet), "https://kuwana.postingmap.jp/", "H-App URL must remain intact");
+
+  // F. 反例検証 (Counterexample): もし書式 '@' の設定なしで '2026-10' を setValues した場合、
+  // Sheets の date auto-coercion シミュレータにより Date に変換されてしまうことを実証
+  const unprotectedSheet = ss.addSheet("UNPROTECTED_SHEET");
+  unprotectedSheet.getRange(1, 1, 1, 1).setValues([["2026-10"]]);
+  const coercedVal = unprotectedSheet.grid[0][0];
+  assert.ok(coercedVal instanceof Date, "Without '@' format, Sheets date auto-coercion coerces '2026-10' to Date");
+  assert.notEqual(typeof coercedVal, "string", "Coerced value must not be primitive string");
 });
 
 console.log('\n================================================================');
