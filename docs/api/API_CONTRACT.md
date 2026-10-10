@@ -48,6 +48,7 @@
 25. [未確定事項 (Unconfirmed Items)](#25-未確定事項-unconfirmed-items)
 26. [現行実装との対比・GAP分析 (EXISTING / REQUIRED / GAP)](#26-現行実装との対比gap分析-existing--required--gap)
 27. [Production Smoke Test & Migration API Contracts (本番スモークテストおよびマイグレーションAPI契約)](#27-production-smoke-test--migration-api-contracts-本番スモークテストおよびマイグレーションapi契約)
+   - [27.3 地区Spreadsheet世代切替管理 API 契約 (switchDistrictSpreadsheet)](#273-地区spreadsheet世代切替管理-api-契約-switchdistrictspreadsheet)
 
 ---
 
@@ -959,6 +960,49 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
 - **関連規程・相互参照 (Canonical References)**:
   - アーキテクチャ受入基準・不変条件: [01_DESIGN_CONTRACT.md](../architecture/01_DESIGN_CONTRACT.md) §19
   - 本番切替・ロールバック運用SOP: [BACKUP_RESTORE_RUNBOOK.md](../operations/BACKUP_RESTORE_RUNBOOK.md) §5.2
+
+### 27.3 地区Spreadsheet世代切替管理 API 契約 (switchDistrictSpreadsheet)
+- **エンドポイント**: `POST /exec` (GET は `METHOD_NOT_ALLOWED` で即時遮断)
+- **アクション**: `action: "switchDistrictSpreadsheet"`
+- **認可**: `verifyProvisioningToken` によるトークン認証必須（欠損・不正時は `UNAUTHORIZED` で遮断、mutation 0）
+- **目的**: 既存登録済み地区におけるデータベース世代切替専用の安全管理Action。新DBへのCutover時に、`DISTRICT_REGISTRY[districtId].spreadsheetId` のみをアトミックに切り替える。
+- **入力契約 (Request Payload)**:
+  ```json
+  {
+    "action": "switchDistrictSpreadsheet",
+    "provisioningToken": "<SECRET_TOKEN>",
+    "districtId": "KUWANA",
+    "expectedCurrentSpreadsheetId": "1_OLD_SPREADSHEET_ID",
+    "targetSpreadsheetId": "1_NEW_SPREADSHEET_ID"
+  }
+  ```
+- **安全制約 & 絶対禁止事項 (Safety Constraints & Prohibitions)**:
+  1. **世代切替専用性**: 本Actionは既存地区のDB世代切替（`spreadsheetId` の `OLD_ID -> NEW_ID` 更新）専用であり、`bootstrapEnvironment` の代替として無関係な Script Properties（`STORAGE_PARENT_ID`, `PROVISIONING_TOKEN_HASH`, `TARGET_SPREADSHEET_ID`, `SPREADSHEET_ID` 等）を書き換えることは永久に禁止される。
+  2. **地区プロパティ境界維持**: 当該地区の `enabled`, `storageFolderId`, `name` 等の他メタデータ、および他地区の全設定は完全不変（deepEqual 一致）とする。
+  3. **Stale Write 防止 (楽観的排他ロック)**: `expectedCurrentSpreadsheetId` と現在の Registry 内 `spreadsheetId` が完全一致しない場合、`STALE_WRITE` として即時 Fail-Closed 遮断（mutation 0）。
+  4. **新DB実在 & 地区コード一致検証**: `SpreadsheetApp.openById(targetSpreadsheetId)` で実在を確認し、かつ新DBの `SYSTEM_INFO["地区コード"] === districtId` であることを書き込み前に検証（不在時は `RESOURCE_NOT_FOUND`、不一致時は `DISTRICT_MISMATCH` で Fail-Closed、mutation 0）。
+  5. **1回限りの永続化とRead-Back検証**: `DISTRICT_REGISTRY` への setProperty は1回のみ実行し、即座に read-back して新IDの一致を確認（不一致時は `REGISTRY_UPDATE_FAILED`）。
+  6. **キャッシュ即時無効化**: 反映直後に `SpreadsheetResolver.getInstance().clearCache()` を実行し、動的ルーティングを新DBへ即時同期させる。
+- **管理エラーコード一覧 (Failure Codes)**:
+  - `UNAUTHORIZED`: トークン欠損または検証失敗
+  - `INVALID_ARGUMENT`: 必須パラメータ（`districtId`, `expectedCurrentSpreadsheetId`, `targetSpreadsheetId`）の欠損
+  - `CORRUPTED_REGISTRY`: `DISTRICT_REGISTRY` 未設定、空文字、または JSON 破損
+  - `DISTRICT_NOT_FOUND`: 対象地区が `DISTRICT_REGISTRY` に未登録
+  - `STALE_WRITE`: 現在の `spreadsheetId !== expectedCurrentSpreadsheetId`（先行更新競合）
+  - `RESOURCE_NOT_FOUND`: `targetSpreadsheetId` のスプレッドシートが存在しない・アクセス不可
+  - `DISTRICT_MISMATCH`: 新DBの `SYSTEM_INFO` 地区コードが `districtId` と不一致
+  - `REGISTRY_UPDATE_FAILED`: setProperty 失敗または read-back 不一致
+  - `METHOD_NOT_ALLOWED`: GET メソッドによる呼出し
+- **レスポンス形式 (Response)**:
+  ```json
+  {
+    "success": true,
+    "districtId": "KUWANA",
+    "previousSpreadsheetId": "1_OLD_SPREADSHEET_ID",
+    "newSpreadsheetId": "1_NEW_SPREADSHEET_ID",
+    "message": "District \"KUWANA\" spreadsheet switched successfully to \"1_NEW_SPREADSHEET_ID\"."
+  }
+  ```
 
 ---
 **Gate 3 API設計書 策定完了**

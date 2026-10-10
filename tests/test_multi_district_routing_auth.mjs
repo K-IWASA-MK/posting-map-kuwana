@@ -2013,6 +2013,324 @@ runTest("Scenario 34: action=runIdentityMigration の districtId 伝播検証", 
   assert.equal(data.districtId, "KUWANA", "districtId must be propagated in report");
 });
 
+// -----------------------------------------------------------------------------
+// TEST 35: action=switchDistrictSpreadsheet の Fail-Closed / バリデーション検証
+// -----------------------------------------------------------------------------
+runTest("Scenario 35: action=switchDistrictSpreadsheet の Fail-Closed / バリデーション検証 (mutation 0)", () => {
+  const baseReg = {
+    "KUWANA": { spreadsheetId: "ss-kuwana-id", storageFolderId: "folder_kuwana_id", enabled: true, name: "桑名" },
+    "OKAYAMA": { spreadsheetId: "ss-okayama-id", storageFolderId: "folder_okayama_id", enabled: true, name: "岡山" }
+  };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(baseReg);
+  mockScriptProperties["STORAGE_PARENT_ID"] = "parent_folder_id";
+  mockScriptProperties["PROVISIONING_TOKEN_HASH"] = crypto.createHash('sha256').update(validToken).digest('hex');
+  SpreadsheetResolver.getInstance().clearCache();
+
+  const snapProps = JSON.stringify(mockScriptProperties);
+
+  // 1. Tokenなし → UNAUTHORIZED / mutation 0
+  const resNoToken = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-kuwana-id",
+        targetSpreadsheetId: "ss-new-kuwana-id"
+      })
+    }
+  });
+  const dataNoToken = JSON.parse(resNoToken.text);
+  assert.equal(dataNoToken.success, false);
+  assert.equal(dataNoToken.code, "UNAUTHORIZED");
+  assert.equal(JSON.stringify(mockScriptProperties), snapProps, "Props must have mutation 0 on UNAUTHORIZED");
+
+  // 2. 必須引数欠損 → INVALID_ARGUMENT / mutation 0
+  // 2a. districtId 欠損
+  const resMissingDist = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        expectedCurrentSpreadsheetId: "ss-kuwana-id",
+        targetSpreadsheetId: "ss-new-kuwana-id"
+      })
+    }
+  });
+  const dataMissingDist = JSON.parse(resMissingDist.text);
+  assert.equal(dataMissingDist.success, false);
+  assert.equal(dataMissingDist.code, "INVALID_ARGUMENT");
+
+  // 2b. expectedCurrentSpreadsheetId 欠損
+  const resMissingExpected = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        targetSpreadsheetId: "ss-new-kuwana-id"
+      })
+    }
+  });
+  const dataMissingExpected = JSON.parse(resMissingExpected.text);
+  assert.equal(dataMissingExpected.success, false);
+  assert.equal(dataMissingExpected.code, "INVALID_ARGUMENT");
+
+  // 2c. targetSpreadsheetId 欠損
+  const resMissingTarget = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-kuwana-id"
+      })
+    }
+  });
+  const dataMissingTarget = JSON.parse(resMissingTarget.text);
+  assert.equal(dataMissingTarget.success, false);
+  assert.equal(dataMissingTarget.code, "INVALID_ARGUMENT");
+  assert.equal(JSON.stringify(mockScriptProperties), snapProps, "Props must have mutation 0 on INVALID_ARGUMENT");
+
+  // 3. Registry空文字 → CORRUPTED_REGISTRY / mutation 0
+  mockScriptProperties["DISTRICT_REGISTRY"] = "";
+  const resEmptyReg = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-kuwana-id",
+        targetSpreadsheetId: "ss-new-kuwana-id"
+      })
+    }
+  });
+  const dataEmptyReg = JSON.parse(resEmptyReg.text);
+  assert.equal(dataEmptyReg.success, false);
+  assert.equal(dataEmptyReg.code, "CORRUPTED_REGISTRY");
+  assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], "", "Registry remains empty with mutation 0");
+
+  // 4. Registry破損JSON → CORRUPTED_REGISTRY / mutation 0
+  mockScriptProperties["DISTRICT_REGISTRY"] = "{ broken json !!";
+  const resBrokenJson = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-kuwana-id",
+        targetSpreadsheetId: "ss-new-kuwana-id"
+      })
+    }
+  });
+  const dataBrokenJson = JSON.parse(resBrokenJson.text);
+  assert.equal(dataBrokenJson.success, false);
+  assert.equal(dataBrokenJson.code, "CORRUPTED_REGISTRY");
+  assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], "{ broken json !!", "Registry remains intact with mutation 0");
+
+  // Registry復元
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(baseReg);
+
+  // 5. district不存在 → DISTRICT_NOT_FOUND / mutation 0
+  const resUnknownDist = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "UNKNOWN_DISTRICT",
+        expectedCurrentSpreadsheetId: "ss-kuwana-id",
+        targetSpreadsheetId: "ss-new-kuwana-id"
+      })
+    }
+  });
+  const dataUnknownDist = JSON.parse(resUnknownDist.text);
+  assert.equal(dataUnknownDist.success, false);
+  assert.equal(dataUnknownDist.code, "DISTRICT_NOT_FOUND");
+  assert.equal(JSON.stringify(mockScriptProperties), snapProps, "Props must have mutation 0 on DISTRICT_NOT_FOUND");
+
+  // 6. expectedCurrentSpreadsheetId不一致 → STALE_WRITE / mutation 0
+  const resStaleWrite = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-wrong-old-id",
+        targetSpreadsheetId: "ss-new-kuwana-id"
+      })
+    }
+  });
+  const dataStaleWrite = JSON.parse(resStaleWrite.text);
+  assert.equal(dataStaleWrite.success, false);
+  assert.equal(dataStaleWrite.code, "STALE_WRITE");
+  assert.equal(JSON.stringify(mockScriptProperties), snapProps, "Props must have mutation 0 on STALE_WRITE");
+
+  // 7. targetSpreadsheetId不存在 → RESOURCE_NOT_FOUND / mutation 0
+  const resNotFound = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-kuwana-id",
+        targetSpreadsheetId: "ss-nonexistent-target-id"
+      })
+    }
+  });
+  const dataNotFound = JSON.parse(resNotFound.text);
+  assert.equal(dataNotFound.success, false);
+  assert.equal(dataNotFound.code, "RESOURCE_NOT_FOUND");
+  assert.equal(JSON.stringify(mockScriptProperties), snapProps, "Props must have mutation 0 on RESOURCE_NOT_FOUND");
+
+  // 8. target SYSTEM_INFO地区コード不一致 → DISTRICT_MISMATCH / mutation 0
+  const ssMismatch = new MockSpreadsheet("ss-mismatch-kuwana-id", "POSTING_MAP_MISMATCH");
+  const sMismatchSys = ssMismatch.addSheet("SYSTEM_INFO");
+  sMismatchSys.rows = [
+    ["項目", "内容"],
+    ["地区コード", "WRONG_DISTRICT_CODE"]
+  ];
+  mockSpreadsheets["ss-mismatch-kuwana-id"] = ssMismatch;
+
+  const resMismatch = doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-kuwana-id",
+        targetSpreadsheetId: "ss-mismatch-kuwana-id"
+      })
+    }
+  });
+  const dataMismatch = JSON.parse(resMismatch.text);
+  assert.equal(dataMismatch.success, false);
+  assert.equal(dataMismatch.code, "DISTRICT_MISMATCH");
+  assert.equal(JSON.stringify(mockScriptProperties), snapProps, "Props must have mutation 0 on DISTRICT_MISMATCH");
+
+  // 13. GET switchDistrictSpreadsheet → METHOD_NOT_ALLOWED
+  const resGet = doGet({
+    parameter: {
+      action: "switchDistrictSpreadsheet",
+      provisioningToken: validToken,
+      districtId: "KUWANA"
+    }
+  });
+  const dataGet = JSON.parse(resGet.text);
+  assert.equal(dataGet.success, false);
+  assert.equal(dataGet.code, "METHOD_NOT_ALLOWED");
+  assert.equal(JSON.stringify(mockScriptProperties), snapProps, "Props must have mutation 0 on GET METHOD_NOT_ALLOWED");
+});
+
+// -----------------------------------------------------------------------------
+// TEST 36: action=switchDistrictSpreadsheet 正常切替と絶対境界保護
+// -----------------------------------------------------------------------------
+runTest("Scenario 36: action=switchDistrictSpreadsheet 正常切替と絶対境界保護 (KUWANA.spreadsheetIdのみ変更、他完全不変)", () => {
+  const initialRegistry = {
+    "KUWANA": {
+      spreadsheetId: "ss-kuwana-old-id",
+      storageFolderId: "folder_kuwana_id",
+      enabled: true,
+      name: "桑名地区"
+    },
+    "OKAYAMA": {
+      spreadsheetId: "ss-okayama-id",
+      storageFolderId: "folder_okayama_id",
+      enabled: true,
+      name: "岡山地区"
+    },
+    "DISABLED_DIST": {
+      spreadsheetId: "ss-disabled-id",
+      storageFolderId: "folder_disabled_id",
+      enabled: false,
+      name: "停止地区"
+    }
+  };
+
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(initialRegistry);
+  mockScriptProperties["STORAGE_PARENT_ID"] = "parent_folder_123";
+  mockScriptProperties["PROVISIONING_TOKEN_HASH"] = crypto.createHash('sha256').update(validToken).digest('hex');
+  mockScriptProperties["OTHER_SECRET_KEY"] = "untouchable_value";
+
+  const otherPropsBefore = {
+    STORAGE_PARENT_ID: mockScriptProperties["STORAGE_PARENT_ID"],
+    PROVISIONING_TOKEN_HASH: mockScriptProperties["PROVISIONING_TOKEN_HASH"],
+    OTHER_SECRET_KEY: mockScriptProperties["OTHER_SECRET_KEY"]
+  };
+
+  // 新スプレッドシート（新世代DB）を準備
+  const newKuwanaSS = new MockSpreadsheet("ss-kuwana-new-gen2-id", "POSTING_MAP_KUWANA_V2");
+  const newSysSheet = newKuwanaSS.addSheet("SYSTEM_INFO");
+  newSysSheet.rows = [
+    ["項目", "内容"],
+    ["地区コード", "KUWANA"],
+    ["地区名", "桑名地区"],
+    ["HアプリURL", "https://kuwana.postingmap.jp/"],
+    ["運用モード", "SUBSCRIPTION"],
+    ["契約終了日", "2026-12-31"]
+  ];
+  mockSpreadsheets["ss-kuwana-new-gen2-id"] = newKuwanaSS;
+
+  SpreadsheetResolver.getInstance().clearCache();
+
+  // 9. 正常切替実行
+  const switchReq = {
+    postData: {
+      contents: JSON.stringify({
+        action: "switchDistrictSpreadsheet",
+        provisioningToken: validToken,
+        districtId: "KUWANA",
+        expectedCurrentSpreadsheetId: "ss-kuwana-old-id",
+        targetSpreadsheetId: "ss-kuwana-new-gen2-id"
+      })
+    }
+  };
+
+  const res = doPost(switchReq);
+  const data = JSON.parse(res.text);
+
+  assert.equal(data.success, true, "switchDistrictSpreadsheet must succeed");
+  assert.equal(data.districtId, "KUWANA");
+  assert.equal(data.previousSpreadsheetId, "ss-kuwana-old-id");
+  assert.equal(data.newSpreadsheetId, "ss-kuwana-new-gen2-id");
+
+  // 変更後Registry取得
+  const updatedRegistry = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+
+  // 9. KUWANA.spreadsheetId だけ変更されていること
+  assert.equal(updatedRegistry["KUWANA"].spreadsheetId, "ss-kuwana-new-gen2-id");
+
+  // 10. KUWANA.enabled / storageFolderId / name 完全不変
+  assert.equal(updatedRegistry["KUWANA"].enabled, initialRegistry["KUWANA"].enabled);
+  assert.equal(updatedRegistry["KUWANA"].storageFolderId, initialRegistry["KUWANA"].storageFolderId);
+  assert.equal(updatedRegistry["KUWANA"].name, initialRegistry["KUWANA"].name);
+
+  // 11. 他地区（OKAYAMA, DISABLED_DIST）deepEqual 完全不変
+  assert.deepEqual(updatedRegistry["OKAYAMA"], initialRegistry["OKAYAMA"], "OKAYAMA must be completely unchanged");
+  assert.deepEqual(updatedRegistry["DISABLED_DIST"], initialRegistry["DISABLED_DIST"], "DISABLED_DIST must be completely unchanged");
+
+  // 12. STORAGE_PARENT_ID等、他Script Properties完全不変
+  assert.equal(mockScriptProperties["STORAGE_PARENT_ID"], otherPropsBefore.STORAGE_PARENT_ID);
+  assert.equal(mockScriptProperties["PROVISIONING_TOKEN_HASH"], otherPropsBefore.PROVISIONING_TOKEN_HASH);
+  assert.equal(mockScriptProperties["OTHER_SECRET_KEY"], otherPropsBefore.OTHER_SECRET_KEY);
+
+  // 機械検証: 変更前Registry全体と変更後Registry全体を比較し、差分がKUWANA.spreadsheetId 1箇所だけであることを検証
+  const diffKeys = [];
+  Object.keys(initialRegistry).forEach(distKey => {
+    const origEntry = initialRegistry[distKey];
+    const newEntry = updatedRegistry[distKey];
+    Object.keys(origEntry).forEach(prop => {
+      if (origEntry[prop] !== newEntry[prop]) {
+        diffKeys.push(`${distKey}.${prop}: ${origEntry[prop]} -> ${newEntry[prop]}`);
+      }
+    });
+  });
+  assert.equal(diffKeys.length, 1, `Exactly 1 property must differ in entire registry: ${JSON.stringify(diffKeys)}`);
+  assert.equal(diffKeys[0], "KUWANA.spreadsheetId: ss-kuwana-old-id -> ss-kuwana-new-gen2-id");
+
+  // Resolver cache clear の確認: getSpreadsheet("KUWANA") で新SSが返ること
+  const resolvedSS = SpreadsheetResolver.getInstance().getSpreadsheet("KUWANA");
+  assert.equal(resolvedSS.getId(), "ss-kuwana-new-gen2-id", "Resolver must resolve newly switched spreadsheet ID");
+});
+
 console.log('\n================================================================');
 console.log(`TEST SUMMARY: Total=${passCount + failCount}, PASS=${passCount}, FAIL=${failCount}`);
 console.log('================================================================\n');

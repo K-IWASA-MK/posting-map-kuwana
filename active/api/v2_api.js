@@ -194,6 +194,220 @@ function handleGetMapsApiKey(districtId, sessionToken) {
 }
 
 /**
+ * 既存地区のSpreadsheet世代切替専用ハンドラ (switchDistrictSpreadsheet)
+ * DISTRICT_REGISTRY[districtId].spreadsheetId のみを OLD_ID -> NEW_ID へ安全に切り替える。
+ * 他Property (enabled, storageFolderId, name 等) および他Script Properties は完全不変。
+ */
+function handleSwitchDistrictSpreadsheet(postData, params) {
+  // 1. Provisioning Token検証
+  const token = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)))
+             || (params && (params.provisioningToken || (params.options && params.options.provisioningToken)));
+  const tokenCheck = verifyProvisioningToken(token);
+  if (!tokenCheck.success) {
+    return tokenCheck;
+  }
+
+  // 2. districtId / expectedCurrentSpreadsheetId / targetSpreadsheetId 必須検証
+  const targetDistrictId = String((postData && postData.districtId) || (params && params.districtId) || "").trim();
+  const expectedCurrentId = String((postData && postData.expectedCurrentSpreadsheetId) || (params && params.expectedCurrentSpreadsheetId) || "").trim();
+  const targetNewId = String((postData && postData.targetSpreadsheetId) || (params && params.targetSpreadsheetId) || "").trim();
+
+  if (!targetDistrictId || !expectedCurrentId || !targetNewId) {
+    return {
+      success: false,
+      code: "INVALID_ARGUMENT",
+      message: "districtId, expectedCurrentSpreadsheetId, and targetSpreadsheetId are all required."
+    };
+  }
+
+  // 3. DISTRICT_REGISTRY取得
+  const props = (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties)
+    ? PropertiesService.getScriptProperties()
+    : null;
+  const regRaw = props ? props.getProperty("DISTRICT_REGISTRY") : null;
+
+  // 4. 未設定・空文字・JSON破損 → Fail-Closed、mutation 0
+  if (!regRaw || typeof regRaw !== 'string' || !regRaw.trim()) {
+    return {
+      success: false,
+      code: "CORRUPTED_REGISTRY",
+      message: "DISTRICT_REGISTRY is not configured or empty."
+    };
+  }
+
+  let registry;
+  try {
+    registry = JSON.parse(regRaw);
+    if (!registry || typeof registry !== 'object' || Array.isArray(registry)) {
+      return {
+        success: false,
+        code: "CORRUPTED_REGISTRY",
+        message: "DISTRICT_REGISTRY is not a valid JSON object."
+      };
+    }
+  } catch (e) {
+    return {
+      success: false,
+      code: "CORRUPTED_REGISTRY",
+      message: "Failed to parse DISTRICT_REGISTRY JSON: " + e.message
+    };
+  }
+
+  // 5. 対象地区が存在しない → Fail-Closed
+  const districtKey = Object.keys(registry).find(k => k.trim().toUpperCase() === targetDistrictId.toUpperCase());
+  if (!districtKey || !registry[districtKey]) {
+    return {
+      success: false,
+      code: "DISTRICT_NOT_FOUND",
+      message: `District "${targetDistrictId}" not found in DISTRICT_REGISTRY.`
+    };
+  }
+
+  const districtEntry = registry[districtKey];
+  const currentSpreadsheetId = String(
+    (typeof districtEntry === 'object' && districtEntry !== null)
+      ? districtEntry.spreadsheetId
+      : districtEntry
+  ).trim();
+
+  // 6. 現在のspreadsheetId !== expectedCurrentSpreadsheetId → STALE_WRITEとしてFail-Closed、mutation 0
+  if (currentSpreadsheetId !== expectedCurrentId) {
+    return {
+      success: false,
+      code: "STALE_WRITE",
+      message: `Current spreadsheetId "${currentSpreadsheetId}" does not match expected "${expectedCurrentId}". Stale write prevented.`
+    };
+  }
+
+  // 7. SpreadsheetApp.openById(targetSpreadsheetId) で新DB実在確認
+  let newSS;
+  try {
+    if (typeof SpreadsheetApp === 'undefined' || !SpreadsheetApp.openById) {
+      throw new Error("SpreadsheetApp.openById unavailable");
+    }
+    newSS = SpreadsheetApp.openById(targetNewId);
+    if (!newSS) {
+      return {
+        success: false,
+        code: "RESOURCE_NOT_FOUND",
+        message: `Target spreadsheet "${targetNewId}" could not be opened.`
+      };
+    }
+  } catch (eSS) {
+    return {
+      success: false,
+      code: "RESOURCE_NOT_FOUND",
+      message: `Target spreadsheet "${targetNewId}" does not exist or cannot be accessed: ${eSS.message}`
+    };
+  }
+
+  // 8. 新DBの SYSTEM_INFO["地区コード"] === districtId を直接検証
+  try {
+    const sysSheet = newSS.getSheetByName("SYSTEM_INFO");
+    if (!sysSheet) {
+      return {
+        success: false,
+        code: "DISTRICT_MISMATCH",
+        message: `Target spreadsheet "${targetNewId}" lacks SYSTEM_INFO sheet.`
+      };
+    }
+    const lr = sysSheet.getLastRow ? sysSheet.getLastRow() : 0;
+    if (lr < 2) {
+      return {
+        success: false,
+        code: "DISTRICT_MISMATCH",
+        message: `SYSTEM_INFO in target spreadsheet "${targetNewId}" has no data rows.`
+      };
+    }
+    let foundCode = "";
+    const data = sysSheet.getRange(1, 1, lr, 2).getValues();
+    for (let r = 0; r < data.length; r++) {
+      if (String(data[r][0] || '').trim() === "地区コード") {
+        foundCode = String(data[r][1] || '').trim().toUpperCase();
+        break;
+      }
+    }
+    if (!foundCode || foundCode !== targetDistrictId.toUpperCase()) {
+      return {
+        success: false,
+        code: "DISTRICT_MISMATCH",
+        message: `Target spreadsheet SYSTEM_INFO district code "${foundCode}" does not match "${targetDistrictId}".`
+      };
+    }
+  } catch (eSys) {
+    return {
+      success: false,
+      code: "DISTRICT_MISMATCH",
+      message: `Failed to verify target spreadsheet SYSTEM_INFO: ${eSys.message}`
+    };
+  }
+
+  // 9. Registryを deep copy
+  const newRegistry = JSON.parse(JSON.stringify(registry));
+
+  // 10. 対象地区の spreadsheetId だけ変更
+  if (typeof newRegistry[districtKey] === 'object' && newRegistry[districtKey] !== null) {
+    newRegistry[districtKey].spreadsheetId = targetNewId;
+  } else {
+    newRegistry[districtKey] = targetNewId;
+  }
+
+  // 11. props.setProperty("DISTRICT_REGISTRY", JSON.stringify(newRegistry)) を1回だけ実行
+  try {
+    props.setProperty("DISTRICT_REGISTRY", JSON.stringify(newRegistry));
+  } catch (eSet) {
+    return {
+      success: false,
+      code: "REGISTRY_UPDATE_FAILED",
+      message: "Failed to persist updated DISTRICT_REGISTRY: " + eSet.message
+    };
+  }
+
+  // 12. READ BACK して新ID一致を検証
+  try {
+    const readBackRaw = props.getProperty("DISTRICT_REGISTRY");
+    const readBackRegistry = JSON.parse(readBackRaw);
+    const readBackEntry = readBackRegistry[districtKey];
+    const readBackId = String(
+      (typeof readBackEntry === 'object' && readBackEntry !== null)
+        ? readBackEntry.spreadsheetId
+        : readBackEntry
+    ).trim();
+    if (readBackId !== targetNewId) {
+      return {
+        success: false,
+        code: "REGISTRY_UPDATE_FAILED",
+        message: `Read-back verification failed: expected "${targetNewId}", got "${readBackId}".`
+      };
+    }
+  } catch (eRb) {
+    return {
+      success: false,
+      code: "REGISTRY_UPDATE_FAILED",
+      message: "Read-back verification error: " + eRb.message
+    };
+  }
+
+  // 13. Resolver cache を clear
+  try {
+    if (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance) {
+      SpreadsheetResolver.getInstance().clearCache();
+    }
+  } catch (eCache) {
+    console.warn("[switchDistrictSpreadsheet] Resolver clearCache warning:", eCache);
+  }
+
+  // 14. 成功結果を返す
+  return {
+    success: true,
+    districtId: targetDistrictId,
+    previousSpreadsheetId: currentSpreadsheetId,
+    newSpreadsheetId: targetNewId,
+    message: `District "${targetDistrictId}" spreadsheet switched successfully to "${targetNewId}".`
+  };
+}
+
+/**
  * GETリクエスト：JSONデータの取得
  */
 function doGet(e) {
@@ -221,7 +435,7 @@ function doGet(e) {
 
   const action = params.action || "";
 
-  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration') {
+  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration' || action === 'switchDistrictSpreadsheet') {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       code: "METHOD_NOT_ALLOWED",
@@ -276,6 +490,12 @@ function doGet(e) {
       success: false,
       code: "METHOD_NOT_ALLOWED",
       message: "provisionDistrict requires POST request."
+    })).setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'switchDistrictSpreadsheet') {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      code: "METHOD_NOT_ALLOWED",
+      message: "switchDistrictSpreadsheet requires POST request."
     })).setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getDeviceStatus') {
     return ContentService.createTextOutput(JSON.stringify({ success: true, exists: false, rows: [] }))
@@ -574,7 +794,8 @@ function doPost(e) {
     'resetDeviceManagement',
     'getDeviceStatus',
     'issueMobilePairingToken',
-    'pairMobileDevice'
+    'pairMobileDevice',
+    'switchDistrictSpreadsheet'
   ].includes(action);
 
   if (!isManagementAction) {
@@ -946,6 +1167,10 @@ function doPost(e) {
     } else {
       result = { success: false, message: 'migrateIdentityColumns not available' };
     }
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'switchDistrictSpreadsheet') {
+    const result = handleSwitchDistrictSpreadsheet(postData, params);
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getMapsApiKey') {
@@ -1453,6 +1678,8 @@ function processPostAction(action, postData, e, districtId = "") {
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance
         ? SystemInfoService.getInstance().syncSystemInfo(postData && postData.options, sDistId)
         : { success: false, message: 'SystemInfoService not available' };
+    case 'switchDistrictSpreadsheet':
+      return handleSwitchDistrictSpreadsheet(postData, e && e.parameter);
     case 'verifyManagerPassword':
       const postPwd = (postData && postData.password) || (e && e.parameter ? e.parameter.password : "");
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance
