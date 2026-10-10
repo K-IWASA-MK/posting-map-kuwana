@@ -143,16 +143,12 @@
           currentMonthStr = jst.toISOString().slice(0, 7);
         }
 
-        // Active Dataset Key: caller指定があれば尊重、未指定時はProvisioning開始時の単一JST timestampから自動生成
-        const activeDatasetKey = (options && options.activeDatasetKey)
-          ? String(options.activeDatasetKey).trim()
-          : currentMonthStr;
+        // Active Dataset Key / 契約開始日時: 単一 provisioningNow から一意に確定（caller options による上書き禁止）
+        const activeDatasetKey = currentMonthStr;
 
         options.operationMode = operationMode;
         options.activeDatasetKey = activeDatasetKey;
-        if (!options.contractStartDate) {
-          options.contractStartDate = jstIso;
-        }
+        options.contractStartDate = jstIso;
 
         // 1. 実運用5シートを直接生成 (All-or-Nothing)
         const datasetResult = this.createOperationalDataset(ss, activeDatasetKey, addresses);

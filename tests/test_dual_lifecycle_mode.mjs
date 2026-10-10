@@ -245,15 +245,19 @@ function createSandbox(initialSS) {
     },
     Utilities: {
       formatDate(d, tz, fmt) {
-        const yr = d.getFullYear();
-        const mo = String(d.getMonth() + 1).padStart(2, '0');
-        const dy = String(d.getDate()).padStart(2, '0');
+        const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+        const yr = jst.getUTCFullYear();
+        const mo = String(jst.getUTCMonth() + 1).padStart(2, '0');
+        const dy = String(jst.getUTCDate()).padStart(2, '0');
+        const h  = String(jst.getUTCHours()).padStart(2, '0');
+        const m  = String(jst.getUTCMinutes()).padStart(2, '0');
+        const s  = String(jst.getUTCSeconds()).padStart(2, '0');
+
         if (fmt === "yyyy-MM") return `${yr}-${mo}`;
         if (fmt === "yyyy-MM-dd") return `${yr}-${mo}-${dy}`;
+        if (fmt === "yyyy-MM-dd HH:mm:ss") return `${yr}-${mo}-${dy} ${h}:${m}:${s}`;
+        if (fmt === "yyyy/MM/dd HH:mm:ss") return `${yr}/${mo}/${dy} ${h}:${m}:${s}`;
         if (fmt && fmt.includes('HH:mm:ss')) {
-          const h = String(d.getHours()).padStart(2, '0');
-          const m = String(d.getMinutes()).padStart(2, '0');
-          const s = String(d.getSeconds()).padStart(2, '0');
           return `${yr}/${mo}/${dy} ${h}:${m}:${s}`;
         }
         return `${yr}-${mo}-${dy}`;
@@ -344,13 +348,14 @@ runCase("ELECTION Mode Initial Provisioning (Zero master sheets, direct 5 sheets
     { rowId: 2, cityName: "桑名市", townName: "大山田2丁目" }
   ];
 
+  const testFixedDate = new Date("2026-10-10T12:00:00+09:00");
+
   const res = context.DistrictProvisioner.getInstance().provisionNewDistrict(
     sampleAddrs,
     {
       provisioningToken: "valid-test-token",
       operationMode: "ELECTION",
-      activeDatasetKey: "2026-10",
-      contractStartDate: "2026-10-10 12:00:00",
+      provisioningNow: testFixedDate,
       contractEndDate: "2026-12-31"
     },
     "KUWANA"
@@ -972,6 +977,64 @@ runCase("Counterexample 9: Active Dataset Key & contractStartDate Derived from S
 
   assert.equal(storedActiveKey, "2026-11");
   assert.ok(storedStartDate.replace(/\//g, '-').startsWith("2026-11-20"), `contractStartDate (${storedStartDate}) must start with 2026-11-20`);
+});
+
+// =============================================================================
+// TEST 17: 反例10 - caller による activeDatasetKey / contractStartDate 上書きの完全無視
+// =============================================================================
+runCase("Counterexample 10: Caller override of activeDatasetKey & contractStartDate is strictly ignored", () => {
+  const ss = new MockSpreadsheet("ss-prov-override", "POSTING_MAP_PROV_OVERRIDE");
+  const { context } = createSandbox(ss);
+
+  const sampleAddrs = [
+    { rowId: 1, cityName: "桑名市", townName: "大山田1丁目" }
+  ];
+
+  const testFixedDate = new Date("2026-10-10T10:00:00+09:00");
+
+  const res = context.DistrictProvisioner.getInstance().provisionNewDistrict(
+    sampleAddrs,
+    {
+      provisioningToken: "valid-test-token",
+      operationMode: "ELECTION",
+      // caller が意図的・誤って override 値を注入
+      activeDatasetKey: "2099-12",
+      contractStartDate: "2099-12-31 23:59:59",
+      provisioningNow: testFixedDate
+    },
+    "PROV_OVERRIDE"
+  );
+
+  assert.equal(res.success, true);
+  assert.equal(res.operationMode, "ELECTION");
+  assert.equal(res.activeDatasetKey, "2026-10", "result.activeDatasetKey must be 2026-10 derived from provisioningNow");
+
+  // SYSTEM_INFO 内の SSOT を検証
+  const sysSheet = ss.getSheetByName("SYSTEM_INFO");
+  assert.ok(sysSheet, "SYSTEM_INFO must exist");
+
+  const sysService = context.SystemInfoService.getInstance();
+  const storedActiveKey = sysService.getActiveDatasetKey(sysSheet);
+  const storedStartDate = sysService.getContractStartDate(sysSheet);
+
+  assert.equal(storedActiveKey, "2026-10", "SYSTEM_INFO Active Dataset Key must be 2026-10");
+  assert.equal(storedStartDate, "2026-10-10 10:00:00", "SYSTEM_INFO 契約開始日時 must be 2026-10-10 10:00:00");
+
+  // caller override 値がどこにも採用されていないことの厳格検証
+  // 1. "2099-12" が生成シート名に使われていないこと
+  const allSheetNames = Object.keys(ss.sheets);
+  allSheetNames.forEach(sheetName => {
+    assert.ok(!sheetName.includes("2099-12"), `Sheet name "${sheetName}" must NOT contain caller override "2099-12"`);
+  });
+
+  // 2. "2099-12-31 23:59:59" が SYSTEM_INFO に保存されていないこと
+  const sysInfoRows = sysSheet.grid;
+  sysInfoRows.forEach(row => {
+    row.forEach(cellVal => {
+      assert.notEqual(String(cellVal).trim(), "2099-12-31 23:59:59", "SYSTEM_INFO must NOT contain caller override contractStartDate");
+      assert.notEqual(String(cellVal).trim(), "2099-12", "SYSTEM_INFO must NOT contain caller override activeDatasetKey");
+    });
+  });
 });
 
 console.log('\n================================================================');
