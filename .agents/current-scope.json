@@ -17,5 +17,8 @@
   "tests/test_schema_provisioning_healing.mjs",
   "tests/test_dual_lifecycle_mode.mjs",
   "tests/test_phase18_migration_verification.mjs",
-  ".agents/os-registry.json"
+  ".agents/os-registry.json",
+  "tests/test_step3_rectification.mjs",
+  "tests/test_sec001_dashboard_auth_fix.mjs",
+  "tests/test_dashboard_snapshot.mjs"
 ]
