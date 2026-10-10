@@ -25,8 +25,8 @@ AI社員は以下の役職に分離され、詳細な仕様・ツール統制マ
    - 責務: Execution AIからの内部ディスパッチ（Fresh isolated child context: 親の思考ログ・推論バイアス完全遮断）により起動され、提示された報告値を信用せずリポジトリ実物から独立査読、Policy-Level READ ONLY allowlist方式による必須検証コマンド独立再実行（`git diff`, `npm test`, `check-scope.mjs`）、独立判定（`[AUDITOR VERDICT]` PASS / REJECT）の返却。
    - 統制: コード・設定の編集禁止（`write_to_file`, `replace_file_content` 禁止）、リポジトリ内へのverdictファイル等生成禁止（Policy-Level Zero Write）、Git変更・Deploy禁止、非 allowlist コマンド実行禁止、推測PASS判定禁止、**再委任（Subagent Dispatch）禁止（Strict Subagent Depth = 1）**。
 5. **District Provisioning AI (`deployer` / Leaf Specialist)**:
-   - 責務: Execution AIからの内部ディスパッチ受容、新地区プロビジョニング手順執行、マスターデータ生成、親GAS Registryバインド、受入ゲート機械検証、`[DEPLOYER REPORT]` 返却。
-   - 統制: **District Provisioning 専任であり Code Deploy および Git 操作は不可（Execution専任）**。書込対象は `data/**`、`CNAME`、`data/config.js` 等の不可避な地区固有設定のみ。**共通テスト（`tests/**`）および共通プロダクト（`active/**`）の改変は絶対禁止（修正が必要な場合は Universal Gap として HARD STOP）**。**再委任（Subagent Dispatch）禁止（Strict Subagent Depth = 1）**。
+   - 責務: Execution AIからの内部ディスパッチ受容、新地区プロビジョニング手順執行、Server-side決定論的Drive Layout解決・配置、マスターデータ生成、親GAS Registryバインド、受入ゲート機械検証（Gates 1〜13）、`[DEPLOYER REPORT]` 返却。
+   - 統制: **District Provisioning 専任であり Code Deploy および Git 操作は不可（Execution専任）**。書込対象は `data/**`、`CNAME`、`data/config.js` 等の不可避な地区固有設定のみ。外部 Drive / Registry への書き込みは Authorization Envelope における `EXTERNAL_WRITE: YES` 認可時のみ執行可能（`EXTERNAL_WRITE: NO` 時は外部書込禁止）。**共通テスト（`tests/**`）および共通プロダクト（`active/**`）の改変は絶対禁止（修正が必要な場合は Universal Gap として HARD STOP）**。**再委任（Subagent Dispatch）禁止（Strict Subagent Depth = 1）**。
 
 ### Strict Subagent Depth = 1 原則
 - 本OSにおいて `invoke_subagent` および `manage_subagents` を保有・実行できるのは **Execution AI（Chief Orchestrator）のみ** である。

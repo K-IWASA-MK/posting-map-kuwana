@@ -250,6 +250,8 @@ function createMockDriveFolderObj(id, name = "") {
     name: name,
     files: [],
     subFolders: {},
+    getId() { return this.id; },
+    getName() { return this.name; },
     createFile(blob) {
       const file = {
         id: `file_${id}_${this.files.length + 1}`,
@@ -285,6 +287,18 @@ function createMockDriveFolderObj(id, name = "") {
         }
       };
     },
+    getFilesByName(fileName) {
+      const matched = folder.files.filter(f => {
+        const isTr = typeof f.isTrashed === 'function' ? f.isTrashed() : f.trashed;
+        const fName = typeof f.getName === 'function' ? f.getName() : f.name;
+        return !isTr && fName === fileName;
+      });
+      let idx = 0;
+      return {
+        hasNext() { return idx < matched.length; },
+        next() { return matched[idx++]; }
+      };
+    },
     getFoldersByName(subName) {
       const sub = this.subFolders[subName];
       let yielded = false;
@@ -296,6 +310,7 @@ function createMockDriveFolderObj(id, name = "") {
     createFolder(subName) {
       const sub = createMockDriveFolderObj(`${id}_${subName}`, subName);
       this.subFolders[subName] = sub;
+      mockDriveFolders[sub.id] = sub;
       return sub;
     }
   };
@@ -809,78 +824,142 @@ runTest("Scenario 12: bootstrapEnvironment による既存地区の保護と新�
   };
   mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(initialReg);
   mockScriptProperties["TARGET_SPREADSHEET_ID"] = "legacy-ss-id";
+  mockScriptProperties["BRANCH_ROOT_FOLDER_ID"] = "branch-root-folder-id";
   const validToken = "super-secret-provisioning-token-123456";
   mockScriptProperties["PROVISIONING_TOKEN_HASH"] = crypto.createHash('sha256').update(validToken).digest('hex');
   SpreadsheetResolver.getInstance().clearCache();
 
-  // 新規地区スプレッドシートのモック（名前は districtId と完全一致）
-  const ssNewB = new MockSpreadsheet("ss-b-id", "NEW_DISTRICT_B");
-  mockSpreadsheets["ss-b-id"] = ssNewB;
+  try {
+    // 03_BRANCH 階層モックの準備
+    const rootBranch = createMockDriveFolderObj("branch-root-folder-id", "03_BRANCH");
+    mockDriveFolders["branch-root-folder-id"] = rootBranch;
+    const distFolderB = rootBranch.createFolder("NEW_DISTRICT_B");
+    const storageFolderB = distFolderB.createFolder("NEW_DISTRICT_B 支部_STORAGE");
+    const ssFileB = {
+      getId: () => "ss-b-id",
+      getName: () => "POSTING_MAP_DB_NEW_DISTRICT_B",
+      getMimeType: () => "application/vnd.google-apps.spreadsheet",
+      isTrashed: () => false
+    };
+    distFolderB.files.push(ssFileB);
 
-  const req = {
-    postData: {
-      contents: JSON.stringify({
-        action: "bootstrapEnvironment",
-        districtId: "NEW_DISTRICT_B",
-        targetSpreadsheetId: "ss-b-id",
-        storageParentId: "folder-b-id",
-        provisioningToken: validToken
-      })
-    }
-  };
+    // 新規地区スプレッドシートのモック（名前は Canonical DB Name: POSTING_MAP_DB_NEW_DISTRICT_B）
+    const ssNewB = new MockSpreadsheet("ss-b-id", "POSTING_MAP_DB_NEW_DISTRICT_B");
+    mockSpreadsheets["ss-b-id"] = ssNewB;
 
-  const res = doPost(req);
-  const data = JSON.parse(res.text);
-  assert.equal(data.success, true);
-  assert.equal(data.districtRegistryUpdated, true);
+    // 1. 正常系: districtId のみ（Caller 指定なしでサーバー側解決）
+    const reqMinimal = {
+      postData: {
+        contents: JSON.stringify({
+          action: "bootstrapEnvironment",
+          districtId: "NEW_DISTRICT_B",
+          provisioningToken: validToken
+        })
+      }
+    };
+    const resMin = doPost(reqMinimal);
+    const dataMin = JSON.parse(resMin.text);
+    assert.equal(dataMin.success, true, "bootstrapEnvironment must succeed with districtId only: " + resMin.text);
+    assert.equal(dataMin.targetSpreadsheetId, "ss-b-id");
+    assert.equal(dataMin.storageParentId, storageFolderB.id);
+    assert.equal(dataMin.districtRegistryUpdated, true);
 
-  const updatedReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
-  assert.ok(updatedReg["EXISTING_A"], "EXISTING_A must be preserved");
-  assert.equal(updatedReg["EXISTING_A"].spreadsheetId, "ss-a-id");
-  assert.ok(updatedReg["NEW_DISTRICT_B"], "NEW_DISTRICT_B must be added");
-  assert.equal(updatedReg["NEW_DISTRICT_B"].spreadsheetId, "ss-b-id");
-  assert.equal(updatedReg["NEW_DISTRICT_B"].enabled, false, "New district must be registered as enabled: false (pre-acceptance)");
+    // 2. 正常系: 一致する Legacy 引数（Assertion 通過）
+    const reqAssertionOk = {
+      postData: {
+        contents: JSON.stringify({
+          action: "bootstrapEnvironment",
+          districtId: "NEW_DISTRICT_B",
+          targetSpreadsheetId: "ss-b-id",
+          storageParentId: storageFolderB.id,
+          provisioningToken: validToken
+        })
+      }
+    };
+    const resAssertOk = doPost(reqAssertionOk);
+    const dataAssertOk = JSON.parse(resAssertOk.text);
+    assert.equal(dataAssertOk.success, true, "bootstrapEnvironment must pass when legacy args match canonical values");
 
-  // TARGET_SPREADSHEET_ID が上書きされていないこと（既存値保護）
-  assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id");
+    // 3. 異常系: 不一致な targetSpreadsheetId ➔ SPREADSHEET_ID_MISMATCH
+    const reqBadSs = {
+      postData: {
+        contents: JSON.stringify({
+          action: "bootstrapEnvironment",
+          districtId: "NEW_DISTRICT_B",
+          targetSpreadsheetId: "wrong-ss-id",
+          provisioningToken: validToken
+        })
+      }
+    };
+    const resBadSs = doPost(reqBadSs);
+    const dataBadSs = JSON.parse(resBadSs.text);
+    assert.equal(dataBadSs.success, false);
+    assert.equal(dataBadSs.code, "SPREADSHEET_ID_MISMATCH");
 
-  // 破損Registry下でのbootstrapEnvironment実行 ➔ Fail-Closed (mutation 0)
-  mockScriptProperties["DISTRICT_REGISTRY"] = "{invalid_json";
-  const corruptReq = {
-    postData: {
-      contents: JSON.stringify({
-        action: "bootstrapEnvironment",
-        districtId: "NEW_DISTRICT_B",
-        targetSpreadsheetId: "ss-b-id",
-        storageParentId: "folder-b-id",
-        provisioningToken: validToken
-      })
-    }
-  };
-  const corruptRes = doPost(corruptReq);
-  const corruptData = JSON.parse(corruptRes.text);
-  assert.equal(corruptData.success, false, "bootstrapEnvironment must fail on corrupted registry");
-  assert.equal(corruptData.code, "CORRUPTED_REGISTRY");
-  assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], "{invalid_json", "DISTRICT_REGISTRY must not be mutated on failure");
-  assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id", "TARGET_SPREADSHEET_ID must not be mutated on failure");
+    // 4. 異常系: 不一致な storageParentId ➔ STORAGE_FOLDER_MISMATCH
+    const reqBadStorage = {
+      postData: {
+        contents: JSON.stringify({
+          action: "bootstrapEnvironment",
+          districtId: "NEW_DISTRICT_B",
+          storageParentId: "wrong-storage-id",
+          provisioningToken: validToken
+        })
+      }
+    };
+    const resBadStorage = doPost(reqBadStorage);
+    const dataBadStorage = JSON.parse(resBadStorage.text);
+    assert.equal(dataBadStorage.success, false);
+    assert.equal(dataBadStorage.code, "STORAGE_FOLDER_MISMATCH");
 
-  // 空文字Registry下でのbootstrapEnvironment実行 ➔ Fail-Closed (mutation 0)
-  mockScriptProperties["DISTRICT_REGISTRY"] = "   ";
-  const emptyRes = doPost(corruptReq);
-  const emptyData = JSON.parse(emptyRes.text);
-  assert.equal(emptyData.success, false, "bootstrapEnvironment must fail on empty/whitespace registry");
-  assert.equal(emptyData.code, "CORRUPTED_REGISTRY");
-  assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], "   ", "DISTRICT_REGISTRY must not be mutated on empty registry failure");
-  assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id", "TARGET_SPREADSHEET_ID must not be mutated on empty registry failure");
+    const updatedReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+    assert.ok(updatedReg["EXISTING_A"], "EXISTING_A must be preserved");
+    assert.equal(updatedReg["EXISTING_A"].spreadsheetId, "ss-a-id");
+    assert.ok(updatedReg["NEW_DISTRICT_B"], "NEW_DISTRICT_B must be added");
+    assert.equal(updatedReg["NEW_DISTRICT_B"].spreadsheetId, "ss-b-id");
+    assert.equal(updatedReg["NEW_DISTRICT_B"].enabled, false, "New district must be registered as enabled: false (pre-acceptance)");
 
-  // 後続シナリオ（Scenario 13〜15）のために DISTRICT_REGISTRY に KUWANA, OKAYAMA, NEW_DISTRICT_B を復元設定
-  const fullReg = {
-    "KUWANA": "ss-kuwana-id",
-    "OKAYAMA": "ss-okayama-id",
-    "NEW_DISTRICT_B": { spreadsheetId: "ss-b-id", enabled: true }
-  };
-  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(fullReg);
-  SpreadsheetResolver.getInstance().clearCache();
+    // TARGET_SPREADSHEET_ID が上書きされていないこと（既存値保護）
+    assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id");
+
+    // 破損Registry下でのbootstrapEnvironment実行 ➔ Fail-Closed (mutation 0)
+    mockScriptProperties["DISTRICT_REGISTRY"] = "{invalid_json";
+    const corruptReq = {
+      postData: {
+        contents: JSON.stringify({
+          action: "bootstrapEnvironment",
+          districtId: "NEW_DISTRICT_B",
+          targetSpreadsheetId: "ss-b-id",
+          storageParentId: storageFolderB.id,
+          provisioningToken: validToken
+        })
+      }
+    };
+    const corruptRes = doPost(corruptReq);
+    const corruptData = JSON.parse(corruptRes.text);
+    assert.equal(corruptData.success, false, "bootstrapEnvironment must fail on corrupted registry");
+    assert.equal(corruptData.code, "CORRUPTED_REGISTRY");
+    assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], "{invalid_json", "DISTRICT_REGISTRY must not be mutated on failure");
+    assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id", "TARGET_SPREADSHEET_ID must not be mutated on failure");
+
+    // 空文字Registry下でのbootstrapEnvironment実行 ➔ Fail-Closed (mutation 0)
+    mockScriptProperties["DISTRICT_REGISTRY"] = "   ";
+    const emptyRes = doPost(corruptReq);
+    const emptyData = JSON.parse(emptyRes.text);
+    assert.equal(emptyData.success, false, "bootstrapEnvironment must fail on empty/whitespace registry");
+    assert.equal(emptyData.code, "CORRUPTED_REGISTRY");
+    assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], "   ", "DISTRICT_REGISTRY must not be mutated on empty registry failure");
+    assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], "legacy-ss-id", "TARGET_SPREADSHEET_ID must not be mutated on empty registry failure");
+  } finally {
+    // 後続シナリオ（Scenario 13〜36）のために DISTRICT_REGISTRY に KUWANA, OKAYAMA, NEW_DISTRICT_B を復元設定
+    const fullReg = {
+      "KUWANA": "ss-kuwana-id",
+      "OKAYAMA": "ss-okayama-id",
+      "NEW_DISTRICT_B": { spreadsheetId: "ss-b-id", enabled: true }
+    };
+    mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(fullReg);
+    SpreadsheetResolver.getInstance().clearCache();
+  }
 });
 
 // -----------------------------------------------------------------------------
@@ -921,6 +1000,7 @@ runTest("Scenario 14: Contract Cache (MISS ➔ HIT ➔ Invalidation サイクル
 
   // NEW_DISTRICT_B (Scenario 12 で作成済) に SYSTEM_INFO をセットアップ
   const ssNewB = mockSpreadsheets["ss-b-id"];
+  ssNewB.name = "NEW_DISTRICT_B";
   let newBSysInfo = ssNewB.getSheetByName("SYSTEM_INFO");
   if (!newBSysInfo) newBSysInfo = ssNewB.addSheet("SYSTEM_INFO");
   newBSysInfo.rows = [

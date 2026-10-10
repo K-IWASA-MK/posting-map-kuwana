@@ -49,6 +49,7 @@
 26. [現行実装との対比・GAP分析 (EXISTING / REQUIRED / GAP)](#26-現行実装との対比gap分析-existing--required--gap)
 27. [Production Smoke Test & Migration API Contracts (本番スモークテストおよびマイグレーションAPI契約)](#27-production-smoke-test--migration-api-contracts-本番スモークテストおよびマイグレーションapi契約)
    - [27.3 地区Spreadsheet世代切替管理 API 契約 (switchDistrictSpreadsheet)](#273-地区spreadsheet世代切替管理-api-契約-switchdistrictspreadsheet)
+   - [27.4 新地区プロビジョニング・環境ブートストラップ管理 API 契約 (bootstrapEnvironment / createDistrictDatabase)](#274-新地区プロビジョニング環境ブートストラップ管理-api-契約-bootstrapenvironment--createdistrictdatabase)
 
 ---
 
@@ -1001,6 +1002,92 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
     "previousSpreadsheetId": "1_OLD_SPREADSHEET_ID",
     "newSpreadsheetId": "1_NEW_SPREADSHEET_ID",
     "message": "District \"KUWANA\" spreadsheet switched successfully to \"1_NEW_SPREADSHEET_ID\"."
+  }
+  ```
+
+### 27.4 新地区プロビジョニング・環境ブートストラップ管理 API 契約 (bootstrapEnvironment / createDistrictDatabase)
+- **エンドポイント**: `POST /exec` (GET は `METHOD_NOT_ALLOWED` で即時遮断)
+- **アクション**: `action: "bootstrapEnvironment"` または `action: "createDistrictDatabase"`
+- **認可**: `verifyProvisioningToken` によるトークン認証必須（欠損・不正時は `UNAUTHORIZED` で遮断、mutation 0）
+- **目的**: 新規地区の環境ブートストラップおよびデータベース生成において、Google Drive 上の物理資産を正規階層へ自動配置する安全管理Action。呼び出し元（Caller）による配置先やファイル名の任意指定権限を剥奪し、サーバー側決定論的導出を一元執行する。
+- **物理配置契約 (Canonical Drive Physical Layout Contract)**:
+  ```text
+  FIELD_OPERATIONS_PLATFORM/
+  └── 03_BRANCH/
+      └── {districtId}/
+          ├── POSTING_MAP_DB_{districtId}
+          ├── {districtId} 支部_STORAGE/
+          └── SOURCE_ARCHIVE/
+  ```
+  - **Human Navigation Contract**: 人間管理者は `03_BRANCH -> {districtId}` だけを辿れば、当該地区の全運用資産（DB、写真ストレージ、原本アーカイブ）を迷うことなく発見できる物理構造を永久保証する。
+- **Server-side 決定論的導出チェーン**:
+  ```text
+  districtId
+     ↓
+  BRANCH_ROOT_FOLDER_ID (Script Properties)
+     ↓
+  districtFolderId (03_BRANCH/{districtId}/)
+     ↓
+  storageFolderId ({districtId} 支部_STORAGE/)
+     ↓
+  sourceArchiveFolderId (SOURCE_ARCHIVE/)
+     ↓
+  canonicalDbName (POSTING_MAP_DB_{districtId})
+     ↓
+  canonicalSpreadsheetId
+  ```
+- **入力契約 (Request Payload)**:
+  - `bootstrapEnvironment`:
+    ```json
+    {
+      "action": "bootstrapEnvironment",
+      "provisioningToken": "<SECRET_TOKEN>",
+      "districtId": "NEW_DISTRICT"
+    }
+    ```
+    ※後方互換用オプショナル引数: `targetSpreadsheetId`, `storageParentId`
+  - `createDistrictDatabase`:
+    ```json
+    {
+      "action": "createDistrictDatabase",
+      "provisioningToken": "<SECRET_TOKEN>",
+      "districtId": "NEW_DISTRICT",
+      "templateSpreadsheetId": "1_TEMPLATE_EMPTY_DB_ID"
+    }
+    ```
+    ※後方互換用オプショナル引数: `targetFolderId`, `targetDistrictName`
+- **安全制約 & 絶対遵守事項 (Safety Constraints & Prohibitions)**:
+  1. **Caller Authority の剥奪**: Caller が配置先フォルダ ID や任意の DB 名を決定することは永久に禁止される。DB 名は `POSTING_MAP_DB_{cleanDistrictId}` に強制固定される。
+  2. **Legacy 引数の Assertion-Only 運用**: 旧引数（`targetSpreadsheetId`, `storageParentId`, `targetFolderId`, `targetDistrictName`）が渡された場合、それらは配置・指定の Authority としては使用されず、サーバー側導出値との一致検証専用（Assertion Only）として扱われる。不一致時は直ちに Fail-Closed 遮断（`SPREADSHEET_ID_MISMATCH`, `STORAGE_FOLDER_MISMATCH`, `FOLDER_MISMATCH`, `INVALID_DISTRICT_NAME`）。
+  3. **ドライブショートカットの厳格拒絶**: ドライブショートカット（MIMEタイプ `application/vnd.google-apps.shortcut`）は実体 DB として認可せず、検知時は直ちに `SHORTCUT_REJECTED` で遮断（mutation 0）。
+  4. **自動破壊（Auto-Trash）の完全禁止**: 既存同名 DB が既に存在する場合、過去の自動ゴミ箱送り（`setTrashed(true)`）は永久に禁止される。1件存在時は `DISTRICT_DB_ALREADY_EXISTS`、2件以上存在時は `AMBIGUOUS_DISTRICT_DB` で直ちに Fail-Closed 停止する。
+  5. **Environment Authority の分離**: `BRANCH_ROOT_FOLDER_ID` は親GAS Script Properties を SSOT とし、ソースコード（`active/**`）への物理 Drive ID ハードコードを永久に禁止する。未設定時は `DRIVE_RESOLUTION_FAILED` で Fail-Closed。
+- **管理エラーコード一覧 (Failure Codes)**:
+  - `UNAUTHORIZED`: プロビジョニングトークン欠損・不正
+  - `INVALID_ARGUMENT`: 必須パラメータ（`districtId` 等）の欠損
+  - `DRIVE_RESOLUTION_FAILED`: `BRANCH_ROOT_FOLDER_ID` 未設定または DriveApp 解決失敗
+  - `RESOURCE_NOT_FOUND`: 指定フォルダ・スプレッドシートが存在しない・アクセス不可
+  - `AMBIGUOUS_DISTRICT_FOLDER`: `03_BRANCH` 配下に同名地区フォルダが重複存在
+  - `AMBIGUOUS_STORAGE_FOLDER`: 地区フォルダ配下に同名ストレージフォルダが重複存在
+  - `AMBIGUOUS_SOURCE_ARCHIVE`: 地区フォルダ配下に同名アーカイブフォルダが重複存在
+  - `AMBIGUOUS_DISTRICT_DB`: 地区フォルダ配下に同名 DB が重複存在
+  - `DISTRICT_DB_ALREADY_EXISTS`: 地区フォルダ配下に既に DB が存在（自動上書き禁止）
+  - `SHORTCUT_REJECTED`: スプレッドシートがショートカットである
+  - `FOLDER_MISMATCH`: Caller 指定 `targetFolderId` がサーバー導出フォルダと不一致
+  - `INVALID_DISTRICT_NAME`: Caller 指定 `targetDistrictName` が正式 DB 名と不一致
+  - `SPREADSHEET_ID_MISMATCH`: Caller 指定 `targetSpreadsheetId` が実体 DB と不一致
+  - `STORAGE_FOLDER_MISMATCH`: Caller 指定 `storageParentId` が実体ストレージと不一致
+  - `DISTRICT_MISMATCH`: スプレッドシート名が正式 DB 名または地区コードと不一致
+  - `CORRUPTED_REGISTRY`: `DISTRICT_REGISTRY` 破損・パース不能
+- **レスポンス形式 (Response)**:
+  ```json
+  {
+    "success": true,
+    "districtId": "NEW_DISTRICT",
+    "targetSpreadsheetId": "1_CANONICAL_SPREADSHEET_ID",
+    "storageParentId": "1_CANONICAL_STORAGE_FOLDER_ID",
+    "districtRegistryUpdated": true,
+    "message": "Environment successfully bootstrapped for district \"NEW_DISTRICT\"."
   }
   ```
 

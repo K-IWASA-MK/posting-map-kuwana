@@ -888,27 +888,121 @@ function doPost(e) {
     }
 
     const districtId = String((postData && postData.districtId) || (params && params.districtId) || "").trim();
+    if (!districtId) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "INVALID_ARGUMENT",
+        message: "districtId is required."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const cleanDistrictId = String(districtId).trim().toUpperCase();
+    const canonicalDbName = `POSTING_MAP_DB_${cleanDistrictId}`;
+
+    // Server-side Deterministic Resolution: 03_BRANCH 配下から districtFolder, storageFolder を解決
+    let driveStructure;
+    try {
+      if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
+        driveStructure = DistrictProvisioner.getInstance().resolveOrCreateDistrictDriveStructure(cleanDistrictId);
+      } else {
+        throw new Error("DistrictProvisioner unavailable");
+      }
+    } catch (errDrive) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "DRIVE_RESOLUTION_FAILED",
+        message: errDrive.message
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const canonicalDistrictFolderId = driveStructure.districtFolderId;
+    const canonicalStorageFolderId = driveStructure.storageFolderId;
+
+    // districtFolder 直下から canonical DB を探索して一意解決
+    let distFolder;
+    try {
+      distFolder = DriveApp.getFolderById(canonicalDistrictFolderId);
+    } catch (eF) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "RESOURCE_NOT_FOUND",
+        message: `District folder "${canonicalDistrictFolderId}" cannot be opened: ${eF.toString()}`
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const ssFiles = distFolder.getFilesByName(canonicalDbName);
+    let ssFile = null;
+    let ssCount = 0;
+    while (ssFiles.hasNext()) {
+      ssFile = ssFiles.next();
+      ssCount++;
+    }
+
+    // 後方互換性フォールバック: 既存地区（旧名称: cleanDistrictId）の探索
+    if (ssCount === 0) {
+      const legacyFiles = distFolder.getFilesByName(cleanDistrictId);
+      while (legacyFiles.hasNext()) {
+        ssFile = legacyFiles.next();
+        ssCount++;
+      }
+    }
+
+    if (ssCount === 0) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "RESOURCE_NOT_FOUND",
+        message: `Canonical spreadsheet "${canonicalDbName}" not found in district folder "${canonicalDistrictFolderId}".`
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (ssCount > 1) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "AMBIGUOUS_DISTRICT_DB",
+        message: `Multiple spreadsheets found in district folder "${canonicalDistrictFolderId}".`
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ショートカットの厳格拒絶
+    if (ssFile.getMimeType && ssFile.getMimeType() === "application/vnd.google-apps.shortcut") {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "SHORTCUT_REJECTED",
+        message: `Drive shortcut "${ssFile.getName()}" cannot be used as canonical spreadsheet.`
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const canonicalSpreadsheetId = ssFile.getId();
+
+    // Legacy parameter assertions (Optional Assertion Only)
     const targetSpreadsheetId = String(
       (postData && (postData.targetSpreadsheetId || postData.spreadsheetId)) ||
       (params && (params.targetSpreadsheetId || params.spreadsheetId)) || ""
     ).trim();
+    if (targetSpreadsheetId && targetSpreadsheetId !== canonicalSpreadsheetId) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "SPREADSHEET_ID_MISMATCH",
+        message: `Specified targetSpreadsheetId "${targetSpreadsheetId}" does not match canonical resolved spreadsheet "${canonicalSpreadsheetId}". Caller cannot override DB location.`
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const storageParentId = String(
       (postData && (postData.storageParentId || postData.storageFolderId)) ||
       (params && (params.storageParentId || params.storageFolderId)) || ""
     ).trim();
-
-    if (!districtId || !targetSpreadsheetId || !storageParentId) {
+    if (storageParentId && storageParentId !== canonicalStorageFolderId) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
-        code: "INVALID_ARGUMENT",
-        message: "districtId, targetSpreadsheetId, and storageParentId are required."
+        code: "STORAGE_FOLDER_MISMATCH",
+        message: `Specified storageParentId "${storageParentId}" does not match canonical resolved storage folder "${canonicalStorageFolderId}". Caller cannot override storage location.`
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // 実在リソース検証: 対象スプレッドシートのアクセス確認
     let ss;
     try {
-      ss = SpreadsheetApp.openById(targetSpreadsheetId);
+      ss = SpreadsheetApp.openById(canonicalSpreadsheetId);
     } catch (e) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
@@ -917,19 +1011,19 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 地区名SSOT検証: スプレッドシート名が districtId と完全一致すること
+    // 地区名SSOT検証: スプレッドシート名が canonicalDbName または cleanDistrictId と完全一致すること
     const ssName = (ss.getName() || "").trim();
-    if (ssName !== districtId) {
+    if (ssName !== canonicalDbName && ssName !== cleanDistrictId) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
         code: "DISTRICT_MISMATCH",
-        message: `Spreadsheet name "${ssName}" does not match requested districtId "${districtId}".`
+        message: `Spreadsheet name "${ssName}" does not match canonical DB name "${canonicalDbName}".`
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // 実在リソース検証: ストレージフォルダのアクセス確認
     try {
-      DriveApp.getFolderById(storageParentId);
+      DriveApp.getFolderById(canonicalStorageFolderId);
     } catch (e) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
@@ -939,7 +1033,6 @@ function doPost(e) {
     }
 
     // Generation 2: DISTRICT_REGISTRY への追加・更新（既存他地区の完全保護）
-    const cleanDistrictId = String(districtId).trim().toUpperCase();
     const regRaw = props.getProperty("DISTRICT_REGISTRY");
     let registry = {};
 
@@ -965,22 +1058,22 @@ function doPost(e) {
     }
 
     registry[cleanDistrictId] = {
-      spreadsheetId: targetSpreadsheetId,
-      storageFolderId: storageParentId,
+      spreadsheetId: canonicalSpreadsheetId,
+      storageFolderId: canonicalStorageFolderId,
       name: districtId,
       enabled: false // Acceptance 前は disabled
     };
 
     const newProps = {
       DISTRICT_REGISTRY: JSON.stringify(registry),
-      STORAGE_PARENT_ID: storageParentId,
+      STORAGE_PARENT_ID: canonicalStorageFolderId,
       PROVISIONING_TOKEN_HASH: computeSha256(token.trim()).toLowerCase()
     };
 
     // 初期環境向けGeneration 1互換（既存のTARGET_SPREADSHEET_IDが未設定の場合のみ初期設定）
     if (!props.getProperty("TARGET_SPREADSHEET_ID")) {
-      newProps.TARGET_SPREADSHEET_ID = targetSpreadsheetId;
-      newProps.SPREADSHEET_ID = targetSpreadsheetId;
+      newProps.TARGET_SPREADSHEET_ID = canonicalSpreadsheetId;
+      newProps.SPREADSHEET_ID = canonicalSpreadsheetId;
       newProps.DISTRICT_ID = districtId;
     }
 
@@ -998,8 +1091,8 @@ function doPost(e) {
       success: true,
       message: "Environment bootstrapped successfully.",
       districtId: districtId,
-      targetSpreadsheetId: targetSpreadsheetId,
-      storageParentId: storageParentId,
+      targetSpreadsheetId: canonicalSpreadsheetId,
+      storageParentId: canonicalStorageFolderId,
       districtRegistryUpdated: true
     })).setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'provisionDistrict') {
@@ -1069,10 +1162,14 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     const templateSpreadsheetId = (postData && postData.templateSpreadsheetId) || (params && params.templateSpreadsheetId);
-    const targetDistrictName = (postData && postData.targetDistrictName) || (params && params.targetDistrictName);
+    const targetDistrictName = (postData && (postData.targetDistrictName || postData.districtId)) || (params && (params.targetDistrictName || params.districtId));
     const targetFolderId = (postData && postData.targetFolderId) || (params && params.targetFolderId);
     const options = (postData && postData.options) || (params && params.options) || {};
     options.provisioningToken = token;
+    const reqDistrictId = (postData && postData.districtId) || (params && params.districtId);
+    if (reqDistrictId && !options.districtId) {
+      options.districtId = reqDistrictId;
+    }
 
     let result;
     if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {

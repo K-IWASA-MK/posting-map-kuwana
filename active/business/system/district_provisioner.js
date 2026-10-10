@@ -298,26 +298,112 @@
     }
 
     /**
+     * 03_BRANCH 配下の地区物理構造を解決または自動生成する (Server-side Deterministic Resolution)
+     *
+     * @param {string} districtId - 地区コード (例: "SAMPLE_DISTRICT")
+     * @return {Object} { districtFolderId, storageFolderId, sourceArchiveFolderId }
+     */
+    resolveOrCreateDistrictDriveStructure(districtId) {
+      const cleanDistrictId = String(districtId || "").trim().toUpperCase();
+      if (!cleanDistrictId) {
+        throw new Error("[DistrictProvisioner] districtId is required for drive resolution.");
+      }
+
+      const props = typeof PropertiesService !== 'undefined' ? PropertiesService.getScriptProperties() : null;
+      const branchRootId = props ? props.getProperty("BRANCH_ROOT_FOLDER_ID") : null;
+      if (!branchRootId) {
+        throw new Error("[DistrictProvisioner] BRANCH_ROOT_FOLDER_ID is not configured in Script Properties.");
+      }
+
+      if (typeof DriveApp === 'undefined' || !DriveApp.getFolderById) {
+        throw new Error("[DistrictProvisioner] DriveApp is unavailable for drive resolution.");
+      }
+
+      const branchFolder = DriveApp.getFolderById(branchRootId);
+      if (!branchFolder) {
+        throw new Error(`[DistrictProvisioner] 03_BRANCH root folder "${branchRootId}" cannot be opened.`);
+      }
+
+      // 1. 03_BRANCH/{districtId} フォルダの検索または作成
+      const districtFolders = branchFolder.getFoldersByName(cleanDistrictId);
+      let districtFolder = null;
+      let count = 0;
+      while (districtFolders.hasNext()) {
+        districtFolder = districtFolders.next();
+        count++;
+      }
+      if (count > 1) {
+        throw new Error(`[DistrictProvisioner] AMBIGUOUS_DISTRICT_FOLDER: Multiple folders named "${cleanDistrictId}" found in 03_BRANCH.`);
+      }
+      if (!districtFolder) {
+        districtFolder = branchFolder.createFolder(cleanDistrictId);
+      }
+      const districtFolderId = districtFolder.getId();
+
+      // 2. {districtId} 支部_STORAGE フォルダの検索または作成
+      const storageName = `${cleanDistrictId} 支部_STORAGE`;
+      const storageFolders = districtFolder.getFoldersByName(storageName);
+      let storageFolder = null;
+      let sCount = 0;
+      while (storageFolders.hasNext()) {
+        storageFolder = storageFolders.next();
+        sCount++;
+      }
+      if (sCount > 1) {
+        throw new Error(`[DistrictProvisioner] AMBIGUOUS_STORAGE_FOLDER: Multiple folders named "${storageName}" found in district folder.`);
+      }
+      if (!storageFolder) {
+        storageFolder = districtFolder.createFolder(storageName);
+      }
+      const storageFolderId = storageFolder.getId();
+
+      // 3. SOURCE_ARCHIVE フォルダの検索または作成
+      const archiveName = "SOURCE_ARCHIVE";
+      const archiveFolders = districtFolder.getFoldersByName(archiveName);
+      let archiveFolder = null;
+      let aCount = 0;
+      while (archiveFolders.hasNext()) {
+        archiveFolder = archiveFolders.next();
+        aCount++;
+      }
+      if (aCount > 1) {
+        throw new Error(`[DistrictProvisioner] AMBIGUOUS_SOURCE_ARCHIVE: Multiple folders named "${archiveName}" found in district folder.`);
+      }
+      if (!archiveFolder) {
+        archiveFolder = districtFolder.createFolder(archiveName);
+      }
+      const sourceArchiveFolderId = archiveFolder.getId();
+
+      return {
+        districtFolderId: String(districtFolderId).trim(),
+        storageFolderId: String(storageFolderId).trim(),
+        sourceArchiveFolderId: String(sourceArchiveFolderId).trim()
+      };
+    }
+
+    /**
      * 公式空テンプレートから新地区スプレッドシートDBを複製・生成
      *
      * @param {string} templateSpreadsheetId - 複製元EMPTY TEMPLATE ID
-     * @param {string} targetDistrictName - 新地区名（例: "OKAYAMA-02"）
-     * @param {string} targetFolderId - 格納先フォルダID (例: 03_BRANCH/OKAYAMA-02)
-     * @param {Object} options - オプション（provisioningToken等）
-     * @return {Object} 結果オブジェクト { success, spreadsheetId, spreadsheetUrl, districtName, sheetsCount, sheets }
+     * @param {string} [targetDistrictName] - 新地区名 (Optional Assertion: 導出名と検証)
+     * @param {string} [targetFolderId] - 格納先フォルダID (Optional Assertion: 導出IDと検証)
+     * @param {Object} [options={}] - オプション（provisioningToken, districtId 等）
+     * @return {Object} 結果オブジェクト { success, spreadsheetId, spreadsheetUrl, districtName, targetFolderId, sheetsCount, sheets }
      */
-    createDistrictDatabase(templateSpreadsheetId, targetDistrictName, targetFolderId, options) {
+    createDistrictDatabase(templateSpreadsheetId, targetDistrictName, targetFolderId, options = {}) {
       if (!templateSpreadsheetId) {
         return { success: false, code: "INVALID_ARGUMENT", message: "templateSpreadsheetId is required." };
       }
-      if (!targetDistrictName) {
-        return { success: false, code: "INVALID_ARGUMENT", message: "targetDistrictName is required." };
-      }
-      if (!targetFolderId) {
-        return { success: false, code: "INVALID_ARGUMENT", message: "targetFolderId is required." };
-      }
 
-      const token = options && options.provisioningToken;
+      const opts = options || {};
+      const rawId = (opts && opts.districtId) || targetDistrictName || '';
+      const cleanDistrictId = String(rawId).replace(/^POSTING_MAP_DB_/i, '').trim().toUpperCase();
+      if (!cleanDistrictId) {
+        return { success: false, code: "INVALID_ARGUMENT", message: "districtId is required." };
+      }
+      const canonicalDbName = `POSTING_MAP_DB_${cleanDistrictId}`;
+
+      const token = opts && opts.provisioningToken;
       const tokenCheck = typeof verifyProvisioningToken === 'function'
         ? verifyProvisioningToken(token)
         : { success: false, code: "UNAUTHORIZED", message: "verifyProvisioningToken unavailable" };
@@ -325,22 +411,72 @@
         return tokenCheck;
       }
 
+      // Server-side Deterministic Resolution: 03_BRANCH 配下から districtFolder を解決
+      let driveStructure;
+      try {
+        driveStructure = this.resolveOrCreateDistrictDriveStructure(cleanDistrictId);
+      } catch (errDrive) {
+        return {
+          success: false,
+          code: "DRIVE_RESOLUTION_FAILED",
+          message: errDrive.message
+        };
+      }
+      const resolvedFolderId = driveStructure.districtFolderId;
+
+      // Legacy parameter assertions (Optional Assertion Only)
+      if (targetFolderId && String(targetFolderId).trim() !== resolvedFolderId) {
+        return {
+          success: false,
+          code: "FOLDER_MISMATCH",
+          message: `Specified targetFolderId "${targetFolderId}" does not match canonical district folder "${resolvedFolderId}". Caller cannot override drive layout.`
+        };
+      }
+
+      if (targetDistrictName) {
+        const cleanTargetName = String(targetDistrictName).trim();
+        if (cleanTargetName !== canonicalDbName && cleanTargetName.toUpperCase() !== cleanDistrictId) {
+          return {
+            success: false,
+            code: "INVALID_DISTRICT_NAME",
+            message: `Specified targetDistrictName "${targetDistrictName}" does not match canonical DB name "${canonicalDbName}". Caller cannot choose arbitrary name.`
+          };
+        }
+      }
+
       const lock = LockService.getScriptLock();
       lock.waitLock(30000);
 
       try {
-        const folder = DriveApp.getFolderById(targetFolderId);
+        const folder = DriveApp.getFolderById(resolvedFolderId);
         const templateFile = DriveApp.getFileById(templateSpreadsheetId);
 
-        // 格納先フォルダ内の同名スプレッドシートがあればゴミ箱へ退避
-        const existingFiles = folder.getFilesByName(targetDistrictName);
+        // 既存 DB 自動破壊（trash）の完全抑止 & 重複検査
+        const existingFiles = folder.getFilesByName(canonicalDbName);
+        let existingCount = 0;
         while (existingFiles.hasNext()) {
-          const oldFile = existingFiles.next();
-          oldFile.setTrashed(true);
+          existingFiles.next();
+          existingCount++;
         }
 
-        // EMPTY TEMPLATE から複製し新地区名を設定
-        const newFile = templateFile.makeCopy(targetDistrictName, folder);
+        if (existingCount === 1) {
+          return {
+            success: false,
+            code: "DISTRICT_DB_ALREADY_EXISTS",
+            message: `Canonical database "${canonicalDbName}" already exists in district folder "${resolvedFolderId}". Automatic overwrite/trash is strictly prohibited.`
+          };
+        }
+
+        if (existingCount >= 2) {
+          return {
+            success: false,
+            code: "AMBIGUOUS_DISTRICT_DB",
+            message: `Multiple databases named "${canonicalDbName}" exist in district folder "${resolvedFolderId}".`
+          };
+        }
+
+        // EMPTY TEMPLATE から複製し canonicalDbName を設定
+        const newFile = templateFile.makeCopy(canonicalDbName, folder);
         const newSS = SpreadsheetApp.openById(newFile.getId());
 
         SpreadsheetApp.flush();
@@ -354,11 +490,13 @@
 
         return {
           success: true,
-          message: `District database "${targetDistrictName}" created successfully from template.`,
+          message: `District database "${canonicalDbName}" created successfully from template.`,
           spreadsheetId: newFile.getId(),
           spreadsheetUrl: newFile.getUrl(),
-          districtName: targetDistrictName,
-          targetFolderId: targetFolderId,
+          districtName: canonicalDbName,
+          targetFolderId: resolvedFolderId,
+          canonicalStorageFolderId: driveStructure.storageFolderId,
+          canonicalSourceArchiveFolderId: driveStructure.sourceArchiveFolderId,
           templateSpreadsheetId: templateSpreadsheetId,
           sheetsCount: finalSheets.length,
           sheets: finalSheets

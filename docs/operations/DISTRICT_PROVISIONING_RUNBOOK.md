@@ -113,31 +113,39 @@
 
 ---
 
-### Stage 3: Spreadsheet Pure DB プロビジョニング (Spreadsheet Provisioning / ADR-024 準拠)
+### Stage 3: Spreadsheet Pure DB プロビジョニング (Spreadsheet Provisioning / Canonical Drive Layout 準拠)
 
 - **Preconditions**:
+  - 親GAS Script Properties に `BRANCH_ROOT_FOLDER_ID`（`03_BRANCH` フォルダID）が設定されていること（未設定時は Fail-Closed）。
   - Google Drive 内に Universal 共通 Empty Template (`POSTING_MAP_EMPTY_TEMPLATE`) が存在すること。
 - **Input**:
   - 共通 Empty Template ID (`POSTING_MAP_EMPTY_TEMPLATE`)
-  - 配置先 Google Drive フォルダ ID
   - `districtId`
   - 運用モード（`ELECTION` または `SUBSCRIPTION`）
   - 契約終了日（`YYYY-MM-DD`）
+  - ※Caller による格納先フォルダIDおよびDBファイル名の任意指定は禁止（サーバー側自動導出）。
 - **Action**:
-  1. 共通 Empty Template（`SYSTEM_INFO` および `端末管理` のみを保持、原本5種なし、初期状態空欄）を対象フォルダに複製（Copy）する。
-  2. ファイル名を `POSTING_MAP_DB_<districtId>` にリネーム。
-  3. 新規複製したスプレッドシートの `SYSTEM_INFO` シートを設定（Key-Value形式: A列=キー、B列=値）：
+  1. **Server-side 決定論的 Drive 構造解決**:
+     - `DistrictProvisioner.getInstance().resolveOrCreateDistrictDriveStructure(districtId)` を実行。
+     - `BRANCH_ROOT_FOLDER_ID` 配下に `03_BRANCH/{districtId}/`、`{districtId} 支部_STORAGE/`、および `SOURCE_ARCHIVE/` を自動探索または正規生成する。
+  2. **Canonical DB 複製・生成**:
+     - `DistrictProvisioner.getInstance().createDistrictDatabase(templateSpreadsheetId, null, null, options)` を実行。
+     - 共通 Empty Template（`SYSTEM_INFO` および `端末管理` のみを保持、原本5種なし、初期状態空欄）から、導出済み `districtFolder` 直下にファイル名 `POSTING_MAP_DB_<districtId>` として複製する。
+     - **自動破壊（Auto-Trash）完全抑止**: 既に同名 DB が存在する場合、自動上書き・ゴミ箱送りは永久に禁止され、`DISTRICT_DB_ALREADY_EXISTS` で安全停止（Fail-Closed）する。
+  3. **`SYSTEM_INFO` シート設定（Key-Value形式）**:
      - `地区コード` (必須): Stage 1 で決定した `districtId` を正確に入力（Integrity Guard 照合対象）。
      - `運用モード` (必須): `ELECTION` または `SUBSCRIPTION` を明示設定（推論禁止、SSOT）。
      - `Active Dataset Key`: ELECTION の場合は開始時に確定した永続キー（例: `2026-10`）。SUBSCRIPTION の場合は現在年月。
      - `契約開始日時`: プロビジョニング実行時の JST 日時。
      - `契約終了日` (必須): 契約有効期限（YYYY-MM-DD）。
      - `Manager認証パスワード`: 初期管理者PIN（英数字6桁ランダム数値）。
-  4. `DistrictProvisioner.getInstance().provisionNewDistrict(addresses, options, districtId)` を実行：
+  4. **実運用 5 シート直接生成**:
+     - `DistrictProvisioner.getInstance().provisionNewDistrict(addresses, options, districtId)` を実行。
      - `address_master.csv` から実運用 5 シート（`配布実績<Key>`, `名簿<Key>`, `保有チラシ枚数<Key>`, `受渡要請履歴<Key>`, `PinStatus<Key>`）を直接生成する（原本5種は生成しない、計6シート構成）。
      - 5シートの直接生成成功後、`SYSTEM_INFO` の「状態」を `ACTIVE` に確定する。
   5. スプレッドシートID（`spreadsheetId`）を取得。
 - **Validation**:
+  - **Human Navigation Contract**: スプレッドシートが `03_BRANCH/{districtId}/` 直下に実体として存在し、ショートカット（`application/vnd.google-apps.shortcut`）ではないこと。
   - `SYSTEM_INFO` の `地区コード` とリクエスト `districtId` が完全一致すること（Integrity Guard）。
   - `SYSTEM_INFO` の `運用モード` が `ELECTION` または `SUBSCRIPTION` として確定していること。
   - 実運用 5 シートが欠損なく 5/5 生成されていること。原本5種が存在しないこと。
@@ -145,9 +153,12 @@
 - **Evidence**:
   - 新規スプレッドシートの URL / ID
   - `SYSTEM_INFO` 設定スナップショット
+  - Google Drive 物理配置確認ログ（親フォルダID照合証跡）
 - **Rollback**:
   - 複製したスプレッドシートの完全削除（ゴミ箱破棄）
 - **HARD STOP Condition**:
+  - `BRANCH_ROOT_FOLDER_ID` が Script Properties に設定されていない場合。
+  - スプレッドシートが `03_BRANCH/{districtId}/` 以外のフォルダ（Templates 等）に生成された場合。
   - スプレッドシート内にコンテナバインドスクリプトが混入している場合。
   - 運用モードが未設定または不明な値の場合。
   - 実運用 5 シートの生成が 1〜4/5 の不完全状態で停止した場合（All-or-Nothing 違反）。
@@ -157,19 +168,19 @@
 ### Stage 4: DISTRICT_REGISTRY & Routing 登録 (Routing Configuration)
 
 - **Preconditions**:
-  - Stage 3 で `spreadsheetId` が発行されていること。
+  - Stage 3 で `spreadsheetId` および正規 `storageFolderId` が決定論的に発行されていること。
   - 親GAS Script Properties へのアクセス権限を有すること。
 - **Input**:
   - `districtId`
-  - `spreadsheetId`
-  - （写真保存用がある場合）`storageFolderId`
+  - `spreadsheetId` (Stage 3 導出値)
+  - `storageFolderId` (Stage 3 導出値: `{districtId} 支部_STORAGE`)
 - **Action**:
   1. 親GASの Script Properties から `DISTRICT_REGISTRY` を取得。
-  2. JSON をパースし、新規エントリを追加：
+  2. JSON をパースし、新規エントリを追加（または `bootstrapEnvironment` API で一元登録）：
      ```json
      {
-       "spreadsheetId": "<NEW_SPREADSHEET_ID>",
-       "storageFolderId": "<NEW_FOLDER_ID>",
+       "spreadsheetId": "<CANONICAL_SPREADSHEET_ID>",
+       "storageFolderId": "<CANONICAL_STORAGE_FOLDER_ID>",
        "name": "<DISTRICT_NAME>",
        "enabled": false
      }
@@ -178,6 +189,7 @@
   3. 更新した JSON を `DISTRICT_REGISTRY` に保存。
 - **Validation**:
   - JSON 構文が妥当であること。
+  - 登録された `spreadsheetId` および `storageFolderId` が Stage 3 の正規導出値と完全一致すること。
   - 既存の他地区設定が1件も破壊・消失・変更されていないこと（テナント分離保全）。
 - **Evidence**:
   - `DISTRICT_REGISTRY` 更新前後の比較ログ（他地区不変の確認）
@@ -268,8 +280,8 @@
   - 検証用テスター端末（スマートフォン実機 iOS/Android）
   - 管理者用ブラウザ（PC）
 - **Action**:
-  1. 機械的受入ゲート `node tests/test_registry_provisioning_gate.mjs` を実行し、Gate 1〜7（Registry整合、enabled検証、Pure DB完全性、フォールバック不発生、MapsKey等）の全件合格を確認する。
-  2. 本書第4章「District Production Acceptance Gate」の全20項目を順次実行・検品する。
+  1. 機械的受入ゲート `node tests/test_registry_provisioning_gate.mjs` を実行し、全13ゲート（Registry整合、enabled検証、Pure DB完全性、フォールバック不発生、MapsKey、Drive物理階層契約・Human Navigation等）の全件合格を確認する。
+  2. 本書第4章「District Production Acceptance Gate」の全21項目を順次実行・検品する。
 - **Validation**:
   - `test_registry_provisioning_gate.mjs` が 100% PASS すること。
   - 全20項目がすべて **PASS** すること（1項目でもFAILなら不合格）。
@@ -339,6 +351,7 @@
 | 18 | **Manager PIN 秘匿** | `getSystemInfo` 等のパブリックAPIでPINが露出しない | PASS / FAIL |
 | 19 | **Formula Injection 耐性** | スタッフ名・連絡先等に数式文字を入力しても無害化される | PASS / FAIL |
 | 20 | **実機レンダリング & パフォーマンス** | 地図描画・ポリゴン表示が遅延なくスムーズに動作する | PASS / FAIL |
+| 21 | **Drive Physical Layout 整合** | `03_BRANCH/{districtId}/` 直下への正規配置、ショートカット排除、Human Navigation 充足、自動破壊ゼロ | PASS / FAIL |
 
 > [!CAUTION]
 > 上記のいずれか1項目でも FAIL した場合、当該地区の `ACTIVE` 昇格は **厳格に却下（HARD STOP）** される。

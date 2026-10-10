@@ -1,19 +1,15 @@
 [
+  ".agents/agents/deployer/agent.md",
   ".agents/current-scope.json",
   ".agents/os-registry.json",
-  "AGENTS.md",
-  "docs/ai-foundation.md",
-  ".agents/agents/execution/agent.md",
-  ".agents/agents/auditor/agent.md",
-  ".agents/agents/deployer/agent.md",
-  ".agents/agents/worker/agent.md",
   ".agents/rules/agent-authority.md",
-  ".agents/rules/verification-gates.md",
-  ".agents/workflows/development/workflow.md",
+  "active/api/v2_api.js",
+  "active/business/system/district_provisioner.js",
+  "docs/ai-foundation.md",
+  "docs/api/API_CONTRACT.md",
+  "docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md",
   "scripts/check-auditor-gate.mjs",
-  "scripts/check-cleanup-gate.mjs",
   "tests/test_auditor_gate.mjs",
-  "tests/test_cleanup_gate.mjs",
-  "tests/run_all_tests.mjs",
-  "package.json"
+  "tests/test_multi_district_routing_auth.mjs",
+  "tests/test_registry_provisioning_gate.mjs"
 ]

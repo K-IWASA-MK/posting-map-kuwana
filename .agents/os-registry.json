@@ -100,11 +100,11 @@
       "canonicalSources": [
         {
           "path": "docs/api/API_CONTRACT.md",
-          "sha256": "a45e10251705aa7c0a2fcef19a0508021eca0fd3e3900356c169883a90ad2a12"
+          "sha256": "ce8d637243350e79d19046f0b8dbe59f9b5ead5cf1763bd27ba5424225b5dd56"
         },
         {
           "path": "active/api/v2_api.js",
-          "sha256": "991dd91022802992223507b8892993059df45d4020c9e74c32b0c969370f24fc"
+          "sha256": "82c5350ca118d8c8b64a6afe2435edcb97b205f10a93e02f69ad56317f90a016"
         }
       ],
       "evidenceSources": [
@@ -147,7 +147,7 @@
       "canonicalSources": [
         {
           "path": "docs/api/API_CONTRACT.md",
-          "sha256": "a45e10251705aa7c0a2fcef19a0508021eca0fd3e3900356c169883a90ad2a12"
+          "sha256": "ce8d637243350e79d19046f0b8dbe59f9b5ead5cf1763bd27ba5424225b5dd56"
         },
         {
           "path": "docs/security/SECURITY_BASELINE.md",
@@ -194,7 +194,7 @@
       "canonicalSources": [
         {
           "path": "docs/ai-foundation.md",
-          "sha256": "dbaffd21c6a85c3e6b79c98e9471f49d208d18fcf7b4781f85d028d681bfae13"
+          "sha256": "f7aa74f6156ea7c53a5db671904ee1565c2eb6e233ac3d161102d30bce4bf0b3"
         },
         {
           "path": "AGENTS.md",

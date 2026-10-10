@@ -42,7 +42,18 @@ export function resolveTranscriptPath(env = process.env) {
  */
 export function isMutatingCommand(commandLine) {
   if (!commandLine || typeof commandLine !== 'string') return false;
-  const cmd = commandLine.trim();
+  let cmd = commandLine.trim();
+
+  if (
+    cmd.length >= 2 &&
+    (
+      (cmd.startsWith('"') && cmd.endsWith('"')) ||
+      (cmd.startsWith("'") && cmd.endsWith("'"))
+    )
+  ) {
+    cmd = cmd.slice(1, -1).trim();
+  }
+
 
   // 読み取り専用・非破壊コマンドのホワイトリスト判定
   const readOnlyPrefixes = [

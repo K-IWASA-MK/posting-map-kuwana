@@ -374,6 +374,36 @@ runTest('P4: Authorization Envelope permitted transition (再試行後の最新P
   assert.equal(res.chain.verdict, 'PASS');
 });
 
+runTest('P5: 実機 Transcript 互換性 (外側quote付き CommandLine の正規化 & PASS)', () => {
+  // 1. isMutatingCommand ユニット検証
+  assert.equal(isMutatingCommand('"node scripts/check-auditor-gate.mjs --base 1111111 --target 2222222"'), false);
+  assert.equal(isMutatingCommand('\'npm run gate:auditor -- --base 1111111 --target 2222222\''), false);
+  assert.equal(isMutatingCommand('"git status --porcelain"'), false);
+  // 引用符付きの変更系コマンドは確実にブロック
+  assert.equal(isMutatingCommand('"git add -A"'), true);
+  assert.equal(isMutatingCommand('\'rm -rf active\''), true);
+
+  // 2. 実機 transcript 形式シミュレーション (CommandLine が \"...\" でエスケープ復元)
+  const lines = [
+    makeAuditorEventA(10, B1, T1),
+    makeAuditorEventB(11, AUDITOR_CONV),
+    makeAuditorEventC({ step: 12, sender: AUDITOR_CONV, base: B1, target: T1 }),
+    JSON.stringify({
+      step_index: 13,
+      source: 'MODEL',
+      type: 'PLANNER_RESPONSE',
+      tool_calls: [{
+        name: 'run_command',
+        args: { CommandLine: '"node scripts/check-auditor-gate.mjs --base 1111111 --target 2222222"' }
+      }]
+    })
+  ];
+  const res = verifyAuditorGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
+  assert.equal(res.pass, true);
+  assert.equal(res.chain.verdict, 'PASS');
+});
+
+
 console.log('====================================================');
 console.log(`📊 AUDITOR GATE TESTS SUMMARY: ${passedCount} / ${totalCount} PASSED (100%)`);
 console.log('====================================================\n');
