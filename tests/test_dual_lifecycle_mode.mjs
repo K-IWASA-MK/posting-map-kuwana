@@ -355,6 +355,7 @@ runCase("ELECTION Mode Initial Provisioning (Zero master sheets, direct 5 sheets
     {
       provisioningToken: "valid-test-token",
       operationMode: "ELECTION",
+      baseUrl: "https://kuwana.postingmap.jp",
       provisioningNow: testFixedDate,
       contractEndDate: "2026-12-31"
     },
@@ -957,6 +958,7 @@ runCase("Counterexample 9: Active Dataset Key & contractStartDate Derived from S
     {
       provisioningToken: "valid-test-token",
       operationMode: "ELECTION",
+      baseUrl: "https://kuwana.postingmap.jp",
       // activeDatasetKey はあえて渡さない（自動生成を検証）
       provisioningNow: testFixedDate
     },
@@ -997,6 +999,7 @@ runCase("Counterexample 10: Caller override of activeDatasetKey & contractStartD
     {
       provisioningToken: "valid-test-token",
       operationMode: "ELECTION",
+      baseUrl: "https://kuwana.postingmap.jp",
       // caller が意図的・誤って override 値を注入
       activeDatasetKey: "2099-12",
       contractStartDate: "2099-12-31 23:59:59",
@@ -1035,6 +1038,113 @@ runCase("Counterexample 10: Caller override of activeDatasetKey & contractStartD
       assert.notEqual(String(cellVal).trim(), "2099-12", "SYSTEM_INFO must NOT contain caller override activeDatasetKey");
     });
   });
+});
+
+// =============================================================================
+// TEST 18: 反例11 - Case 18: Mode Missing Fail-Closed (No ELECTION fallback, mutation 0)
+// =============================================================================
+runCase("Case 18: Mode Missing Fail-Closed (No ELECTION fallback, mutation 0)", () => {
+  const ss = new MockSpreadsheet("ss-nomode-sync", "POSTING_MAP_NOMODE_SYNC");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "NOMODE_SYNC"],
+    ["HアプリURL", "https://nomode.example.com/"],
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+  const sysService = context.SystemInfoService.getInstance();
+
+  const mutationsBefore = ss.mutationCount;
+  const sysMutationBefore = sysSheet.mutationCount;
+
+  const res = sysService.syncSystemInfo({
+    provisioningToken: "valid-test-token",
+    // operationMode なし
+    baseUrl: "https://nomode.example.com"
+  }, "NOMODE_SYNC");
+
+  assert.equal(res.success, false, "syncSystemInfo must fail when operationMode is missing");
+  assert.equal(res.code, "INVALID_ARGUMENT");
+  assert.equal(ss.mutationCount, mutationsBefore, "Spreadsheet mutation must be 0");
+  assert.equal(sysSheet.mutationCount, sysMutationBefore, "SYSTEM_INFO sheet mutation must be 0");
+
+  // SYSTEM_INFO 内に ELECTION が勝手に追加されていないこと
+  const hasElection = sysSheet.grid.some(row => row.some(val => String(val).includes("ELECTION")));
+  assert.equal(hasElection, false, "ELECTION guess must NOT be mutated into SYSTEM_INFO");
+});
+
+// =============================================================================
+// TEST 19: 反例12 - Case 19: H-App URL Missing Fail-Closed (No hostname guesswork, mutation 0)
+// =============================================================================
+runCase("Case 19: H-App URL Missing Fail-Closed (No hostname guesswork, mutation 0)", () => {
+  const ss = new MockSpreadsheet("ss-nourl-sync", "POSTING_MAP_KUWANA");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "KUWANA"],
+    ["運用モード", "ELECTION"],
+    // HアプリURL row なし
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+  const sysService = context.SystemInfoService.getInstance();
+
+  const mutationsBefore = ss.mutationCount;
+  const sysMutationBefore = sysSheet.mutationCount;
+
+  const res = sysService.syncSystemInfo({
+    provisioningToken: "valid-test-token",
+    operationMode: "ELECTION"
+    // baseUrl なし, hAppUrl なし
+  }, "KUWANA");
+
+  assert.equal(res.success, false, "syncSystemInfo must fail when H-App URL is missing");
+  assert.equal(res.code, "INVALID_ARGUMENT");
+  assert.equal(ss.mutationCount, mutationsBefore, "Spreadsheet mutation must be 0");
+  assert.equal(sysSheet.mutationCount, sysMutationBefore, "SYSTEM_INFO sheet mutation must be 0");
+
+  // https://kuwana.postingmap.jp が生成されていないこと
+  const hasGuessedUrl = sysSheet.grid.some(row => row.some(val => String(val).includes("kuwana.postingmap.jp")));
+  assert.equal(hasGuessedUrl, false, "kuwana.postingmap.jp must NOT be guessed or mutated into SYSTEM_INFO");
+});
+
+// =============================================================================
+// TEST 20: Case 20: Existing H-App URL Authority (Preserve existing URL, no districtId guesswork)
+// =============================================================================
+runCase("Case 20: Existing H-App URL Authority (Preserve existing URL, no districtId guesswork)", () => {
+  const ss = new MockSpreadsheet("ss-authority-url", "POSTING_MAP_KUWANA");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "KUWANA"],
+    ["運用モード", "ELECTION"],
+    ["HアプリURL", "https://example-election.example/"],
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+  const sysService = context.SystemInfoService.getInstance();
+
+  const res = sysService.syncSystemInfo({
+    provisioningToken: "valid-test-token"
+    // baseUrl なし (既存 SYSTEM_INFO から Authority を採用)
+  }, "KUWANA");
+
+  assert.equal(res.success, true, "syncSystemInfo must succeed using existing SYSTEM_INFO H-App URL");
+  assert.equal(res.hAppUrl, "https://example-election.example/");
+  assert.equal(res.dashboardUrl, "https://example-election.example/active/manager/");
+  assert.equal(res.operationMode, "ELECTION");
+
+  // districtIdからURLを生成していないこと (kuwana.postingmap.jp が含まれないこと)
+  assert.ok(!res.hAppUrl.includes("kuwana.postingmap.jp"), "H-App URL must not contain guessed kuwana.postingmap.jp");
+  assert.ok(!res.dashboardUrl.includes("kuwana.postingmap.jp"), "Dashboard URL must not contain guessed kuwana.postingmap.jp");
+
+  // SYSTEM_INFO 内の HアプリURL も更新されずに保持されていること
+  const storedHAppUrl = sysService.getHAppUrl(sysSheet);
+  assert.equal(storedHAppUrl, "https://example-election.example/");
 });
 
 console.log('\n================================================================');

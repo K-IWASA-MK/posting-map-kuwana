@@ -497,58 +497,93 @@
           throw new Error(`[SystemInfoService] Spreadsheet cannot be resolved for district "${cleanDistrictId}".`);
         }
 
-        let sheet = ss.getSheetByName('SYSTEM_INFO');
-        if (!sheet) sheet = ss.insertSheet('SYSTEM_INFO');
+        const existingSheet = ss.getSheetByName('SYSTEM_INFO');
 
-        const liff = this.getLiffConfig(opts, sheet);
-        const managerPassword = opts.managerPassword || this.getManagerPassword(sheet);
         const districtName = cleanDistrictId || ss.getName();
-        const subdomain = districtName.toLowerCase();
-        const baseUrl = (opts.baseUrl && opts.baseUrl !== 'https://postingmap.jp')
-          ? opts.baseUrl
-          : `https://${subdomain}.postingmap.jp`;
-        const dashboardUrl = `${baseUrl}/active/manager/`;
-        const hAppUrl = `${baseUrl}/`;
+
+        // 運用モード厳格解決 (1. opts.operationMode -> 2. 既存SYSTEM_INFO -> 3. Fail-Closed)
+        let operationMode = opts.operationMode;
+        if (operationMode !== undefined && operationMode !== null && String(operationMode).trim() !== '') {
+          operationMode = String(operationMode).trim().toUpperCase();
+        } else {
+          operationMode = '';
+          if (existingSheet) {
+            try {
+              operationMode = this.getOperationMode(existingSheet, cleanDistrictId);
+            } catch (e) {
+              operationMode = '';
+            }
+          }
+        }
+
+        if (!operationMode || (operationMode !== 'ELECTION' && operationMode !== 'SUBSCRIPTION')) {
+          return {
+            success: false,
+            code: 'INVALID_ARGUMENT',
+            message: `Invalid or missing operationMode "${opts.operationMode || ''}". Must be ELECTION or SUBSCRIPTION.`
+          };
+        }
+
+        // H-App URL 厳格解決 (1. opts.hAppUrl / opts.baseUrl -> 2. 既存SYSTEM_INFO -> 3. Fail-Closed)
+        let rawUrl = '';
+        if (opts.hAppUrl && String(opts.hAppUrl).trim()) {
+          rawUrl = String(opts.hAppUrl).trim();
+        } else if (opts.baseUrl && String(opts.baseUrl).trim() && opts.baseUrl !== 'https://postingmap.jp') {
+          rawUrl = String(opts.baseUrl).trim();
+        } else if (existingSheet) {
+          try {
+            rawUrl = this.getHAppUrl(existingSheet, cleanDistrictId);
+          } catch (e) {
+            rawUrl = '';
+          }
+        }
+
+        if (!rawUrl) {
+          return {
+            success: false,
+            code: 'INVALID_ARGUMENT',
+            message: 'H-App URL must be explicitly provided via hAppUrl/baseUrl or present in SYSTEM_INFO.'
+          };
+        }
+
+        const cleanBaseUrl = rawUrl.replace(/\/+$/, '');
+        const hAppUrl = `${cleanBaseUrl}/`;
+        const dashboardUrl = `${cleanBaseUrl}/active/manager/`;
 
         let contractEndDate = opts.contractEndDate !== undefined ? opts.contractEndDate : '';
-        if (!contractEndDate && sheet) {
+        if (!contractEndDate && existingSheet) {
           try {
-            contractEndDate = this.getContractEndDate(sheet);
+            contractEndDate = this.getContractEndDate(existingSheet);
           } catch (e) {
             contractEndDate = '';
           }
         }
 
-        let operationMode = opts.operationMode;
-        if (!operationMode && sheet) {
-          try {
-            operationMode = this.getOperationMode(sheet);
-          } catch (e) {
-            operationMode = '';
-          }
-        }
-        if (!operationMode) {
-          operationMode = 'ELECTION';
-        }
-        operationMode = String(operationMode).trim().toUpperCase();
-
         let activeDatasetKey = opts.activeDatasetKey !== undefined ? opts.activeDatasetKey : '';
-        if (!activeDatasetKey && sheet) {
+        if (!activeDatasetKey && existingSheet) {
           try {
-            activeDatasetKey = this.getActiveDatasetKey(sheet);
+            activeDatasetKey = this.getActiveDatasetKey(existingSheet);
           } catch (e) {
             activeDatasetKey = '';
           }
         }
 
         let contractStartDate = opts.contractStartDate !== undefined ? opts.contractStartDate : '';
-        if (!contractStartDate && sheet) {
+        if (!contractStartDate && existingSheet) {
           try {
-            contractStartDate = this.getContractStartDate(sheet);
+            contractStartDate = this.getContractStartDate(existingSheet);
           } catch (e) {
             contractStartDate = '';
           }
         }
+
+        let sheet = existingSheet;
+        if (!sheet) {
+          sheet = ss.insertSheet('SYSTEM_INFO');
+        }
+
+        const liff = this.getLiffConfig(opts, sheet);
+        const managerPassword = opts.managerPassword || this.getManagerPassword(sheet);
 
         const values = [
           ['項目', '内容'],

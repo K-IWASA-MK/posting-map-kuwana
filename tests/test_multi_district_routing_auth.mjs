@@ -418,6 +418,7 @@ kuwanaSysInfo.rows = [
   ["項目", "設定値"],
   ["地区コード", "KUWANA"],
   ["地区名", "桑名地区"],
+  ["HアプリURL", "https://kuwana.postingmap.jp/"],
   ["運用モード", "SUBSCRIPTION"],
   ["管理パスワード", "pwd_kuwana"],
   ["契約終了日", "2026-10-31"]
@@ -1575,7 +1576,13 @@ runTest("Scenario 25: Provisioning Blast Radius 固定 ＆ 月次 rollover 全�
   mockSpreadsheets["ss-disabled-new-id"] = ssDisabledNew;
   const disabledProvResult = DistrictProvisioner.getInstance().provisionNewDistrict(
     sampleAddresses,
-    { provisioningToken: validToken, targetSpreadsheetId: "ss-disabled-new-id", operationMode: "SUBSCRIPTION", targetMonth: "2026-09" },
+    {
+      provisioningToken: validToken,
+      targetSpreadsheetId: "ss-disabled-new-id",
+      operationMode: "SUBSCRIPTION",
+      targetMonth: "2026-09",
+      baseUrl: "https://explicit-disabled.example"
+    },
     "NEW_DIST_DISABLED"
   );
   assert.equal(disabledProvResult.success, true, "provisionNewDistrict must succeed for disabled new district via explicit targetSpreadsheetId");
@@ -1824,6 +1831,27 @@ runTest("Scenario 30: setupRosterSheet(districtId) および v2_api Provisioning
   assert.equal(resetData.success, true, "resetRoster for OKAYAMA must succeed");
 
   // 2. doGet early syncSystemInfo の districtId 伝播
+  // テスト側 KUWANA SYSTEM_INFO fixture に事前設定 (新契約: HアプリURL Authority & 運用モード保証)
+  const kSS = mockSpreadsheets["ss-kuwana-id"];
+  let kSysSheet = kSS.getSheetByName("SYSTEM_INFO");
+  if (!kSysSheet) {
+    kSysSheet = kSS.addSheet("SYSTEM_INFO");
+  }
+  let hasHAppUrl = false;
+  let hasOpMode = false;
+  for (let r = 0; r < kSysSheet.rows.length; r++) {
+    if (kSysSheet.rows[r][0] === "HアプリURL") {
+      kSysSheet.rows[r][1] = "https://kuwana.postingmap.jp/";
+      hasHAppUrl = true;
+    }
+    if (kSysSheet.rows[r][0] === "運用モード") {
+      kSysSheet.rows[r][1] = "SUBSCRIPTION";
+      hasOpMode = true;
+    }
+  }
+  if (!hasHAppUrl) kSysSheet.rows.push(["HアプリURL", "https://kuwana.postingmap.jp/"]);
+  if (!hasOpMode) kSysSheet.rows.push(["運用モード", "SUBSCRIPTION"]);
+
   const getSysReq = {
     parameter: {
       action: "syncSystemInfo",
