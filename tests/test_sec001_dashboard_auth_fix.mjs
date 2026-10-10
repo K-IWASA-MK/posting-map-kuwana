@@ -191,6 +191,7 @@ const kuwanaSS = new MockSpreadsheet("ss-kuwana-id", "KUWANA", {
     ["項目", "内容"],
     ["地区コード", "KUWANA"],
     ["地区名", "KUWANA"],
+    ["運用モード", "SUBSCRIPTION"],
     ["HアプリURL", "https://kuwana.postingmap.jp/"],
     ["Dashboard URL", "https://kuwana.postingmap.jp/active/manager/"],
     ["Manager認証パスワード", "884219"],
@@ -225,6 +226,7 @@ const okayamaSS = new MockSpreadsheet("ss-okayama-id", "OKAYAMA", {
     ["項目", "内容"],
     ["地区コード", "OKAYAMA"],
     ["地区名", "OKAYAMA"],
+    ["運用モード", "SUBSCRIPTION"],
     ["Manager認証パスワード", "112233"],
     ["状態", "ACTIVE"],
     ["契約終了日", "2029-12-31"]

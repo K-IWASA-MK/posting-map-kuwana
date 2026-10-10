@@ -184,7 +184,8 @@ sysInfoA.rows = [
   ['項目', '設定値'],
   ['地区コード', 'KUWANA'],
   ['地区名', '桑名支部'],
-  ['管理パスワード', 'pwd_kuwana_123']
+  ['管理パスワード', 'pwd_kuwana_123'],
+  ['運用モード', 'SUBSCRIPTION']
 ];
 const staffA = ssA.addSheet(`名簿${currentMonth}`);
 staffA.rows = [
@@ -206,7 +207,8 @@ sysInfoB.rows = [
   ['項目', '設定値'],
   ['地区コード', 'KURASHIKI'],
   ['地区名', '倉敷支部'],
-  ['管理パスワード', 'pwd_kurashiki_456']
+  ['管理パスワード', 'pwd_kurashiki_456'],
+  ['運用モード', 'SUBSCRIPTION']
 ];
 const staffB = ssB.addSheet(`名簿${currentMonth}`);
 staffB.rows = [
@@ -230,11 +232,13 @@ mockScriptProperties['DISTRICT_REGISTRY'] = JSON.stringify({
 
 // Universal Runtime コードのロード
 const adapterCode = fs.readFileSync(path.join(REPO_ROOT, 'active/infrastructure/spreadsheet/spreadsheet_adapter.js'), 'utf8');
+const sysInfoServiceCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/system/system_info_service.js'), 'utf8');
 const monthlyResolverCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/system/monthly_sheet_resolver.js'), 'utf8');
 const addressMasterServiceCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/area/address_master_service.js'), 'utf8');
 const staffModelCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/staff/staff_model.js'), 'utf8');
 
 vm.runInContext(adapterCode, sandbox);
+vm.runInContext(sysInfoServiceCode, sandbox);
 vm.runInContext(monthlyResolverCode, sandbox);
 vm.runInContext(addressMasterServiceCode, sandbox);
 vm.runInContext(staffModelCode, sandbox);
@@ -334,9 +338,10 @@ assert.equal(progressA, Math.round((1 / 337) * 100), 'Region A progress must be 
 assert.equal(progressB, Math.round((2 / 120) * 100), 'Region B progress must be calculated against 120');
 
 // 5. API & 認証 & データ境界の独立解決
-assert.equal(sandbox.MonthlySheetResolver.getInstance().getSheetName('distribution'), '配布実績2026-09');
-const sheetA = sandbox.MonthlySheetResolver.getInstance().getCurrentSheet('distribution', 'KUWANA');
-const sheetB = sandbox.MonthlySheetResolver.getInstance().getCurrentSheet('distribution', 'KURASHIKI');
+const testDate = new Date('2026-09-15T00:00:00Z');
+assert.equal(sandbox.MonthlySheetResolver.getInstance().getSheetName('distribution', testDate, 'KUWANA'), '配布実績2026-09');
+const sheetA = sandbox.MonthlySheetResolver.getInstance().getCurrentSheet('distribution', testDate, 'KUWANA');
+const sheetB = sandbox.MonthlySheetResolver.getInstance().getCurrentSheet('distribution', testDate, 'KURASHIKI');
 assert.equal(sheetA.name, '配布実績2026-09');
 assert.equal(sheetB.name, '配布実績2026-09');
 

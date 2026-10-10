@@ -320,8 +320,8 @@ function runCase(name, fn) {
   }
 }
 
-// --- Case 1-A: Provisioning SSOT (原本5種生成) ---
-runCase("Case 1-A: Master Provisioning SSOT (16/4/7/14/2 cols)", () => {
+// --- Case 1-A: Operational Dataset Provisioning SSOT (17/4/7/14/2 cols, 原本なし) ---
+runCase("Case 1-A: Operational Dataset Provisioning SSOT (17/4/7/14/2 cols)", () => {
   const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
@@ -330,30 +330,32 @@ runCase("Case 1-A: Master Provisioning SSOT (16/4/7/14/2 cols)", () => {
     { rowId: 2, cityName: "CITY_A", townName: "AREA_B" }
   ];
 
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
 
-  // 1. 配布原本: 16列 (P列 = lineUserId)
-  const distSheet = ss.getSheetByName("配布実績の原本");
-  assert.ok(distSheet, "配布実績の原本 must exist");
-  assert.equal(distSheet.getLastColumn(), 16, "配布実績原本 must have 16 cols");
+  // 1. 配布実績2026-10: 17列 (P列 = lineUserId, Q列 = requestId)
+  const distSheet = ss.getSheetByName("配布実績2026-10");
+  assert.ok(distSheet, "配布実績2026-10 must exist");
+  assert.equal(distSheet.getLastColumn(), 17, "配布実績 must have 17 cols");
   assert.equal(distSheet.grid[0][15], "lineUserId", "P列 must be lineUserId");
-  assert.equal(distSheet.grid[1].length, 16, "Data row 1 must have 16 elements");
+  assert.equal(distSheet.grid[0][16], "requestId", "Q列 must be requestId");
+  assert.equal(distSheet.grid[1].length, 17, "Data row 1 must have 17 elements");
   assert.equal(distSheet.grid[1][15], "", "Data row 1 lineUserId must be empty string");
+  assert.equal(distSheet.grid[1][16], "", "Data row 1 requestId must be empty string");
 
-  // 2. 名簿原本: 4列
-  const staffSheet = ss.getSheetByName("名簿の原本");
+  // 2. 名簿2026-10: 4列
+  const staffSheet = ss.getSheetByName("名簿2026-10");
   assert.ok(staffSheet);
   assert.equal(staffSheet.getLastColumn(), 4);
   assert.equal(staffSheet.grid[0][2], "LINE_USER_ID");
 
-  // 3. チラシ原本: 7列 (G列 = lineUserId)
-  const flyerSheet = ss.getSheetByName("保有チラシ枚数の原本");
+  // 3. チラシ2026-10: 7列 (G列 = lineUserId)
+  const flyerSheet = ss.getSheetByName("保有チラシ枚数2026-10");
   assert.ok(flyerSheet);
   assert.equal(flyerSheet.getLastColumn(), 7);
   assert.equal(flyerSheet.grid[0][6], "lineUserId");
 
-  // 4. 受渡原本: 14列 (13=requesterLineUserId, 14=holderLineUserId)
-  const transferSheet = ss.getSheetByName("受渡要請履歴の原本");
+  // 4. 受渡2026-10: 14列 (13=requesterLineUserId, 14=holderLineUserId)
+  const transferSheet = ss.getSheetByName("受渡要請履歴2026-10");
   assert.ok(transferSheet);
   assert.equal(transferSheet.getLastColumn(), 14);
   assert.equal(transferSheet.grid[0][7], "状態");
@@ -361,31 +363,37 @@ runCase("Case 1-A: Master Provisioning SSOT (16/4/7/14/2 cols)", () => {
   assert.equal(transferSheet.grid[0][12], "requesterLineUserId");
   assert.equal(transferSheet.grid[0][13], "holderLineUserId");
 
-  // 5. PinStatus原本: 2列
-  const pinSheet = ss.getSheetByName("PinStatusの原本");
+  // 5. PinStatus2026-10: 2列
+  const pinSheet = ss.getSheetByName("PinStatus2026-10");
   assert.ok(pinSheet);
   assert.equal(pinSheet.getLastColumn(), 2);
   assert.equal(pinSheet.grid[0][0], "rowId");
   assert.equal(pinSheet.grid[0][1], "status");
+
+  // 原本5種が一切生成されていないこと
+  assert.equal(ss.getSheetByName("配布実績の原本"), null);
+  assert.equal(ss.getSheetByName("名簿の原本"), null);
+  assert.equal(ss.getSheetByName("保有チラシ枚数の原本"), null);
+  assert.equal(ss.getSheetByName("受渡要請履歴の原本"), null);
+  assert.equal(ss.getSheetByName("PinStatusの原本"), null);
 });
 
-// --- Case 1-B: Rollover SSOT (0/5 生成 & 当月配布実績17列化 & D-Pクリア) ---
-runCase("Case 1-B: Rollover Monthly Provisioning (0/5 -> 17 cols, 13 cleared)", () => {
+// --- Case 1-B: Rollover Monthly Provisioning (0/5 生成 & 当月配布実績17列化) ---
+runCase("Case 1-B: Rollover Monthly Provisioning (0/5 -> 17 cols)", () => {
   const ss = new MockSpreadsheet("TEST_DISTRICT");
+  ss.addSheet("SYSTEM_INFO", [
+    ["項目", "内容"],
+    ["地区コード", "TEST_DISTRICT"],
+    ["運用モード", "SUBSCRIPTION"],
+    ["HアプリURL", "https://test.postingmap.jp"]
+  ]);
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [
     { rowId: 1, cityName: "CITY_A", townName: "AREA_A" }
   ];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
 
-  // 原本配布実績のD〜P列にダミー値を入れておく
-  const masterDist = ss.getSheetByName("配布実績の原本");
-  for (let c = 3; c < 16; c++) {
-    masterDist.grid[1][c] = `VAL_${c}`;
-  }
-
-  const res = ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
+  const res = ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10", { addresses: sampleAddresses });
   assert.equal(res.success, true);
   assert.equal(res.created.length, 5);
 
@@ -395,13 +403,9 @@ runCase("Case 1-B: Rollover Monthly Provisioning (0/5 -> 17 cols, 13 cleared)", 
   assert.equal(monthlyDist.grid[0][15], "lineUserId", "Col 16 must be lineUserId");
   assert.equal(monthlyDist.grid[0][16], "requestId", "Col 17 must be requestId");
 
-  // D〜P列 (4〜16列目の13列) がクリアされていること
   assert.equal(monthlyDist.grid[1][0], 1, "rowId must be preserved");
   assert.equal(monthlyDist.grid[1][1], "CITY_A", "cityName must be preserved");
   assert.equal(monthlyDist.grid[1][2], "AREA_A", "townName must be preserved");
-  for (let c = 3; c < 16; c++) {
-    assert.equal(monthlyDist.grid[1][c], "", `Col ${c+1} must be cleared`);
-  }
 });
 
 // --- Case 2: Two-Phase Scan / Collision Fail-Closed (mutation 0) ---
@@ -411,9 +415,8 @@ runCase("Case 2: Collision Fail-Closed with mutation 0 (Scan-before-Mutate)", ()
 
   // 当月5シートを用意し、flyer当月シートの7列目に異種値 0 を配置
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
 
   const flyerSheet = ss.getSheetByName("保有チラシ枚数2026-10");
   flyerSheet.grid[0][6] = 0; // 異種値衝突 (0 is a falsy non-blank value)
@@ -457,9 +460,8 @@ runCase("Case 3: Dry-run Safety Guarantee (API mutation call count = 0)", () => 
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
 
   // チラシ当月シートの7列目を意図的に空にする
   const flyerSheet = ss.getSheetByName("保有チラシ枚数2026-10");
@@ -522,8 +524,9 @@ runCase("Case 5: Missing Sheet Policy (Monthly fail-closed)", () => {
   const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  // 運用当月シートが足りない状態
-  ss.addSheet("配布実績の原本", [["ID"]]);
+  // 運用当月シートが足りない状態 (名簿のみ存在、配布実績等欠損)
+  ss.addSheet("名簿2026-10", [["ID", "名前", "LINE_USER_ID", "登録日時"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
   const res = ctx.healSchemaHeaders({ isDryRun: true, targetMonth: "2026-10" });
   assert.equal(res.success, false);
   assert.equal(res.code, "MISSING_CURRENT_MONTH_SHEET");
@@ -535,9 +538,8 @@ runCase("Case 6: Missing Sheet Policy (Bulletin sheets skipped gracefully)", () 
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
 
   // 掲示板シート・連絡履歴シートは存在しない
   assert.equal(ss.getSheetByName("掲示板"), null);
@@ -554,9 +556,8 @@ runCase("Case 7: Data Row Immutability (Row >= 2 untouched by healSchemaHeaders)
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
 
   const flyerSheet = ss.getSheetByName("保有チラシ枚数2026-10");
   flyerSheet.grid[0][6] = ""; // 7列目欠損
@@ -578,9 +579,8 @@ runCase("Case 8: Past Month Immutability (Past months ignored and untouched)", (
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
 
   // 過去月シートを配置
   const pastDist = ss.addSheet("配布実績2026-09", [
@@ -635,9 +635,8 @@ runCase("Case 10: OUT_OF_GRID Handling (Monthly 17-col only & no getRange in Pha
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
 
   // 配布実績2026-10 を 16列 (maxColumns: 16) に設定し、17列目 requestId を OUT_OF_GRID とする
   const distMonthly = ss.getSheetByName("配布実績2026-10");
@@ -660,13 +659,18 @@ runCase("Case 10: OUT_OF_GRID Handling (Monthly 17-col only & no getRange in Pha
 // --- Case 11: Rollover State Machine (5/5 No-op & 1-4/5 Fail-Closed) ---
 runCase("Case 11: Rollover State Machine (5/5 complete No-op & 1-4/5 Fail-Closed)", () => {
   const ss = new MockSpreadsheet("TEST_DISTRICT");
+  ss.addSheet("SYSTEM_INFO", [
+    ["項目", "内容"],
+    ["地区コード", "TEST_DISTRICT"],
+    ["運用モード", "SUBSCRIPTION"],
+    ["HアプリURL", "https://test.postingmap.jp"]
+  ]);
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
 
   // 1. 初回 0/5 -> 5シート生成
-  const res1 = ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
+  const res1 = ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10", { addresses: sampleAddresses });
   assert.equal(res1.success, true);
   assert.equal(res1.created.length, 5);
 
@@ -746,9 +750,8 @@ runCase("Case 15: healSchemaHeaders district-aware resolution", () => {
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"], ["運用モード", "SUBSCRIPTION"]]);
 
   // 1. 正常な地区指定
   const resValid = ctx.healSchemaHeaders({ isDryRun: true, targetMonth: "2026-10", districtId: "TEST_DISTRICT" });
@@ -767,18 +770,9 @@ runCase("Case 16: healSchemaHeaders Plan A (2026-09 15-col -> 17-col, data rows 
   const ss = new MockSpreadsheet("KUWANA");
   const ctx = createVmContext(ss);
 
-  // 原本5種を 15列 (Generation 1 旧構造) でセットアップ
-  const sampleAddresses = [{ rowId: 1, cityName: "KUWANA", townName: "AREA_1" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-
-  // 原本を 15列に縮小
-  const masterDist = ss.getSheetByName("配布実績の原本");
-  masterDist.maxColumns = 15;
-  masterDist.grid[0] = masterDist.grid[0].slice(0, 15);
-
-  // 2026-09 を 15列、既存データ行ありで作成
+  // 2026-09 を 15列 (Generation 1 旧構造)、既存データ行ありで作成
   const pastDistGrid = [
-    masterDist.grid[0].slice(0, 15),
+    ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時"],
     [1, "KUWANA", "AREA_1", "2026/09/15 10:00", 50, "S001", "Taro", "35.0,136.0", "img.jpg", 35.0, 136.0, "2026/09/15 10:00", "fid1", "http://url", "2026/09/15 10:00"]
   ];
   const dist202609 = ss.addSheet("配布実績2026-09", pastDistGrid, 15);
@@ -787,7 +781,7 @@ runCase("Case 16: healSchemaHeaders Plan A (2026-09 15-col -> 17-col, data rows 
   ss.addSheet("保有チラシ枚数2026-09", [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]]);
   ss.addSheet("受渡要請履歴2026-09", [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]]);
   ss.addSheet("PinStatus2026-09", [["rowId", "status"]]);
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"], ["運用モード", "SUBSCRIPTION"]]);
 
   assert.equal(dist202609.getMaxColumns(), 15);
   assert.equal(dist202609.grid[1].length, 15);
@@ -819,9 +813,8 @@ runCase("Case 17: healSchemaHeaders (2026-10 17-col blank P healed, data rows mu
   const ctx = createVmContext(ss);
 
   const sampleAddresses = [{ rowId: 1, cityName: "KUWANA", townName: "AREA_1" }];
-  ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
-  ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
-  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"]]);
+  ctx.DistrictProvisioner.getInstance().createOperationalDataset(ss, "2026-10", sampleAddresses);
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"], ["運用モード", "SUBSCRIPTION"]]);
 
   const dist202610 = ss.getSheetByName("配布実績2026-10");
   // 本番 KUWANA の実態を再現: 17列で P列(16)が空文字、Q列(17)が "requestId"
@@ -858,6 +851,7 @@ runCase("Case 18: inspectSystemInfoKeys district-aware resolution", () => {
 // --- Case 19: migrateIdentityColumns District-Aware ---
 runCase("Case 19: migrateIdentityColumns district-aware resolution", () => {
   const ss = new MockSpreadsheet("KUWANA");
+  ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "KUWANA"], ["運用モード", "SUBSCRIPTION"]]);
   const ctx = createVmContext(ss);
 
   const res = ctx.migrateIdentityColumns(true, { districtId: "KUWANA" });

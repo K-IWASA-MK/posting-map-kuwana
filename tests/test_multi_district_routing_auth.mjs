@@ -418,6 +418,7 @@ kuwanaSysInfo.rows = [
   ["項目", "設定値"],
   ["地区コード", "KUWANA"],
   ["地区名", "桑名地区"],
+  ["運用モード", "SUBSCRIPTION"],
   ["管理パスワード", "pwd_kuwana"],
   ["契約終了日", "2026-10-31"]
 ];
@@ -441,6 +442,7 @@ okayamaSysInfo.rows = [
   ["項目", "設定値"],
   ["地区コード", "OKAYAMA"],
   ["地区名", "岡山地区"],
+  ["運用モード", "SUBSCRIPTION"],
   ["管理パスワード", "pwd_okayama"],
   ["契約終了日", "2026-10-31"]
 ];
@@ -924,6 +926,7 @@ runTest("Scenario 14: Contract Cache (MISS ➔ HIT ➔ Invalidation サイクル
     ["項目", "設定値"],
     ["地区コード", "NEW_DISTRICT_B"],
     ["地区名", "新地区B"],
+    ["運用モード", "SUBSCRIPTION"],
     ["契約終了日", "2026-10-31"]
   ];
 
@@ -1013,6 +1016,7 @@ idTestSysInfo.rows = [
   ["項目", "設定値"],
   ["地区コード", "IDENTITY_TEST"],
   ["地区名", "認証テスト地区"],
+  ["運用モード", "SUBSCRIPTION"],
   ["管理パスワード", "pwd_id_test"],
   ["契約終了日", "2026-10-31"]
 ];
@@ -1399,6 +1403,7 @@ runTest("Scenario 24: District Context Propagation & Drive Isolation / Fail-Clos
     ["項目", "設定値"],
     ["地区コード", "NO_FOLDER_DIST"],
     ["地区名", "フォルダなし地区"],
+    ["運用モード", "SUBSCRIPTION"],
     ["契約終了日", "2026-10-31"]
   ];
   const noFolderStaff = noFolderSS.addSheet(distSheetName ? staffSheetName : "名簿2026-09");
@@ -1555,7 +1560,7 @@ runTest("Scenario 25: Provisioning Blast Radius 固定 ＆ 月次 rollover 全�
   const sampleAddresses = [{ rowId: 1, cityName: "桑名市", townName: "大山田" }];
   const provResult = DistrictProvisioner.getInstance().provisionNewDistrict(
     sampleAddresses,
-    { provisioningToken: validToken, targetSpreadsheetId: "ss-kuwana-id" },
+    { provisioningToken: validToken, targetSpreadsheetId: "ss-kuwana-id", operationMode: "SUBSCRIPTION", targetMonth: "2026-09" },
     "KUWANA"
   );
   assert.equal(provResult.success, true, "provisionNewDistrict for KUWANA must succeed");
@@ -1570,7 +1575,7 @@ runTest("Scenario 25: Provisioning Blast Radius 固定 ＆ 月次 rollover 全�
   mockSpreadsheets["ss-disabled-new-id"] = ssDisabledNew;
   const disabledProvResult = DistrictProvisioner.getInstance().provisionNewDistrict(
     sampleAddresses,
-    { provisioningToken: validToken, targetSpreadsheetId: "ss-disabled-new-id" },
+    { provisioningToken: validToken, targetSpreadsheetId: "ss-disabled-new-id", operationMode: "SUBSCRIPTION", targetMonth: "2026-09" },
     "NEW_DIST_DISABLED"
   );
   assert.equal(disabledProvResult.success, true, "provisionNewDistrict must succeed for disabled new district via explicit targetSpreadsheetId");
@@ -1613,6 +1618,8 @@ runTest("Scenario 25: Provisioning Blast Radius 固定 ＆ 月次 rollover 全�
   // 1-4. 片肺障害隔離検証: CORRUPT_DIST (3/5 破損) と OKAYAMA (0/5)
   const ssCorrupt = new MockSpreadsheet("ss-corrupt-id", "POSTING_MAP_CORRUPT_DIST");
   mockSpreadsheets["ss-corrupt-id"] = ssCorrupt;
+  const corruptSys = ssCorrupt.addSheet("SYSTEM_INFO");
+  corruptSys.rows = [["項目", "設定値"], ["地区コード", "CORRUPT_DIST"], ["運用モード", "SUBSCRIPTION"]];
   masterNames.forEach(m => {
     const s = ssCorrupt.addSheet(m);
     s.appendRow(["h1", "h2"]);

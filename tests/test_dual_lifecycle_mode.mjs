@@ -501,6 +501,7 @@ runCase("SUBSCRIPTION Mode Rollover (Direct generation from CSV, history preserv
     ["項目", "内容"],
     ["地区コード", "TEST_DIST"],
     ["運用モード", "SUBSCRIPTION"],
+    ["HアプリURL", "https://sub.postingmap.jp"],
     ["契約終了日", "2026-12-31"]
   ];
 
@@ -689,6 +690,288 @@ runCase("api.js callApiPost contract (success: true with business code must NOT 
     message: "Legacy backend crash"
   };
   assert.equal(willThrow(testResponseLegacyErrorStatus), true, "status: 'error' without success: true must trigger throw");
+});
+
+// =============================================================================
+// TEST 8: 反例1 - Mode未設定 → Fail-Closed (Resolver throw, GPS Fail-Closed, rollover mutation 0)
+// =============================================================================
+runCase("Counterexample 1: Unset Mode -> Fail-Closed across Resolver, GPS, and Rollover", () => {
+  const ss = new MockSpreadsheet("ss-nomode", "POSTING_MAP_NOMODE");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "NOMODE"],
+    ["HアプリURL", "https://nomode.example.com"],
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+
+  // 1. Resolver: throw
+  assert.throws(() => {
+    context.MonthlySheetResolver.getInstance().getSheetName("distribution", new Date(), "NOMODE");
+  }, /Fail-Closed|missing|unavailable/i);
+
+  assert.throws(() => {
+    context.MonthlySheetResolver.getInstance().getCurrentSheet("distribution", "NOMODE");
+  }, /Fail-Closed|missing|unavailable/i);
+
+  // 2. GPS: Fail-Closed
+  const gpsRes = context.GPSService.getInstance().updateRecordWithGPSPhoto({
+    timestamp: Date.now(),
+    rowId: 1,
+    isDone: true,
+    count: 100
+  }, "NOMODE");
+  assert.equal(gpsRes.success, false, "GPS must fail closed when operation mode is missing");
+
+  // 3. Rollover: mutation 0 Fail-Closed
+  const mutationsBefore = ss.mutationCount;
+  const rollRes = context.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-11", {}, "NOMODE");
+  assert.equal(rollRes.success, false);
+  assert.equal(rollRes.code, "OPERATION_MODE_RESOLUTION_FAILED");
+  assert.equal(ss.mutationCount, mutationsBefore, "Mutation must be 0 on rollover when mode is missing");
+});
+
+// =============================================================================
+// TEST 9: 反例2 - Mode不正 → Fail-Closed (Current Month fallback禁止)
+// =============================================================================
+runCase("Counterexample 2: Invalid Mode -> Fail-Closed (No Current Month fallback)", () => {
+  const ss = new MockSpreadsheet("ss-invalidmode", "POSTING_MAP_INVALIDMODE");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "INVALIDMODE"],
+    ["運用モード", "CORRUPT_MODE"],
+    ["HアプリURL", "https://invalid.example.com"],
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+
+  // 1. Resolver: throw (決して当月フォールバックしない)
+  assert.throws(() => {
+    context.MonthlySheetResolver.getInstance().getSheetName("distribution", new Date(), "INVALIDMODE");
+  }, /Invalid 運用モード|Fail-Closed/i);
+
+  // 2. GPS: Fail-Closed
+  const gpsRes = context.GPSService.getInstance().updateRecordWithGPSPhoto({
+    timestamp: Date.now(),
+    rowId: 1,
+    isDone: true,
+    count: 100
+  }, "INVALIDMODE");
+  assert.equal(gpsRes.success, false);
+
+  // 3. Rollover: mutation 0 Fail-Closed
+  const mutationsBefore = ss.mutationCount;
+  const rollRes = context.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-11", {}, "INVALIDMODE");
+  assert.equal(rollRes.success, false);
+  assert.equal(rollRes.code, "OPERATION_MODE_RESOLUTION_FAILED");
+  assert.equal(ss.mutationCount, mutationsBefore);
+});
+
+// =============================================================================
+// TEST 10: 反例3 - ELECTION Active Dataset Key欠損 → Fail-Closed
+// =============================================================================
+runCase("Counterexample 3: ELECTION Active Dataset Key Missing -> Fail-Closed", () => {
+  const ss = new MockSpreadsheet("ss-elec-nokey", "POSTING_MAP_ELEC_NOKEY");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "ELEC_NOKEY"],
+    ["運用モード", "ELECTION"],
+    ["Active Dataset Key", ""], // 空白・欠損
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+
+  // Resolver: Active Dataset Key 欠損で throw
+  assert.throws(() => {
+    context.MonthlySheetResolver.getInstance().getSheetName("distribution", new Date(), "ELEC_NOKEY");
+  }, /Active Dataset Key is missing|Fail-Closed/i);
+});
+
+// =============================================================================
+// TEST 11: 反例4 - GPS Mode解決失敗 → SUBSCRIPTIONへ落ちない
+// =============================================================================
+runCase("Counterexample 4: GPS Mode Resolution Failure -> Fail-Closed (No SUBSCRIPTION fallback)", () => {
+  const ss = new MockSpreadsheet("ss-nogpsmode", "POSTING_MAP_NOGPSMODE");
+  // SYSTEM_INFO 自体が存在しない
+  const { context } = createSandbox(ss);
+
+  const gpsRes = context.GPSService.getInstance().updateRecordWithGPSPhoto({
+    timestamp: Date.now(),
+    rowId: 1,
+    isDone: true,
+    count: 50
+  }, "NOGPSMODE");
+
+  assert.equal(gpsRes.success, false, "GPS must fail closed when SYSTEM_INFO is unavailable");
+  assert.ok(gpsRes.message.includes("unavailable") || gpsRes.message.includes("failed") || gpsRes.message.includes("Fail-Closed"));
+});
+
+// =============================================================================
+// TEST 12: 反例5 - CSV取得失敗 → 原本fallback 0 / mutation 0
+// =============================================================================
+runCase("Counterexample 5: CSV Load Failure -> Zero Master Fallback & Mutation 0", () => {
+  const ss = new MockSpreadsheet("ss-csv-fail", "POSTING_MAP_CSV_FAIL");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "CSV_FAIL"],
+    ["運用モード", "SUBSCRIPTION"],
+    ["HアプリURL", "https://csvfail.example.com"],
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context, sandbox } = createSandbox(ss);
+
+  // UrlFetchApp を 404 エラーを返すように上書き
+  sandbox.UrlFetchApp = {
+    fetch(url) {
+      return {
+        getResponseCode() { return 404; },
+        getContentText() { return "Not Found"; }
+      };
+    }
+  };
+
+  const mutationsBefore = ss.mutationCount;
+  const rollRes = context.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-11", {}, "CSV_FAIL");
+
+  assert.equal(rollRes.success, false);
+  assert.equal(rollRes.code, "CSV_LOAD_FAILED");
+  assert.equal(rollRes.created.length, 0);
+  assert.equal(ss.getSheetByName("配布実績2026-11"), null, "Sheet must not be created");
+  assert.equal(ss.mutationCount, mutationsBefore, "Mutation must be 0 when CSV fetch fails");
+});
+
+// =============================================================================
+// TEST 13: 反例6 - HアプリURL欠損 → URL推測0 (Fail-Closed)
+// =============================================================================
+runCase("Counterexample 6: HアプリURL Missing -> Fail-Closed & Zero URL Guesswork", () => {
+  const ss = new MockSpreadsheet("ss-nourl", "POSTING_MAP_NOURL");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "NOURL"],
+    ["運用モード", "SUBSCRIPTION"],
+    // HアプリURL 不在
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context } = createSandbox(ss);
+
+  assert.throws(() => {
+    context.SystemInfoService.getInstance().getHAppUrl(sysSheet, "NOURL");
+  }, /HアプリURL/i);
+
+  assert.throws(() => {
+    context.DistrictProvisioner.getInstance().loadDistrictAddresses("NOURL", ss);
+  }, /HアプリURL/i);
+});
+
+// =============================================================================
+// TEST 14: 反例7 - SUBSCRIPTION rollover Lock保護
+// =============================================================================
+runCase("Counterexample 7: SUBSCRIPTION Rollover Lock Protection", () => {
+  const ss = new MockSpreadsheet("ss-lock-test", "POSTING_MAP_LOCK_TEST");
+  const sysSheet = ss.addSheet("SYSTEM_INFO");
+  sysSheet.grid = [
+    ["項目", "内容"],
+    ["地区コード", "LOCK_TEST"],
+    ["運用モード", "SUBSCRIPTION"],
+    ["HアプリURL", "https://locktest.example.com"],
+    ["契約終了日", "2026-12-31"]
+  ];
+
+  const { context, sandbox } = createSandbox(ss);
+
+  let lockAcquired = false;
+  let lockReleased = false;
+
+  sandbox.LockService = {
+    getScriptLock() {
+      return {
+        waitLock(ms) { lockAcquired = true; },
+        releaseLock() { lockReleased = true; }
+      };
+    }
+  };
+
+  const res = context.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-11", {}, "LOCK_TEST");
+  assert.equal(res.success, true);
+  assert.equal(lockAcquired, true, "waitLock must be called");
+  assert.equal(lockReleased, true, "releaseLock must be called");
+});
+
+// =============================================================================
+// TEST 15: 反例8 - Mode未指定Provisioning → ELECTION自動採用0
+// =============================================================================
+runCase("Counterexample 8: Provisioning Without Mode -> ELECTION Auto-fallback Prohibited", () => {
+  const ss = new MockSpreadsheet("ss-nomode-prov", "POSTING_MAP_NOMODE_PROV");
+  const { context } = createSandbox(ss);
+
+  const sampleAddrs = [
+    { rowId: 1, cityName: "桑名市", townName: "大山田1丁目" }
+  ];
+
+  const mutationsBefore = ss.mutationCount;
+  const res = context.DistrictProvisioner.getInstance().provisionNewDistrict(
+    sampleAddrs,
+    {
+      provisioningToken: "valid-test-token"
+      // operationMode 未指定
+    },
+    "NOMODE_PROV"
+  );
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "INVALID_ARGUMENT");
+  assert.ok(res.message.includes("operationMode must be explicitly specified"));
+  assert.equal(ss.mutationCount, mutationsBefore, "Mutation must be 0 when mode is unspecified");
+});
+
+// =============================================================================
+// TEST 16: 反例9 - Active Dataset Keyと契約開始日時が同一provisioningNow由来
+// =============================================================================
+runCase("Counterexample 9: Active Dataset Key & contractStartDate Derived from Same provisioningNow", () => {
+  const ss = new MockSpreadsheet("ss-prov-now", "POSTING_MAP_PROV_NOW");
+  const { context } = createSandbox(ss);
+
+  const sampleAddrs = [
+    { rowId: 1, cityName: "桑名市", townName: "大山田1丁目" }
+  ];
+
+  const testFixedDate = new Date("2026-11-20T14:30:00+09:00");
+
+  const res = context.DistrictProvisioner.getInstance().provisionNewDistrict(
+    sampleAddrs,
+    {
+      provisioningToken: "valid-test-token",
+      operationMode: "ELECTION",
+      // activeDatasetKey はあえて渡さない（自動生成を検証）
+      provisioningNow: testFixedDate
+    },
+    "PROV_NOW"
+  );
+
+  assert.equal(res.success, true);
+  assert.equal(res.operationMode, "ELECTION");
+  assert.equal(res.activeDatasetKey, "2026-11", "activeDatasetKey must match provisioningNow month");
+
+  // SYSTEM_INFO 内の契約開始日時と Active Dataset Key を照合
+  const sysSheet = ss.getSheetByName("SYSTEM_INFO");
+  assert.ok(sysSheet, "SYSTEM_INFO must exist");
+
+  const sysService = context.SystemInfoService.getInstance();
+  const storedActiveKey = sysService.getActiveDatasetKey(sysSheet);
+  const storedStartDate = sysService.getContractStartDate(sysSheet);
+
+  assert.equal(storedActiveKey, "2026-11");
+  assert.ok(storedStartDate.replace(/\//g, '-').startsWith("2026-11-20"), `contractStartDate (${storedStartDate}) must start with 2026-11-20`);
 });
 
 console.log('\n================================================================');

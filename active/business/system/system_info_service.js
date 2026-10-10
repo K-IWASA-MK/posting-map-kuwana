@@ -255,6 +255,28 @@
       return '';
     }
 
+    getHAppUrl(existingSheet, districtId = "") {
+      const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
+      if (!s) {
+        throw new Error('SYSTEM_INFO sheet unavailable for HアプリURL resolution');
+      }
+      const lr = s.getLastRow();
+      if (lr < 2) {
+        throw new Error('SYSTEM_INFO sheet has no data rows for HアプリURL resolution');
+      }
+      const data = s.getRange(1, 1, lr, 2).getValues();
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === 'HアプリURL') {
+          const val = String(data[i][1] || '').trim();
+          if (val) {
+            return val;
+          }
+          throw new Error('HアプリURL is empty in SYSTEM_INFO');
+        }
+      }
+      throw new Error('HアプリURL row missing in SYSTEM_INFO');
+    }
+
     getContractStartDate(existingSheet, districtId = "") {
       const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
       if (!s) {

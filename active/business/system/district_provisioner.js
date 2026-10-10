@@ -1,9 +1,9 @@
 /**
  * POSTING MAP - District Provisioner (Generation 2)
- * 責務: 新地区作成時の「CSV → 原本5種 → 当月5種」一括生成、および月替わり自動生成
+ * 責務: 新地区作成時のDual Lifecycle (ELECTION / SUBSCRIPTION) 運用5シート一括直接生成、および月替わり自動生成
  * 
  * 【厳格な制約】
- * 1. 責務は「原本5種生成」「CSVエリア展開」「当月5種生成（原本からの複製）」「月次トリガー管理」のみ。
+ * 1. 責務は「運用5シート直接生成」「CSVエリア展開」「月次トリガー管理」のみ。
  * 2. MonthlySheetResolverとは完全に責務分離する（Resolverは参照解決SSOT、Provisionerが生成SSOT）。
  * 3. 前月シートは一切削除せず、履歴として保持する。
  * 4. SYSTEM_INFOは月次化対象外・固定保護。
@@ -12,14 +12,6 @@
 (function(global) {
   class DistrictProvisioner {
     constructor() {
-      this.masterNames = {
-        distribution: "配布実績の原本",
-        staff: "名簿の原本",
-        flyer: "保有チラシ枚数の原本",
-        transfer: "受渡要請履歴の原本",
-        pin: "PinStatusの原本"
-      };
-
       this.prefixes = {
         distribution: "配布実績",
         staff: "名簿",
@@ -48,7 +40,7 @@
 
     /**
      * 新地区作成時の一括プロビジョニング
-     * address_master.csv のデータを受け取り、原本5種 ➔ 当月5種 を一括生成する
+     * address_master.csv のデータを受け取り、運用5種を一括直接生成する
      * 
      * @param {Array<Object>} addresses - CSVからパースしたエリア配列 [{ rowId, cityName, townName }, ...]
      * @param {Object} [options={}] - オプション（provisioningToken, targetSpreadsheetId 等）
@@ -63,6 +55,19 @@
           message: "addresses must be a non-empty array of address master records."
         };
       }
+
+      // 運用モードの検証（明示Mode SSOT: ELECTION / SUBSCRIPTION のみ許可、未指定・不正は生成前停止）
+      const rawMode = options && options.operationMode !== undefined && options.operationMode !== null
+        ? String(options.operationMode).trim().toUpperCase()
+        : "";
+      if (rawMode !== 'ELECTION' && rawMode !== 'SUBSCRIPTION') {
+        return {
+          success: false,
+          code: "INVALID_ARGUMENT",
+          message: "operationMode must be explicitly specified as either 'ELECTION' or 'SUBSCRIPTION'."
+        };
+      }
+      const operationMode = rawMode;
 
       const token = options && options.provisioningToken;
       const tokenCheck = typeof verifyProvisioningToken === 'function'
@@ -126,20 +131,23 @@
       lock.waitLock(30000);
 
       try {
-        const now = new Date();
+        const provisioningNow = (options && options.provisioningNow instanceof Date) ? options.provisioningNow : new Date();
         let jstIso = "";
         let currentMonthStr = "";
         if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
-          jstIso = Utilities.formatDate(now, "JST", "yyyy-MM-dd HH:mm:ss");
-          currentMonthStr = Utilities.formatDate(now, "JST", "yyyy-MM");
+          jstIso = Utilities.formatDate(provisioningNow, "JST", "yyyy-MM-dd HH:mm:ss");
+          currentMonthStr = Utilities.formatDate(provisioningNow, "JST", "yyyy-MM");
         } else {
-          const jst = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+          const jst = new Date(provisioningNow.getTime() + (9 * 60 * 60 * 1000));
           jstIso = jst.toISOString().replace('T', ' ').slice(0, 19);
           currentMonthStr = jst.toISOString().slice(0, 7);
         }
 
-        const operationMode = String(options.operationMode || 'ELECTION').trim().toUpperCase();
-        const activeDatasetKey = String(options.activeDatasetKey || currentMonthStr).trim();
+        // Active Dataset Key: caller指定があれば尊重、未指定時はProvisioning開始時の単一JST timestampから自動生成
+        const activeDatasetKey = (options && options.activeDatasetKey)
+          ? String(options.activeDatasetKey).trim()
+          : currentMonthStr;
+
         options.operationMode = operationMode;
         options.activeDatasetKey = activeDatasetKey;
         if (!options.contractStartDate) {
@@ -376,12 +384,9 @@
       }
 
       const districtName = ss.getName();
-      const subdomain = districtName.toLowerCase();
-      const baseUrl = (opts.baseUrl && opts.baseUrl !== "https://postingmap.jp")
-        ? opts.baseUrl
-        : `https://${subdomain}.postingmap.jp`;
-      const hAppUrl = `${baseUrl}/`;
-      const dashboardUrl = `${baseUrl}/active/manager/`;
+      const baseUrl = String(opts.baseUrl || opts.hAppUrl || "").trim().replace(/\/+$/, '');
+      const hAppUrl = baseUrl ? `${baseUrl}/` : "";
+      const dashboardUrl = baseUrl ? `${baseUrl}/active/manager/` : "";
 
       let liffUrl = opts.productionLiffUrl || "";
       let liffId = opts.liffId || "";
@@ -481,19 +486,32 @@
     }
 
     /**
-     * GitHub Pages 等の静的配信から address_master.csv を取得してパースする
+     * SYSTEM_INFO の「HアプリURL」から address_master.csv を取得してパースする
+     * URL推測およびEndpoint URL代替は絶対禁止 (Fail-Closed)
      */
-    loadDistrictAddresses(districtId = "") {
+    loadDistrictAddresses(districtId = "", targetSs = null) {
       const cleanDistrictId = String(districtId || "").trim().toUpperCase();
-      let baseUrl = "";
-      if (cleanDistrictId) {
-        baseUrl = `https://${cleanDistrictId.toLowerCase()}.postingmap.jp`;
+      let ss = targetSs;
+      if (!ss) {
+        ss = this.getSS(cleanDistrictId);
       }
-      if (!baseUrl && typeof window !== 'undefined' && window.PMS_CLIENT_CONFIG && window.PMS_CLIENT_CONFIG.baseUrl) {
-        baseUrl = window.PMS_CLIENT_CONFIG.baseUrl;
+      if (!ss) {
+        throw new Error(`[DistrictProvisioner] Spreadsheet cannot be resolved for loading address_master.csv (district: "${cleanDistrictId}").`);
       }
+
+      const sysSheet = ss.getSheetByName('SYSTEM_INFO');
+      if (!sysSheet) {
+        throw new Error(`[DistrictProvisioner] SYSTEM_INFO sheet is missing for loading address_master.csv (district: "${cleanDistrictId}").`);
+      }
+
+      if (typeof SystemInfoService === 'undefined' || !SystemInfoService.getInstance) {
+        throw new Error("[DistrictProvisioner] SystemInfoService unavailable for HアプリURL resolution.");
+      }
+
+      // SYSTEM_INFO["HアプリURL"] だけを唯一の Base URL authority とする (Fail-Closed)
+      const baseUrl = SystemInfoService.getInstance().getHAppUrl(sysSheet, cleanDistrictId);
       if (!baseUrl) {
-        throw new Error("[DistrictProvisioner] Base URL cannot be determined for loading address_master.csv. districtId is required.");
+        throw new Error(`[DistrictProvisioner] Base URL cannot be determined: HアプリURL is missing in SYSTEM_INFO.`);
       }
 
       const csvUrl = `${baseUrl.replace(/\/+$/, '')}/data/address_master.csv`;
@@ -654,138 +672,18 @@
     }
 
     /**
-     * 原本5種の生成・初期化
-     */
-    createMasterSheets(ss, addresses) {
-      // 1. 配布実績の原本 (全エリアを展開)
-      this.createDistributionMaster(ss, addresses);
-
-      // 2. 名簿の原本 (ヘッダーのみ、0行)
-      this.createStaffMaster(ss);
-
-      // 3. 保有チラシ枚数の原本 (ヘッダーのみ、0行)
-      this.createFlyerMaster(ss);
-
-      // 4. 受渡要請履歴の原本 (ヘッダーのみ、0行)
-      this.createTransferMaster(ss);
-
-      // 5. PinStatusの原本 (ヘッダーのみ、0行)
-      this.createPinMaster(ss);
-    }
-
-    /**
-     * 配布実績の原本
-     * A〜P列: [ID, 市町村, 町域, 配布完了日時, 配布枚数, 担当者ID, 担当者名, GPS, 写真, 緯度, 経度, GPS日時, 写真ファイルID, 写真URL, 写真日時, lineUserId]
-     */
-    createDistributionMaster(ss, addresses) {
-      const masterName = this.masterNames.distribution;
-      let sheet = ss.getSheetByName(masterName);
-      if (!sheet) {
-        sheet = ss.insertSheet(masterName);
-      }
-
-      const headers = [
-        ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"]
-      ];
-      sheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
-      sheet.getRange("A1:P1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
-      sheet.setFrozenRows(1);
-
-      if (Array.isArray(addresses) && addresses.length > 0) {
-        const rows = addresses.map((addr, idx) => {
-          const rowId = addr.rowId !== undefined ? addr.rowId : (idx + 1);
-          const city = addr.cityName || addr.city_name || "";
-          const town = addr.townName || addr.town_name || "";
-          return [rowId, city, town, "", "", "", "", "", "", "", "", "", "", "", "", ""];
-        });
-
-        // 既存の古い行があればクリア
-        const currentLr = sheet.getLastRow();
-        if (currentLr >= 2) {
-          sheet.getRange(2, 1, currentLr - 1, 16).clearContent();
-        }
-
-        // CSVから動的展開
-        sheet.getRange(2, 1, rows.length, 16).setValues(rows);
-      }
-    }
-
-    /**
-     * 名簿の原本
-     * A〜D列: [ID, 名前, LINE_USER_ID, 登録日時]
-     */
-    createStaffMaster(ss) {
-      const masterName = this.masterNames.staff;
-      let sheet = ss.getSheetByName(masterName);
-      if (!sheet) {
-        sheet = ss.insertSheet(masterName);
-      }
-      const headers = [["ID", "名前", "LINE_USER_ID", "登録日時"]];
-      sheet.getRange(1, 1, 1, 4).setValues(headers);
-      sheet.getRange("A1:D1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
-      sheet.setFrozenRows(1);
-    }
-
-    /**
-     * 保有チラシ枚数の原本
-     * A〜G列: [ID, 担当者ID, 担当者名, 保管場所, 保有枚数, 最終更新日時, lineUserId]
-     */
-    createFlyerMaster(ss) {
-      const masterName = this.masterNames.flyer;
-      let sheet = ss.getSheetByName(masterName);
-      if (!sheet) {
-        sheet = ss.insertSheet(masterName);
-      }
-      const headers = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]];
-      sheet.getRange(1, 1, 1, 7).setValues(headers);
-      sheet.getRange("A1:G1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
-      sheet.setFrozenRows(1);
-    }
-
-    /**
-     * 受渡要請履歴の原本
-     * A〜N列: [日時, 要請者, 要請者ID, 保管者, 保管者ID, 連絡方法, 連絡先, 状態, requestId, LINE送信状態, LINE HTTP status, LINE送信日時, requesterLineUserId, holderLineUserId]
-     */
-    createTransferMaster(ss) {
-      const masterName = this.masterNames.transfer;
-      let sheet = ss.getSheetByName(masterName);
-      if (!sheet) {
-        sheet = ss.insertSheet(masterName);
-      }
-      const headers = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
-      sheet.getRange(1, 1, 1, 14).setValues(headers);
-      sheet.getRange("A1:N1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
-      sheet.setFrozenRows(1);
-    }
-
-    /**
-     * PinStatusの原本
-     * A〜B列: [rowId, status]
-     */
-    createPinMaster(ss) {
-      const masterName = this.masterNames.pin;
-      let sheet = ss.getSheetByName(masterName);
-      if (!sheet) {
-        sheet = ss.insertSheet(masterName);
-      }
-      const headers = [["rowId", "status"]];
-      sheet.getRange(1, 1, 1, 2).setValues(headers);
-      sheet.getRange("A1:B1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
-      sheet.setFrozenRows(1);
-    }
-
-    /**
-     * 原本5種から当月5種を生成・複製する
+     * SUBSCRIPTION モードにおける月次ロールオーバー自動生成
      * 過去月シートは履歴として保持し、絶対に削除しない。
      * 
      * 状態機械（State Machine）:
-     * - 0/5 存在: 原本から新規月として生成（原本16列 + 当月Q列 requestId付与）
+     * - 0/5 存在: CSV共通パイプラインから新規月として直接生成
      * - 5/5 存在: 完全 No-op（書込・クリア・既存ヘッダー補完の全API呼出が0回）
      * - 1〜4/5 存在: Fail-Closed 即時停止（PARTIAL_MONTHLY_SHEETS_CORRUPTION、mutation 0）
      * 
      * @param {string} [targetMonth] - 生成対象年月 (YYYY-MM)。未指定時は現在月。
      * @param {Object} [options] - オプション
-     * @return {Object} 結果 { success: boolean, month: string, created: string[], noop?: boolean, code?: string }
+     * @param {string} [districtId=""] - 対象地区コード
+     * @return {Object} 結果 { success: boolean, month: string, created: string[], noop?: boolean, code?: string, mode?: string }
      */
     rolloverMonthlySheets(targetMonth, options = {}, districtId = "") {
       const cleanDistrictId = String(districtId || (options && options.districtId) || "").trim().toUpperCase();
@@ -805,106 +703,135 @@
         throw new Error(`[DistrictProvisioner] Target spreadsheet cannot be resolved for district "${cleanDistrictId}".`);
       }
 
-      // 0. 運用モードの解決 (ELECTION vs SUBSCRIPTION)
-      let operationMode = "SUBSCRIPTION";
-      const sysSheet = ss.getSheetByName("SYSTEM_INFO");
-      if (sysSheet && typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
+      // 排他Lock取得（0/5 scan 〜 生成を確実に排他保護）
+      const lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+
+      try {
+        // 0. 運用モードの解決 (Fail-Closed, fallbackなし)
+        const sysSheet = ss.getSheetByName("SYSTEM_INFO");
+        if (!sysSheet) {
+          return {
+            success: false,
+            code: "SYSTEM_INFO_MISSING",
+            message: `SYSTEM_INFO sheet is missing for district "${cleanDistrictId}" (mutation 0 Fail-Closed).`
+          };
+        }
+        if (typeof SystemInfoService === 'undefined' || !SystemInfoService.getInstance) {
+          return {
+            success: false,
+            code: "SYSTEM_INFO_SERVICE_UNAVAILABLE",
+            message: "SystemInfoService is unavailable (mutation 0 Fail-Closed)."
+          };
+        }
+
+        let operationMode = "";
         try {
           operationMode = SystemInfoService.getInstance().getOperationMode(sysSheet);
         } catch (e) {
-          operationMode = "SUBSCRIPTION";
+          return {
+            success: false,
+            code: "OPERATION_MODE_RESOLUTION_FAILED",
+            message: `Failed to resolve operation mode: ${e.message} (mutation 0 Fail-Closed).`
+          };
         }
-      }
 
-      // ELECTION モード: 月次ロールオーバーは完全 No-op (mutation 0)
-      if (operationMode === "ELECTION") {
-        console.log(`[DistrictProvisioner] ELECTION mode detected for district "${cleanDistrictId}". Monthly rollover skipped (mutation 0).`);
-        return {
-          success: true,
-          month: targetMonth || "",
-          created: [],
-          noop: true,
-          mode: "ELECTION"
-        };
-      }
-
-      const month = targetMonth || (
-        typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance
-          ? MonthlySheetResolver.getInstance().getCurrentMonth()
-          : (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function' ? Utilities.formatDate(new Date(), "JST", "yyyy-MM") : new Date().toISOString().slice(0, 7))
-      );
-
-      const types = ['distribution', 'staff', 'flyer', 'transfer', 'pin'];
-      const existingMonthlySheets = [];
-      const missingMonthlySheets = [];
-
-      // 1. 事前存在判定（mutation 0 の状態で全5シートを走査）
-      types.forEach(type => {
-        const monthlyName = `${this.prefixes[type]}${month}`;
-        const sheet = ss.getSheetByName(monthlyName);
-        if (sheet) {
-          existingMonthlySheets.push(monthlyName);
-        } else {
-          missingMonthlySheets.push(monthlyName);
+        // ELECTION モード: 月次ロールオーバーは完全 No-op (mutation 0)
+        if (operationMode === "ELECTION") {
+          console.log(`[DistrictProvisioner] ELECTION mode detected for district "${cleanDistrictId}". Monthly rollover skipped (mutation 0).`);
+          return {
+            success: true,
+            month: targetMonth || "",
+            created: [],
+            noop: true,
+            mode: "ELECTION"
+          };
         }
-      });
 
-      const existingCount = existingMonthlySheets.length;
+        if (operationMode !== "SUBSCRIPTION") {
+          return {
+            success: false,
+            code: "INVALID_OPERATION_MODE",
+            message: `Unsupported operation mode "${operationMode}" for monthly rollover (mutation 0 Fail-Closed).`
+          };
+        }
 
-      // 2. 5/5 の場合: 完全 No-op（書込API呼出そのものが0回）
-      if (existingCount === 5) {
-        return {
-          success: true,
-          month: month,
-          created: [],
-          noop: true,
-          mode: "SUBSCRIPTION"
-        };
-      }
+        const month = targetMonth || (
+          typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance
+            ? MonthlySheetResolver.getInstance().getCurrentMonth()
+            : (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function' ? Utilities.formatDate(new Date(), "JST", "yyyy-MM") : new Date().toISOString().slice(0, 7))
+        );
 
-      // 3. 1〜4/5 の場合: Fail-Closed で即時停止（mutation 0）
-      if (existingCount > 0 && existingCount < 5) {
-        return {
-          success: false,
-          code: "PARTIAL_MONTHLY_SHEETS_CORRUPTION",
-          message: `Partial monthly sheets detected (${existingCount}/5) for ${month}. Missing: ${missingMonthlySheets.join(', ')}. Existing: ${existingMonthlySheets.join(', ')}. Provisioning halted to prevent silent corruption.`,
-          month: month,
-          existingSheets: existingMonthlySheets,
-          missingSheets: missingMonthlySheets,
-          created: [],
-          mode: "SUBSCRIPTION"
-        };
-      }
+        const types = ['distribution', 'staff', 'flyer', 'transfer', 'pin'];
+        const existingMonthlySheets = [];
+        const missingMonthlySheets = [];
 
-      // 4. 0/5 の場合: 新規月として直接生成 (All-or-Nothing)
-      let addresses = (options && options.addresses) || null;
-      if (!Array.isArray(addresses) || addresses.length === 0) {
-        try {
-          addresses = this.loadDistrictAddresses(cleanDistrictId);
-        } catch (eCsv) {
-          // Fallback: 既存の原本配布実績が存在すれば、その A〜C 列から抽出
-          const masterDist = ss.getSheetByName(this.masterNames.distribution);
-          if (masterDist && masterDist.getLastRow() >= 2) {
-            const numRows = masterDist.getLastRow() - 1;
-            const vals = masterDist.getRange(2, 1, numRows, 3).getValues();
-            addresses = vals.map((r, idx) => ({
-              rowId: (r[0] !== "" && r[0] !== undefined) ? r[0] : (idx + 1),
-              cityName: r[1] || "",
-              townName: r[2] || ""
-            }));
+        // 1. 事前存在判定（mutation 0 の状態で全5シートを走査）
+        types.forEach(type => {
+          const monthlyName = `${this.prefixes[type]}${month}`;
+          const sheet = ss.getSheetByName(monthlyName);
+          if (sheet) {
+            existingMonthlySheets.push(monthlyName);
           } else {
-            throw eCsv;
+            missingMonthlySheets.push(monthlyName);
+          }
+        });
+
+        const existingCount = existingMonthlySheets.length;
+
+        // 2. 5/5 の場合: 完全 No-op（書込API呼出そのものが0回）
+        if (existingCount === 5) {
+          return {
+            success: true,
+            month: month,
+            created: [],
+            noop: true,
+            mode: "SUBSCRIPTION"
+          };
+        }
+
+        // 3. 1〜4/5 の場合: Fail-Closed で即時停止（mutation 0）
+        if (existingCount > 0 && existingCount < 5) {
+          return {
+            success: false,
+            code: "PARTIAL_MONTHLY_SHEETS_CORRUPTION",
+            message: `Partial monthly sheets detected (${existingCount}/5) for ${month}. Missing: ${missingMonthlySheets.join(', ')}. Existing: ${existingMonthlySheets.join(', ')}. Provisioning halted to prevent silent corruption.`,
+            month: month,
+            existingSheets: existingMonthlySheets,
+            missingSheets: missingMonthlySheets,
+            created: [],
+            mode: "SUBSCRIPTION"
+          };
+        }
+
+        // 4. 0/5 の場合: 新規月として直接生成 (All-or-Nothing, CSV取得失敗時はFail-Closed)
+        let addresses = (options && options.addresses) || null;
+        if (!Array.isArray(addresses) || addresses.length === 0) {
+          try {
+            addresses = this.loadDistrictAddresses(cleanDistrictId, ss);
+          } catch (eCsv) {
+            // CSV取得失敗時は mutation 0 で Fail-Closed
+            return {
+              success: false,
+              code: "CSV_LOAD_FAILED",
+              message: `Failed to load address master CSV for rollover: ${eCsv.message} (mutation 0 Fail-Closed).`,
+              month: month,
+              created: [],
+              mode: "SUBSCRIPTION"
+            };
           }
         }
-      }
 
-      const datasetRes = this.createOperationalDataset(ss, month, addresses);
-      return {
-        success: true,
-        month: month,
-        created: datasetRes.created,
-        mode: "SUBSCRIPTION"
-      };
+        const datasetRes = this.createOperationalDataset(ss, month, addresses);
+        return {
+          success: true,
+          month: month,
+          created: datasetRes.created,
+          mode: "SUBSCRIPTION"
+        };
+      } finally {
+        lock.releaseLock();
+      }
     }
 
     /**

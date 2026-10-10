@@ -160,6 +160,7 @@ const kuwanaSS = new MockSpreadsheet("ss-kuwana-id", "POSTING_MAP_KUWANA", {
   "SYSTEM_INFO": new MockSheet("SYSTEM_INFO", [
     ["項目", "設定値"],
     ["地区コード", "KUWANA"],
+    ["運用モード", "SUBSCRIPTION"],
     ["契約終了日", "2026-10-31"],
     ["システム名", "POSTING MAP KUWANA"]
   ]),
@@ -186,6 +187,7 @@ const emptyDateSS = new MockSpreadsheet("ss-empty-date-id", "POSTING_MAP_EMPTY_D
   "SYSTEM_INFO": new MockSheet("SYSTEM_INFO", [
     ["項目", "設定値"],
     ["地区コード", "EMPTY_DATE_DISTRICT"],
+    ["運用モード", "SUBSCRIPTION"],
     ["契約終了日", ""],
     ["システム名", "EMPTY DATE DB"]
   ])

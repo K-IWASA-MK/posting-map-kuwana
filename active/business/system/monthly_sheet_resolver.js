@@ -6,7 +6,7 @@
  * 1. 責務は「現在年月取得」「当月シート名解決」「当月Sheet取得」のみ。
  * 2. シートの自動生成 (insertSheet)、削除、書き換えは絶対に行わない。
  * 3. CSVの読込、外部通信、API追加は行わない。
- * 4. SYSTEM_INFO、端末管理、原本5種は月次化対象外。
+ * 4. SYSTEM_INFO、端末管理は月次化対象外。
  */
 (function(global) {
   class MonthlySheetResolver {
@@ -44,30 +44,33 @@
 
     /**
      * 指定SpreadsheetのSYSTEM_INFOからDataset Keyを解決する (ELECTION / SUBSCRIPTION)
+     * Mode/Spreadsheet/SYSTEM_INFO解決失敗、およびELECTION Active Dataset Key欠損時はFail-Closed (throw)
      */
     resolveDatasetKey(ss, date = new Date()) {
-      if (!ss) return null;
+      if (!ss) {
+        throw new Error('[MonthlySheetResolver] Target spreadsheet is required for dataset key resolution (Fail-Closed).');
+      }
       const sysSheet = ss.getSheetByName('SYSTEM_INFO');
       if (!sysSheet) {
-        return null;
+        throw new Error('[MonthlySheetResolver] SYSTEM_INFO sheet is missing (Fail-Closed).');
       }
 
-      if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
-        const sysService = SystemInfoService.getInstance();
-        try {
-          const mode = sysService.getOperationMode(sysSheet);
-          if (mode === 'ELECTION') {
-            const activeKey = sysService.getActiveDatasetKey(sysSheet);
-            return activeKey || null;
-          } else if (mode === 'SUBSCRIPTION') {
-            return this.getCurrentMonth(date);
-          }
-        } catch (e) {
-          console.warn('[MonthlySheetResolver] resolveDatasetKey failed:', e);
-          return null;
-        }
+      if (typeof SystemInfoService === 'undefined' || !SystemInfoService.getInstance) {
+        throw new Error('[MonthlySheetResolver] SystemInfoService is unavailable (Fail-Closed).');
       }
-      return null;
+
+      const sysService = SystemInfoService.getInstance();
+      const mode = sysService.getOperationMode(sysSheet);
+      if (mode === 'ELECTION') {
+        const activeKey = sysService.getActiveDatasetKey(sysSheet);
+        if (!activeKey) {
+          throw new Error('[MonthlySheetResolver] Active Dataset Key is missing in ELECTION mode (Fail-Closed).');
+        }
+        return activeKey;
+      } else if (mode === 'SUBSCRIPTION') {
+        return this.getCurrentMonth(date);
+      }
+      throw new Error(`[MonthlySheetResolver] Invalid operation mode "${mode}" (Fail-Closed).`);
     }
 
     /**
@@ -78,41 +81,36 @@
       if (!prefix) return null;
 
       const datasetKey = this.resolveDatasetKey(ss, date);
-      if (datasetKey) {
-        return `${prefix}${datasetKey}`;
-      }
-      return null;
+      return `${prefix}${datasetKey}`;
     }
 
     /**
      * 業務typeから当月シート名を解決する
      * 不正typeは null を返し明確に拒否する
+     * Spreadsheet解決不能、Mode解決不能時はFail-Closed (throw)
      */
     getSheetName(type, date = new Date(), districtId = "") {
       const prefix = this.prefixes[type];
       if (!prefix) return null;
 
       let ss = null;
-      try {
-        if (typeof getSS === 'function') {
-          ss = getSS(districtId);
-        } else if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
-          ss = SpreadsheetApp.getActiveSpreadsheet();
-        }
-      } catch (e) {}
-
-      if (ss) {
-        const resolvedName = this.resolveSheetNameForSs(ss, type, date);
-        if (resolvedName) return resolvedName;
+      if (typeof getSS === 'function') {
+        ss = getSS(districtId);
+      } else if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
+        ss = SpreadsheetApp.getActiveSpreadsheet();
       }
 
-      // ss が解決できない環境（モックなし単体テスト等）向け後方互換フォールバック
-      return `${prefix}${this.getCurrentMonth(date)}`;
+      if (!ss) {
+        throw new Error(`[MonthlySheetResolver] Target spreadsheet cannot be resolved for district "${districtId}" (Fail-Closed).`);
+      }
+
+      return this.resolveSheetNameForSs(ss, type, date);
     }
 
     /**
      * 当月Sheetオブジェクトを取得する
-     * 未生成時は null を返す（自動生成は絶対に行わない）
+     * 未生成時（正常に名前解決済みだがSheet不存在）は null を返す（自動生成は絶対に行わない）
+     * Mode解決不能やSpreadsheet解決不能時はFail-Closed (throw)
      */
     getCurrentSheet(type, arg2, arg3) {
       let date = new Date();
@@ -135,15 +133,13 @@
       } else if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
         ss = SpreadsheetApp.getActiveSpreadsheet();
       }
-      if (!ss) return null;
-
-      // 2. 確定した同一 ss を渡してシート名を解決
-      let sheetName = this.resolveSheetNameForSs(ss, type, date);
-      if (!sheetName) {
-        const prefix = this.prefixes[type];
-        if (!prefix) return null;
-        sheetName = `${prefix}${this.getCurrentMonth(date)}`;
+      if (!ss) {
+        throw new Error(`[MonthlySheetResolver] Target spreadsheet cannot be resolved for district "${districtId}" (Fail-Closed).`);
       }
+
+      // 2. 確定した同一 ss を渡してシート名を解決 (Fail-Closed)
+      const sheetName = this.resolveSheetNameForSs(ss, type, date);
+      if (!sheetName) return null;
 
       return ss.getSheetByName(sheetName) || null;
     }

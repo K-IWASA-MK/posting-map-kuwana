@@ -62,18 +62,14 @@ if (typeof GPSService === 'undefined') {
         // Step 1: timestampおよび運用モード判定
         const tsNum = Number(data.timestamp);
         if (Number.isFinite(tsNum) && tsNum > 0) {
-          let operationMode = "SUBSCRIPTION";
-          if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
-            try {
-              operationMode = SystemInfoService.getInstance().getOperationMode(null, districtId);
-            } catch (e) {
-              operationMode = "SUBSCRIPTION";
-            }
+          if (typeof SystemInfoService === 'undefined' || !SystemInfoService.getInstance) {
+            throw new Error("[GPSService] SystemInfoService unavailable for operation mode resolution");
           }
+          const operationMode = SystemInfoService.getInstance().getOperationMode(null, districtId);
 
           if (operationMode === "ELECTION") {
             // ELECTION: 月跨ぎ STALE_MONTH 判定はバイパス（同一Dataset継続利用）。契約終了遮断は最上位 API Contract Gate へ一本化。
-          } else {
+          } else if (operationMode === "SUBSCRIPTION") {
             // SUBSCRIPTION: 既存 STALE_MONTH 契約を完全維持
             if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
               const resolver = MonthlySheetResolver.getInstance();

@@ -147,6 +147,7 @@ const kuwanaSS = new MockSpreadsheet("ss-kuwana-id", "POSTING_MAP_KUWANA", {
   "SYSTEM_INFO": new MockSheet("SYSTEM_INFO", [
     ["項目", "設定値"],
     ["地区コード", "KUWANA"],
+    ["運用モード", "SUBSCRIPTION"],
     ["契約終了日", "2026-10-31"],
     ["システム名", "POSTING MAP KUWANA"]
   ]),
