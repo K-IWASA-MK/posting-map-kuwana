@@ -59,21 +59,35 @@ if (typeof GPSService === 'undefined') {
         }
         data.count = countNum;
 
-        // Step 1: timestamp月判定（有限の正数のみ月判定、それ以外はLegacy扱いでスキップ）
+        // Step 1: timestampおよび運用モード判定
         const tsNum = Number(data.timestamp);
         if (Number.isFinite(tsNum) && tsNum > 0) {
-          if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
-            const resolver = MonthlySheetResolver.getInstance();
-            const currentMonth = resolver.getCurrentMonth();
-            const reqMonth = resolver.getCurrentMonth(new Date(tsNum));
-            if (reqMonth !== currentMonth) {
-              console.log(`[GPSService] STALE_MONTH detected: reqMonth=${reqMonth}, currentMonth=${currentMonth}`);
-              return {
-                success: true,
-                accepted: false,
-                code: "STALE_MONTH",
-                message: "旧月の配布操作は当月シートに反映できません。"
-              };
+          let operationMode = "SUBSCRIPTION";
+          if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
+            try {
+              operationMode = SystemInfoService.getInstance().getOperationMode(null, districtId);
+            } catch (e) {
+              operationMode = "SUBSCRIPTION";
+            }
+          }
+
+          if (operationMode === "ELECTION") {
+            // ELECTION: 月跨ぎ STALE_MONTH 判定はバイパス（同一Dataset継続利用）。契約終了遮断は最上位 API Contract Gate へ一本化。
+          } else {
+            // SUBSCRIPTION: 既存 STALE_MONTH 契約を完全維持
+            if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
+              const resolver = MonthlySheetResolver.getInstance();
+              const currentMonth = resolver.getCurrentMonth();
+              const reqMonth = resolver.getCurrentMonth(new Date(tsNum));
+              if (reqMonth !== currentMonth) {
+                console.log(`[GPSService] STALE_MONTH detected: reqMonth=${reqMonth}, currentMonth=${currentMonth}`);
+                return {
+                  success: true,
+                  accepted: false,
+                  code: "STALE_MONTH",
+                  message: "旧月の配布操作は当月シートに反映できません。"
+                };
+              }
             }
           }
         }

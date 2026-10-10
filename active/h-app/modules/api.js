@@ -159,9 +159,11 @@ async function callApiPost(action, payload = {}) {
         targetResult = data.data;
       }
 
-      // 1. GAS JSON 契約最優先: JSONに code / errorType / retryable が存在する場合
+      // 1. GAS JSON 契約最優先: 失敗レスポンスの場合のみ例外化
       if (jsonParsed && targetResult && typeof targetResult === 'object') {
-        if (targetResult.success === false || targetResult.code || targetResult.errorType) {
+        const isExplicitFailure = targetResult.success === false;
+        const isImplicitFailure = targetResult.success === undefined && (Boolean(targetResult.errorType) || Boolean(targetResult.code));
+        if (isExplicitFailure || isImplicitFailure) {
           const apiErr = new Error(targetResult.message || data.message || `API Error (${response.status})`);
           apiErr.code = targetResult.code || data.code || "UNKNOWN_ERROR";
           apiErr.errorType = targetResult.errorType || data.errorType || "PERMANENT";

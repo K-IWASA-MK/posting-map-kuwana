@@ -1575,7 +1575,7 @@ runTest("Scenario 25: Provisioning Blast Radius 固定 ＆ 月次 rollover 全�
   );
   assert.equal(disabledProvResult.success, true, "provisionNewDistrict must succeed for disabled new district via explicit targetSpreadsheetId");
   assert.ok(ssDisabledNew.getSheetByName("SYSTEM_INFO"), "SYSTEM_INFO must be created in disabled district");
-  assert.ok(ssDisabledNew.getSheetByName("配布実績の原本"), "Master sheet must be created in disabled district");
+  assert.ok(ssDisabledNew.getSheetByName("配布実績2026-09"), "Operational dataset sheet must be created in disabled district");
 
   // 1-3. 月次 rollover 全有効地区実行 (rolloverMonthlySheetsDailyCheck)
   // DISTRICT_REGISTRY: KUWANA enabled, OKAYAMA enabled, DISABLED_DIST disabled
@@ -1897,37 +1897,25 @@ runTest("Scenario 33: action=healSchemaHeaders の targetSpreadsheetId バイパ
   mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(reg);
   SpreadsheetResolver.getInstance().clearCache();
 
-  // KUWANA SS に必要な原本・当月シートを準備
+  // KUWANA SS に必要な原本・当月シートを準備 (原本5種は削除し新構造実証)
   const kSS = mockSpreadsheets["ss-kuwana-id"];
-  if (!kSS.getSheetByName("配布実績の原本")) {
-    kSS.addSheet("配布実績の原本").rows = [["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"]];
-  }
-  if (!kSS.getSheetByName("名簿の原本")) {
-    kSS.addSheet("名簿の原本").rows = [["ID", "名前", "LINE_USER_ID", "登録日時"]];
-  }
-  if (!kSS.getSheetByName("保有チラシ枚数の原本")) {
-    kSS.addSheet("保有チラシ枚数の原本").rows = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]];
-  }
-  if (!kSS.getSheetByName("受渡要請履歴の原本")) {
-    kSS.addSheet("受渡要請履歴の原本").rows = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
-  }
-  if (!kSS.getSheetByName("PinStatusの原本")) {
-    kSS.addSheet("PinStatusの原本").rows = [["rowId", "status"]];
-  }
-  if (!kSS.getSheetByName("配布実績2026-10")) {
-    kSS.addSheet("配布実績2026-10").rows = [["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId", "requestId"]];
-  }
-  if (!kSS.getSheetByName("名簿2026-10")) {
-    kSS.addSheet("名簿2026-10").rows = [["ID", "名前", "LINE_USER_ID", "登録日時"]];
-  }
-  if (!kSS.getSheetByName("保有チラシ枚数2026-10")) {
-    kSS.addSheet("保有チラシ枚数2026-10").rows = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]];
-  }
-  if (!kSS.getSheetByName("受渡要請履歴2026-10")) {
-    kSS.addSheet("受渡要請履歴2026-10").rows = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
-  }
-  if (!kSS.getSheetByName("PinStatus2026-10")) {
-    kSS.addSheet("PinStatus2026-10").rows = [["rowId", "status"]];
+  ["配布実績の原本", "名簿の原本", "保有チラシ枚数の原本", "受渡要請履歴の原本", "PinStatusの原本"].forEach(m => {
+    delete kSS.sheets[m];
+  });
+
+  (kSS.getSheetByName("配布実績2026-10") || kSS.addSheet("配布実績2026-10")).rows = [["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId", "requestId"]];
+  (kSS.getSheetByName("名簿2026-10") || kSS.addSheet("名簿2026-10")).rows = [["ID", "名前", "LINE_USER_ID", "登録日時"]];
+  (kSS.getSheetByName("保有チラシ枚数2026-10") || kSS.addSheet("保有チラシ枚数2026-10")).rows = [["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]];
+  (kSS.getSheetByName("受渡要請履歴2026-10") || kSS.addSheet("受渡要請履歴2026-10")).rows = [["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]];
+  (kSS.getSheetByName("PinStatus2026-10") || kSS.addSheet("PinStatus2026-10")).rows = [["rowId", "status"]];
+
+  const kuwanaSys = kSS.getSheetByName("SYSTEM_INFO");
+  if (kuwanaSys) {
+    kuwanaSys.rows = [
+      ["項目", "内容"],
+      ["地区コード", "KUWANA"],
+      ["運用モード", "SUBSCRIPTION"]
+    ];
   }
 
   // 1. targetSpreadsheetId に別 ID を渡しても無視され、KUWANA の SS (ss-kuwana-id) が解決されること

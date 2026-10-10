@@ -43,12 +43,70 @@
     }
 
     /**
+     * 指定SpreadsheetのSYSTEM_INFOからDataset Keyを解決する (ELECTION / SUBSCRIPTION)
+     */
+    resolveDatasetKey(ss, date = new Date()) {
+      if (!ss) return null;
+      const sysSheet = ss.getSheetByName('SYSTEM_INFO');
+      if (!sysSheet) {
+        return null;
+      }
+
+      if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
+        const sysService = SystemInfoService.getInstance();
+        try {
+          const mode = sysService.getOperationMode(sysSheet);
+          if (mode === 'ELECTION') {
+            const activeKey = sysService.getActiveDatasetKey(sysSheet);
+            return activeKey || null;
+          } else if (mode === 'SUBSCRIPTION') {
+            return this.getCurrentMonth(date);
+          }
+        } catch (e) {
+          console.warn('[MonthlySheetResolver] resolveDatasetKey failed:', e);
+          return null;
+        }
+      }
+      return null;
+    }
+
+    /**
+     * 指定Spreadsheetのコンテキストを維持したままシート名を解決する
+     */
+    resolveSheetNameForSs(ss, type, date = new Date()) {
+      const prefix = this.prefixes[type];
+      if (!prefix) return null;
+
+      const datasetKey = this.resolveDatasetKey(ss, date);
+      if (datasetKey) {
+        return `${prefix}${datasetKey}`;
+      }
+      return null;
+    }
+
+    /**
      * 業務typeから当月シート名を解決する
      * 不正typeは null を返し明確に拒否する
      */
-    getSheetName(type, date = new Date()) {
+    getSheetName(type, date = new Date(), districtId = "") {
       const prefix = this.prefixes[type];
       if (!prefix) return null;
+
+      let ss = null;
+      try {
+        if (typeof getSS === 'function') {
+          ss = getSS(districtId);
+        } else if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.getActiveSpreadsheet === 'function') {
+          ss = SpreadsheetApp.getActiveSpreadsheet();
+        }
+      } catch (e) {}
+
+      if (ss) {
+        const resolvedName = this.resolveSheetNameForSs(ss, type, date);
+        if (resolvedName) return resolvedName;
+      }
+
+      // ss が解決できない環境（モックなし単体テスト等）向け後方互換フォールバック
       return `${prefix}${this.getCurrentMonth(date)}`;
     }
 
@@ -70,9 +128,7 @@
         districtId = arg3;
       }
 
-      const sheetName = this.getSheetName(type, date);
-      if (!sheetName) return null;
-
+      // 1. 最初に地区コンテキストに基づいて対象 Spreadsheet を確定（コンテキスト放棄禁止）
       let ss = null;
       if (typeof getSS === 'function') {
         ss = getSS(districtId);
@@ -80,6 +136,14 @@
         ss = SpreadsheetApp.getActiveSpreadsheet();
       }
       if (!ss) return null;
+
+      // 2. 確定した同一 ss を渡してシート名を解決
+      let sheetName = this.resolveSheetNameForSs(ss, type, date);
+      if (!sheetName) {
+        const prefix = this.prefixes[type];
+        if (!prefix) return null;
+        sheetName = `${prefix}${this.getCurrentMonth(date)}`;
+      }
 
       return ss.getSheetByName(sheetName) || null;
     }

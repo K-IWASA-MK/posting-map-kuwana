@@ -246,6 +246,16 @@ function createVmContext(ss) {
         };
       }
     },
+    UrlFetchApp: {
+      fetch(url) {
+        return {
+          getResponseCode() { return 200; },
+          getContentText() {
+            return "rowId,cityName,townName\n1,CITY_A,AREA_A\n";
+          }
+        };
+      }
+    },
     ScriptApp: {
       newTrigger() {
         return {
@@ -265,6 +275,12 @@ function createVmContext(ss) {
   };
 
   const context = vm.createContext(sandbox);
+
+  // 0. system_info_service.js & monthly_sheet_resolver.js
+  const systemInfoCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/system/system_info_service.js'), 'utf8');
+  vm.runInContext(systemInfoCode, context);
+  const monthlyResolverCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/system/monthly_sheet_resolver.js'), 'utf8');
+  vm.runInContext(monthlyResolverCode, context);
 
   // 1. district_provisioner.js
   const provisionerCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/system/district_provisioner.js'), 'utf8');
@@ -393,13 +409,13 @@ runCase("Case 2: Collision Fail-Closed with mutation 0 (Scan-before-Mutate)", ()
   const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  // 全13シートを用意し、flyer原本の7列目に異種値 0 を配置
+  // 当月5シートを用意し、flyer当月シートの7列目に異種値 0 を配置
   const sampleAddresses = [{ rowId: 1, cityName: "CITY_A", townName: "AREA_A" }];
   ctx.DistrictProvisioner.getInstance().createMasterSheets(ss, sampleAddresses);
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
   ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
-  const flyerSheet = ss.getSheetByName("保有チラシ枚数の原本");
+  const flyerSheet = ss.getSheetByName("保有チラシ枚数2026-10");
   flyerSheet.grid[0][6] = 0; // 異種値衝突 (0 is a falsy non-blank value)
 
   const initialMutations = ss.mutationCount;
@@ -423,16 +439,16 @@ runCase("Case 2: Collision Fail-Closed with mutation 0 (Scan-before-Mutate)", ()
   assert.equal(ss.mutationCount, mutationsBeforeTr, "Legacy alias in transfer sheet must trigger collision with 0 mutations");
   trMonthly.grid[0][0] = "日時"; // 復帰
 
-  // 追加反例: 名簿原本の3列目に旧 alias "LINE USER ID"
-  const staffMaster = ss.getSheetByName("名簿の原本");
-  staffMaster.grid[0][2] = "LINE USER ID"; // 旧 alias (expected: "LINE_USER_ID")
+  // 追加反例: 名簿当月シートの3列目に旧 alias "LINE USER ID"
+  const staffMonthly = ss.getSheetByName("名簿2026-10");
+  staffMonthly.grid[0][2] = "LINE USER ID"; // 旧 alias (expected: "LINE_USER_ID")
   const mutationsBeforeStaff = ss.mutationCount;
   const resAliasStaff = ctx.healSchemaHeaders({ isDryRun: false, targetMonth: "2026-10" });
   assert.equal(resAliasStaff.success, false);
   assert.equal(resAliasStaff.code, "HEADER_COLLISION");
   assert.equal(resAliasStaff.mutationsCount, 0);
-  assert.equal(ss.mutationCount, mutationsBeforeStaff, "Legacy alias in staff master must trigger collision with 0 mutations");
-  staffMaster.grid[0][2] = "LINE_USER_ID"; // 復帰
+  assert.equal(ss.mutationCount, mutationsBeforeStaff, "Legacy alias in staff monthly must trigger collision with 0 mutations");
+  staffMonthly.grid[0][2] = "LINE_USER_ID"; // 復帰
 });
 
 // --- Case 3: Dry-run Safety (mutation 0 API calls) ---
@@ -445,8 +461,8 @@ runCase("Case 3: Dry-run Safety Guarantee (API mutation call count = 0)", () => 
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
   ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
-  // チラシ原本の7列目を意図的に空にする
-  const flyerSheet = ss.getSheetByName("保有チラシ枚数の原本");
+  // チラシ当月シートの7列目を意図的に空にする
+  const flyerSheet = ss.getSheetByName("保有チラシ枚数2026-10");
   flyerSheet.grid[0][6] = "";
 
   const initialMutations = ss.mutationCount;
@@ -501,16 +517,16 @@ runCase("Case 4: migrateIdentityColumns Name-Match Verification & ST001 Untouche
   assert.equal(distSheet.grid[3][15], "", "Row 4: STF999 not in roster must remain blank");
 });
 
-// --- Case 5: Missing Sheet Policy (Master/Current fail-closed) ---
-runCase("Case 5: Missing Sheet Policy (Master/Monthly fail-closed)", () => {
+// --- Case 5: Missing Sheet Policy (Monthly fail-closed) ---
+runCase("Case 5: Missing Sheet Policy (Monthly fail-closed)", () => {
   const ss = new MockSpreadsheet("TEST_DISTRICT");
   const ctx = createVmContext(ss);
 
-  // 原本が足りない状態
+  // 運用当月シートが足りない状態
   ss.addSheet("配布実績の原本", [["ID"]]);
   const res = ctx.healSchemaHeaders({ isDryRun: true, targetMonth: "2026-10" });
   assert.equal(res.success, false);
-  assert.equal(res.code, "MISSING_MASTER_SHEET");
+  assert.equal(res.code, "MISSING_CURRENT_MONTH_SHEET");
 });
 
 // --- Case 6: Missing Sheet Policy (Bulletin sheets skipped gracefully) ---
@@ -542,7 +558,7 @@ runCase("Case 7: Data Row Immutability (Row >= 2 untouched by healSchemaHeaders)
   ctx.DistrictProvisioner.getInstance().rolloverMonthlySheets("2026-10");
   ss.addSheet("SYSTEM_INFO", [["項目", "内容"], ["地区コード", "TEST_DISTRICT"]]);
 
-  const flyerSheet = ss.getSheetByName("保有チラシ枚数の原本");
+  const flyerSheet = ss.getSheetByName("保有チラシ枚数2026-10");
   flyerSheet.grid[0][6] = ""; // 7列目欠損
   flyerSheet.grid.push([1, "STF001", "TEST_USER_A", "CITY_A", 500, "10/01 10:00", "ORIGINAL_DATA"]);
 
@@ -788,10 +804,6 @@ runCase("Case 16: healSchemaHeaders Plan A (2026-09 15-col -> 17-col, data rows 
   assert.equal(dist202609.getMaxColumns(), 17, "2026-09 must be expanded to 17 columns");
   assert.equal(dist202609.grid[0][15], "lineUserId", "Col 16 (P) must be lineUserId");
   assert.equal(dist202609.grid[0][16], "requestId", "Col 17 (Q) must be requestId");
-
-  // 原本も 16列 (P=lineUserId) に補完されたことを確認
-  assert.equal(masterDist.getMaxColumns(), 16);
-  assert.equal(masterDist.grid[0][15], "lineUserId");
 
   // 【厳格検証】データ行 (2行目) は一切不可侵 (mutation 0、requestId は補完されない)
   assert.equal(dist202609.grid[1][0], 1);

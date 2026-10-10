@@ -215,6 +215,72 @@
       return '';
     }
 
+    getOperationMode(existingSheet, districtId = "") {
+      const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
+      if (!s) {
+        throw new Error('SYSTEM_INFO sheet unavailable for operation mode resolution');
+      }
+      const lr = s.getLastRow();
+      if (lr < 2) {
+        throw new Error('SYSTEM_INFO sheet has no data rows for operation mode resolution');
+      }
+      const data = s.getRange(1, 1, lr, 2).getValues();
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === '運用モード') {
+          const val = String(data[i][1] || '').trim().toUpperCase();
+          if (val === 'ELECTION' || val === 'SUBSCRIPTION') {
+            return val;
+          }
+          throw new Error(`Invalid 運用モード "${data[i][1]}" in SYSTEM_INFO. Must be ELECTION or SUBSCRIPTION.`);
+        }
+      }
+      throw new Error('運用モード row missing in SYSTEM_INFO');
+    }
+
+    getActiveDatasetKey(existingSheet, districtId = "") {
+      const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
+      if (!s) {
+        throw new Error('SYSTEM_INFO sheet unavailable for Active Dataset Key resolution');
+      }
+      const lr = s.getLastRow();
+      if (lr < 2) {
+        throw new Error('SYSTEM_INFO sheet has no data rows for Active Dataset Key resolution');
+      }
+      const data = s.getRange(1, 1, lr, 2).getValues();
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === 'Active Dataset Key') {
+          return String(data[i][1] || '').trim();
+        }
+      }
+      return '';
+    }
+
+    getContractStartDate(existingSheet, districtId = "") {
+      const s = existingSheet || (this.getSS(districtId) ? this.getSS(districtId).getSheetByName('SYSTEM_INFO') : null);
+      if (!s) {
+        throw new Error('SYSTEM_INFO sheet unavailable for 契約開始日時 resolution');
+      }
+      const lr = s.getLastRow();
+      if (lr < 2) {
+        throw new Error('SYSTEM_INFO sheet has no data rows for 契約開始日時 resolution');
+      }
+      const data = s.getRange(1, 1, lr, 2).getValues();
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === '契約開始日時') {
+          const val = data[i][1];
+          if (val instanceof Date) {
+            if (typeof Utilities !== 'undefined' && typeof Utilities.formatDate === 'function') {
+              return Utilities.formatDate(val, "JST", "yyyy-MM-dd HH:mm:ss");
+            }
+            const jst = new Date(val.getTime() + (9 * 60 * 60 * 1000));
+            return jst.toISOString().replace('T', ' ').slice(0, 19);
+          }
+          return String(val || '').trim();
+        }
+      }
+      return '';
+    }
+
     ensureContractEndDateRow(existingSheet) {
       try {
         const s = existingSheet || (this.getSS() ? this.getSS().getSheetByName('SYSTEM_INFO') : null);
@@ -431,6 +497,37 @@
           }
         }
 
+        let operationMode = opts.operationMode;
+        if (!operationMode && sheet) {
+          try {
+            operationMode = this.getOperationMode(sheet);
+          } catch (e) {
+            operationMode = '';
+          }
+        }
+        if (!operationMode) {
+          operationMode = 'ELECTION';
+        }
+        operationMode = String(operationMode).trim().toUpperCase();
+
+        let activeDatasetKey = opts.activeDatasetKey !== undefined ? opts.activeDatasetKey : '';
+        if (!activeDatasetKey && sheet) {
+          try {
+            activeDatasetKey = this.getActiveDatasetKey(sheet);
+          } catch (e) {
+            activeDatasetKey = '';
+          }
+        }
+
+        let contractStartDate = opts.contractStartDate !== undefined ? opts.contractStartDate : '';
+        if (!contractStartDate && sheet) {
+          try {
+            contractStartDate = this.getContractStartDate(sheet);
+          } catch (e) {
+            contractStartDate = '';
+          }
+        }
+
         const values = [
           ['項目', '内容'],
           ['地区コード', districtName],
@@ -443,7 +540,10 @@
           ['Endpoint URL', hAppUrl],
           ['Manager認証パスワード', managerPassword],
           ['状態', 'ACTIVE'],
-          ['契約終了日', contractEndDate]
+          ['契約終了日', contractEndDate],
+          ['運用モード', operationMode],
+          ['Active Dataset Key', activeDatasetKey],
+          ['契約開始日時', contractStartDate]
         ];
 
         sheet.clear();
@@ -501,7 +601,11 @@
           liffUrl: liff.url,
           liffId: liff.id,
           lineConfigured: lineConfigured,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          operationMode: operationMode,
+          activeDatasetKey: activeDatasetKey,
+          contractStartDate: contractStartDate,
+          contractEndDate: contractEndDate
         };
       } finally {
         lock.releaseLock();

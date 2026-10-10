@@ -315,19 +315,42 @@ function setupPinStatusCleanupTrigger() {
 }
 
 /**
- * 名簿および名簿の原本シートを初期化・再構築
- * (M-01: v2_ui.js から移設)
+ * 名簿シートのヘッダーおよびスキーマを安全に保証する（既存スタッフ行は完全保全）
+ * (原本への依存・原本再生成は完全撤廃)
  * @param {string} [districtId=""] - 対象地区コード
  */
 function setupRosterSheet(districtId = "") {
   const cleanDistrictId = String(districtId || "").trim().toUpperCase();
   const ss = (typeof getSS === 'function') ? getSS(cleanDistrictId) : (typeof SpreadsheetApp !== 'undefined' ? SpreadsheetApp.getActiveSpreadsheet() : null);
-  if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
-    DistrictProvisioner.getInstance().createStaffMaster(ss);
-    DistrictProvisioner.getInstance().rolloverMonthlySheets(null, {}, cleanDistrictId);
-    return "名簿の原本および当月名簿を4列新SSOT構造で再構築しました。";
+  if (!ss) return "Spreadsheet not available";
+
+  const headers = [["ID", "名前", "LINE_USER_ID", "登録日時"]];
+  let sheet = null;
+  if (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) {
+    sheet = MonthlySheetResolver.getInstance().getCurrentSheet("staff", cleanDistrictId);
   }
-  return "DistrictProvisioner not available";
+  if (!sheet) {
+    const resolver = (typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance) ? MonthlySheetResolver.getInstance() : null;
+    const sheetName = resolver ? resolver.getSheetName("staff", new Date(), cleanDistrictId) : "名簿";
+    sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, 4).setValues(headers);
+      sheet.getRange("A1:D1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
+      sheet.setFrozenRows(1);
+      return `名簿シート「${sheetName}」を新規作成しました。`;
+    }
+  }
+
+  // 既存シートのヘッダー確認・補完のみ（既存データ行は絶対に消去しない）
+  const lr = sheet.getLastRow();
+  const lc = sheet.getLastColumn();
+  if (lc < 4 || lr < 1) {
+    sheet.getRange(1, 1, 1, 4).setValues(headers);
+    sheet.getRange("A1:D1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+  return `名簿シート「${sheet.getName()}」のスキーマを検証・保全しました（既存${Math.max(0, lr - 1)}件維持）。`;
 }
 
 /**

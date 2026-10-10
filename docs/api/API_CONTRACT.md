@@ -599,6 +599,36 @@ Step 7: 完了確定 (COMPLETED) ────► サーバー success: true か�
 }
 ```
 
+### (3) 正常系ビジネスレスポンス契約と例外化抑止 (`success: true` 境界契約)
+以下の API では、処理が失敗（Error）ではなく正当な業務判定結果として `success: true` と共に `code` を返却する。
+クライアント（`active/h-app/modules/api.js`）は `targetResult.success === true` のレスポンスを例外化してはならず、正常な戻り値として呼出元へ返却しなければならない。
+
+1. **`getStaffIdentity` (スタッフ未登録判定)**:
+   - レスポンス例:
+     ```json
+     {
+       "success": true,
+       "code": "NOT_REGISTERED",
+       "lineUserId": "U1234567890abcdef...",
+       "message": "スタッフが名簿に登録されていません。"
+     }
+     ```
+   - 責務: 初回ログイン者または未登録者の判定。Hアプリはこれを受領して自動スタッフ登録モーダルまたはフローを起動する。
+2. **`submitDistribution` / `updateRecordWithGPSPhoto` (SUBSCRIPTION 旧月終端)**:
+   - レスポンス例:
+     ```json
+     {
+       "success": true,
+       "accepted": false,
+       "code": "STALE_MONTH",
+       "message": "旧月の配布操作は当月シートに反映できません。"
+     }
+     ```
+   - 責務: SUBSCRIPTION モードにおいて月跨ぎにより遅れて届いた旧月キューアイテムの安全な終端。
+3. **ELECTION モードにおける GPS 送信 (ADR-024)**:
+   - ELECTION モードでは月跨ぎ `STALE_MONTH` 判定はバイパスされ、同一 Dataset に対して配布実績が正常に記録される。
+   - ただし、リクエストの timestamp が契約終了日を超過している場合は `{ success: false, code: "CONTRACT_EXPIRED" }` として恒久エラー遮断される。
+
 ---
 
 ## 15. Timeout / Retry (タイムアウト・リトライ契約 & 状態遷移マトリクス)

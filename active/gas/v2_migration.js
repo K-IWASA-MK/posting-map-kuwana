@@ -271,51 +271,27 @@ function healSchemaHeaders(options, districtId) {
     return { success: false, code: "SPREADSHEET_NOT_FOUND", message: "Spreadsheet not found", mutationsCount: 0 };
   }
 
-  const month = opts.targetMonth || (
+  let month = opts.targetMonth || (
     typeof MonthlySheetResolver !== 'undefined' && MonthlySheetResolver.getInstance
       ? MonthlySheetResolver.getInstance().getCurrentMonth()
       : Utilities.formatDate(new Date(), "JST", "yyyy-MM")
   );
 
-  // 契約ヘッダーSSOT定義
+  // ELECTION モードの場合は Active Dataset Key を解決
+  const sysSheet = ss.getSheetByName("SYSTEM_INFO");
+  if (sysSheet && typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
+    try {
+      const mode = SystemInfoService.getInstance().getOperationMode(sysSheet);
+      if (mode === 'ELECTION') {
+        const activeKey = SystemInfoService.getInstance().getActiveDatasetKey(sysSheet);
+        if (activeKey) month = activeKey;
+      }
+    } catch (e) {}
+  }
+
+  // 契約ヘッダーSSOT定義（Runtime業務Dataset 5種 + 掲示板）
   const schemas = [
-    // 原本5種
-    {
-      category: "master",
-      sheetName: "配布実績の原本",
-      required: true,
-      missingCode: "MISSING_MASTER_SHEET",
-      headers: ["ID", "市町村", "町域", "配布完了日時", "配布枚数", "担当者ID", "担当者名", "GPS", "写真", "緯度", "経度", "GPS日時", "写真ファイルID", "写真URL", "写真日時", "lineUserId"]
-    },
-    {
-      category: "master",
-      sheetName: "名簿の原本",
-      required: true,
-      missingCode: "MISSING_MASTER_SHEET",
-      headers: ["ID", "名前", "LINE_USER_ID", "登録日時"]
-    },
-    {
-      category: "master",
-      sheetName: "保有チラシ枚数の原本",
-      required: true,
-      missingCode: "MISSING_MASTER_SHEET",
-      headers: ["ID", "担当者ID", "担当者名", "保管場所", "保有枚数", "最終更新日時", "lineUserId"]
-    },
-    {
-      category: "master",
-      sheetName: "受渡要請履歴の原本",
-      required: true,
-      missingCode: "MISSING_MASTER_SHEET",
-      headers: ["日時", "要請者", "要請者ID", "保管者", "保管者ID", "連絡方法", "連絡先", "状態", "requestId", "LINE送信状態", "LINE HTTP status", "LINE送信日時", "requesterLineUserId", "holderLineUserId"]
-    },
-    {
-      category: "master",
-      sheetName: "PinStatusの原本",
-      required: true,
-      missingCode: "MISSING_MASTER_SHEET",
-      headers: ["rowId", "status"]
-    },
-    // 当月5種
+    // 当月/運用5種
     {
       category: "monthly",
       sheetName: `配布実績${month}`,

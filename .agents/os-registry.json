@@ -74,7 +74,7 @@
         },
         {
           "path": "docs/architecture/03_CURRENT_H_APP_INVENTORY.md",
-          "sha256": "add17dff1ca242b70db69ee47466ab64b6aec890ea18e9deaa72a3d52c23f9ce"
+          "sha256": "376da3ed0b0a096c6a11c79a04177491f99feaaed1f86bbb55f1dca8fd713b46"
         }
       ],
       "evidenceSources": [
@@ -100,7 +100,7 @@
       "canonicalSources": [
         {
           "path": "docs/api/API_CONTRACT.md",
-          "sha256": "2513212a321952793bd523a733617a0259f578d3a5895b9530696ce6d73b4d1a"
+          "sha256": "b7022cff9b5a571d32aa4964f7442509e7c0412c390c6b7bd0f6712ff831d3a4"
         },
         {
           "path": "active/api/v2_api.js",
@@ -147,7 +147,7 @@
       "canonicalSources": [
         {
           "path": "docs/api/API_CONTRACT.md",
-          "sha256": "2513212a321952793bd523a733617a0259f578d3a5895b9530696ce6d73b4d1a"
+          "sha256": "b7022cff9b5a571d32aa4964f7442509e7c0412c390c6b7bd0f6712ff831d3a4"
         },
         {
           "path": "docs/security/SECURITY_BASELINE.md",

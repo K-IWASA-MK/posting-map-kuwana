@@ -54,23 +54,20 @@ LINE User ID ≠ Staff ID ≠ Person ID ≠ Branch ID ≠ Activity Record ID ≠
 
 ※1 **重要**: 「支部の活動対象地域マスター」は、支部組織としての管轄・観測対象地域を定義する地理マスターであり、「党員のポスティング可能範囲」ではない。党員個人に対する活動場所の制限・限定・選択肢化は一切行わない。
 
-### 【Spreadsheet Pure DB 13シート標準構造台帳】
-`03_CURRENT_H_APP_INVENTORY.md` および本番運用規程に基づく実シート構成（計13シート）:
+### 【Spreadsheet Pure DB 標準構造台帳 (ADR-024 Dual Lifecycle 準拠)】
+ADR-024 および本番運用規程に基づく実シート構成:
 1. **システム管理シート (1シート)**:
-   - `SYSTEM_INFO`: 2列 (A〜B列: 項目・内容) ＋ 11設定キー・値（契約期間、管理者PIN、地区ID、URL等）。
-2. **原本シート群 (5シート: 毎月1日自動生成テンプレート)**:
-   - `配布実績の原本`: 16列 (A〜P列: P=`lineUserId`)
-   - `名簿の原本`: 4列 (A〜D列: A=`ID`, B=`名前`, C=`LINE_USER_ID`, D=`登録日時`)
-   - `保有チラシ枚数の原本`: 7列 (A〜G列: G=`lineUserId`)
-   - `受渡要請履歴の原本`: 14列 (A〜N列: 8=状態, 9=requestId, 10=LINE状態, 11=LINE HTTP, 12=LINE日時, 13=requesterLineUserId, 14=holderLineUserId)
-   - `PinStatusの原本`: 2列 (A〜B列: A=`rowId`, B=`status`)
-3. **当月業務シート群 (5シート: YYYY-MM形式で自動生成・履歴保全)**:
-   - `配布実績YYYY-MM`: 17列 (A〜Q列: P=`lineUserId`, Q=`requestId` 冪等性 Authority)
-   - `名簿YYYY-MM`: 4列 (A〜D列)
-   - `保有チラシ枚数YYYY-MM`: 7列 (A〜G列)
-   - `受渡要請履歴YYYY-MM`: 14列 (A〜N列)
-   - `PinStatusYYYY-MM`: 2列 (A〜B列)
-4. **現場コミュニケーション・履歴シート群 (2シート)**:
+   - `SYSTEM_INFO`: 2列 (A〜B列: 項目・内容) ＋ 14標準設定キー・値（地区コード、地区名、HアプリURL、Dashboard URL、LIFFアプリ名、LIFF ID、LIFF URL、Endpoint URL、Manager認証パスワード、状態、契約終了日、**運用モード**、**Active Dataset Key**、**契約開始日時**）。
+2. **実運用データセット (5シート: ELECTION固定 または SUBSCRIPTION月次)**:
+   - `配布実績<Key>`: 17列 (A〜Q列: P=`lineUserId`, Q=`requestId` 冪等性 Authority)
+   - `名簿<Key>`: 4列 (A〜D列: A=`ID`, B=`名前`, C=`LINE_USER_ID`, D=`登録日時`)
+   - `保有チラシ枚数<Key>`: 7列 (A〜G列: A=`ID`, B=`担当者ID`, C=`担当者名`, D=`保管場所`, E=`保有枚数`, F=`最終更新日時`, G=`lineUserId`)
+   - `受渡要請履歴<Key>`: 14列 (A〜N列: 8=状態, 9=requestId, 10=LINE状態, 11=LINE HTTP, 12=LINE日時, 13=requesterLineUserId, 14=holderLineUserId)
+   - `PinStatus<Key>`: 2列 (A〜B列: A=`rowId`, B=`status`)
+   - ※ELECTION モードでは `<Key>` は開始時に確定した固定キー（例: `2026-10`）であり、契約終了日まで同一シートを継続使用（月次リセット禁止）。
+   - ※SUBSCRIPTION モードでは `<Key>` は現在年月（`YYYY-MM`）であり、毎月新しい5シートを直接生成し過去月は履歴保持。
+   - ※第1世代の原本5種は ADR-024 により完全撤廃され、新規プロビジョニングでは生成されない。
+3. **現場コミュニケーション・履歴シート群 (2シート: 任意)**:
    - `掲示板`: 5列 (A〜E列: A=`日時`, B=`投稿者ID`, C=`投稿者名`, D=`メッセージ`, E=`lineUserId`)
    - `掲示板連絡履歴`: 10列 (A〜J列: A=`日時`, B=`送信者ID`, C=`送信者名`, D=`相手ID`, E=`連絡方法`, F=`連絡先`, G=`requestId`, H=`LINE送信状態`, I=`LINE HTTP status`, J=`LINE送信日時`)
 

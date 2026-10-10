@@ -33,28 +33,24 @@
 
 ---
 
-## 2. データベース現物構造（Spreadsheet Pure DB）
+## 2. データベース現物構造（Spreadsheet Pure DB / ADR-024 Dual Lifecycle 準拠）
 
-`active/business/system/district_provisioner.js`、`monthly_sheet_resolver.js`、`bulletin_service.js` から確認された実シート構成は、計 **13シート**（標準運用時）である。
+`active/business/system/district_provisioner.js`、`monthly_sheet_resolver.js`、`bulletin_service.js`、および ADR-024 に基づく実シート構成：
 
 ### (1) システム管理シート（1シート）
-- **`SYSTEM_INFO`**: 契約期間（`CONTRACT_END_DATE`）、管理者パスワードハッシュ（`MANAGER_PASSWORD_HASH`）、地区識別子（`DISTRICT_ID`）、接続スプレッドシートID、Google Maps APIキー等のキー・バリュー設定。
+- **`SYSTEM_INFO`**: 2列（A〜B列: 項目・内容）＋ 14標準設定キー・バリュー（地区コード、地区名、HアプリURL、Dashboard URL、LIFFアプリ名、LIFF ID、LIFF URL、Endpoint URL、Manager認証パスワード、状態、契約終了日、**運用モード**、**Active Dataset Key**、**契約開始日時**）。
 
-### (2) 原本シート群（5シート: 毎月1日の月次自動生成テンプレート）
-1. **`配布実績の原本`**: 15列 `[ID, 市町村, 町域, 配布完了日時, 配布枚数, 担当者ID, 担当者名, GPS, 写真, 緯度, 経度, GPS日時, 写真ファイルID, 写真URL, 写真日時]`
-2. **`名簿の原本`**: 4列 `[ID, 名前, LINE_USER_ID, 登録日時]`
-3. **`保有チラシ枚数の原本`**: 6列 `[ID, 担当者ID, 担当者名, 保管場所, 保有枚数, 最終更新日時]`
-4. **`受渡要請履歴の原本`**: 7列 `[日時, 要請者, 要請者ID, 保管者, 保管者ID, 連絡方法, 連絡先]`
-5. **`PinStatusの原本`**: 2列 `[rowId, status]`
+### (2) 実運用データセット（5シート: ELECTION固定 または SUBSCRIPTION月次）
+- **ELECTION モード**: 契約開始日時に確定した固定 Dataset Key（例: `2026-10`）を用い、契約終了日まで同一の 5 シートを継続使用する（月次リセット禁止）。
+- **SUBSCRIPTION モード**: 現在年月（`YYYY-MM`）を用い、毎月新しい 5 シートを直接生成し過去月は履歴保持する。
+- ※第1世代の原本5種（マスターテンプレート）は ADR-024 により完全撤廃され、新規プロビジョニングでは生成されない。
+1. **`配布実績<Key>`**: 17列 `[ID, 市町村, 町域, 配布完了日時, 配布枚数, 担当者ID, 担当者名, GPS, 写真, 緯度, 経度, GPS日時, 写真ファイルID, 写真URL, 写真日時, lineUserId, requestId]`
+2. **`名簿<Key>`**: 4列 `[ID, 名前, LINE_USER_ID, 登録日時]`
+3. **`保有チラシ枚数<Key>`**: 7列 `[ID, 担当者ID, 担当者名, 保管場所, 保有枚数, 最終更新日時, lineUserId]`
+4. **`受渡要請履歴<Key>`**: 14列 `[日時, 要請者, 要請者ID, 保管者, 保管者ID, 連絡方法, 連絡先, 状態, requestId, LINE送信状態, LINE HTTP status, LINE送信日時, requesterLineUserId, holderLineUserId]`
+5. **`PinStatus<Key>`**: 2列 `[rowId, status]`
 
-### (3) 当月業務シート群（5シート: YYYY-MM形式で自動生成・履歴保全）
-1. **`配布実績YYYY-MM`**
-2. **`名簿YYYY-MM`**
-3. **`保有チラシ枚数YYYY-MM`**
-4. **`受渡要請履歴YYYY-MM`**
-5. **`PinStatusYYYY-MM`**
-
-### (4) 現場コミュニケーション・履歴シート群（2シート）
+### (3) 現場コミュニケーション・履歴シート群（2シート: 任意）
 1. **`掲示板`**: 配布員間のメッセージ投稿（`[ID, 投稿日時, LINE_USER_ID, 表示名, 本文, 削除フラグ]`）
 2. **`掲示板連絡履歴`**: 掲示板経由での連絡履歴
 

@@ -35,7 +35,7 @@ POSTING MAP Universal Engine は、「1地区 = 1完成アプリ = 1単独フォ
 4. **Functional Independence（10大検証対象の完全独立性）**:
    - 支部、対象地域、党員、活動ログ、MAP、Dashboard、個人ランキング、API、認証、データ境界の 10 領域すべてが、地区ごとに完全に独立して整合性を維持する。
 5. **Zero-Code District Provisioning（コード変更ゼロの新地区プロビジョニング）**:
-   - 新しい地区を作るために必要な作業は、地区固有の `data/` ファイル（`address_master.csv`, `boundaries.geojson`, `config.js`）の配置、新スプレッドシート（原本5種＋当月5種＋`SYSTEM_INFO`）の接続、および `DISTRICT_REGISTRY` へのエントリ登録のみであり、Universal Runtime（`active/`）の変更行数は **0 行（差分ゼロ）** である。
+   - 新しい地区を作るために必要な作業は、地区固有の `data/` ファイル（`address_master.csv`, `boundaries.geojson`, `config.js`）の配置、新スプレッドシート（EMPTY TEMPLATEから複製し実運用5種を直接生成、原本5種なし、`SYSTEM_INFO`に運用モード設定、ADR-024準拠）の接続、および `DISTRICT_REGISTRY` へのエントリ登録のみであり、Universal Runtime（`active/`）の変更行数は **0 行（差分ゼロ）** である。
 
 ---
 
@@ -83,8 +83,8 @@ Universal POSTING MAP において、新しい地区を立ち上げる手順は�
   address_master.csv / boundaries.geojson を自動生成し data/ 配下に配置。
 
 [Step 2: スプレッドシートの準備]
-  新スプレッドシートを作成し、SYSTEM_INFO に「地区コード」「地区名」を記載。
-  原本5種および当月5種シートを初期化（DistrictProvisioner 利用可能）。
+  POSTING_MAP_EMPTY_TEMPLATE から複製し、SYSTEM_INFO に「地区コード」「運用モード」「契約開始日時」「契約終了日」を記載。
+  DistrictProvisioner により実運用5種シートを直接初期化（原本5種は生成しない、ADR-024 準拠）。
 
 [Step 3: 接続レジストリの登録]
   親 Standalone GAS の Script Properties (DISTRICT_REGISTRY) に

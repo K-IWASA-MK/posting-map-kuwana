@@ -113,26 +113,34 @@
 
 ---
 
-### Stage 3: Spreadsheet Pure DB プロビジョニング (Spreadsheet Provisioning)
+### Stage 3: Spreadsheet Pure DB プロビジョニング (Spreadsheet Provisioning / ADR-024 準拠)
 
 - **Preconditions**:
-  - Google Drive 内に Universal 共通 Spreadsheet Template が存在すること。
+  - Google Drive 内に Universal 共通 Empty Template (`POSTING_MAP_EMPTY_TEMPLATE`) が存在すること。
 - **Input**:
-  - 共通 Spreadsheet Template ID
+  - 共通 Empty Template ID (`POSTING_MAP_EMPTY_TEMPLATE`)
   - 配置先 Google Drive フォルダ ID
   - `districtId`
+  - 運用モード（`ELECTION` または `SUBSCRIPTION`）
+  - 契約終了日（`YYYY-MM-DD`）
 - **Action**:
-  1. 共通 Spreadsheet Template を対象フォルダに複製（Copy）する。
+  1. 共通 Empty Template（`SYSTEM_INFO` および `端末管理` のみを保持、原本5種なし、初期状態空欄）を対象フォルダに複製（Copy）する。
   2. ファイル名を `POSTING_MAP_DB_<districtId>` にリネーム。
   3. 新規複製したスプレッドシートの `SYSTEM_INFO` シートを設定（Key-Value形式: A列=キー、B列=値）：
      - `地区コード` (必須): Stage 1 で決定した `districtId` を正確に入力（Integrity Guard 照合対象）。
+     - `運用モード` (必須): `ELECTION` または `SUBSCRIPTION` を明示設定（推論禁止、SSOT）。
+     - `Active Dataset Key`: ELECTION の場合は開始時に確定した永続キー（例: `2026-10`）。SUBSCRIPTION の場合は現在年月。
+     - `契約開始日時`: プロビジョニング実行時の JST 日時。
      - `契約終了日` (必須): 契約有効期限（YYYY-MM-DD）。
-     - `管理者PIN`: 初期管理者PIN（英数字8桁以上、推測困難なランダム文字列）。
-     - ※注: `engine_baseline_version` や `schema_version` 等のメタデータ記録は将来拡張設計（DESIGNED）であり、現行 v1.0 スキーマにおける必須キーではない。
-  4. 初期プロビジョニング時における 11 Core Sheets（`SYSTEM_INFO`, 原本5種, 当月5種。現場系2シートは運用時オンデマンド生成、`DATA_DICTIONARY.md` 準拠の 13シート標準構造）のカラム構造・ヘッダーがTemplateと100%一致することを確認。
+     - `Manager認証パスワード`: 初期管理者PIN（英数字6桁ランダム数値）。
+  4. `DistrictProvisioner.getInstance().provisionNewDistrict(addresses, options, districtId)` を実行：
+     - `address_master.csv` から実運用 5 シート（`配布実績<Key>`, `名簿<Key>`, `保有チラシ枚数<Key>`, `受渡要請履歴<Key>`, `PinStatus<Key>`）を直接生成する（原本5種は生成しない、計6シート構成）。
+     - 5シートの直接生成成功後、`SYSTEM_INFO` の「状態」を `ACTIVE` に確定する。
   5. スプレッドシートID（`spreadsheetId`）を取得。
 - **Validation**:
-  - `SYSTEM_INFO` の `district_id` とリクエスト `districtId` が完全一致すること（Integrity Guard）。
+  - `SYSTEM_INFO` の `地区コード` とリクエスト `districtId` が完全一致すること（Integrity Guard）。
+  - `SYSTEM_INFO` の `運用モード` が `ELECTION` または `SUBSCRIPTION` として確定していること。
+  - 実運用 5 シートが欠損なく 5/5 生成されていること。原本5種が存在しないこと。
   - コンテナバインドスクリプト（Apps Script）が **存在しない** こと（Pure DB の完全維持）。
 - **Evidence**:
   - 新規スプレッドシートの URL / ID
@@ -141,7 +149,8 @@
   - 複製したスプレッドシートの完全削除（ゴミ箱破棄）
 - **HARD STOP Condition**:
   - スプレッドシート内にコンテナバインドスクリプトが混入している場合。
-  - 初期複製 11 Core Sheets のヘッダー構成が Template と異なる場合。
+  - 運用モードが未設定または不明な値の場合。
+  - 実運用 5 シートの生成が 1〜4/5 の不完全状態で停止した場合（All-or-Nothing 違反）。
 
 ---
 
