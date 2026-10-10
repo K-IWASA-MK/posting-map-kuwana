@@ -59,12 +59,13 @@ function makeEventB(step, convId) {
   });
 }
 
-function makeEventC(step, sender, base, target, delCount, verdict, source = 'SYSTEM', type = 'SYSTEM_MESSAGE') {
+function makeEventC(step, sender, base, target, delCount, verdict, source = 'SYSTEM', type = 'SYSTEM_MESSAGE', govCount = 0) {
+  const govLine = (govCount !== null && govCount !== undefined) ? `GOVERNANCE-RESIDUAL: ${govCount}件\n` : '';
   return JSON.stringify({
     step_index: step,
     source,
     type,
-    content: `<SYSTEM_MESSAGE>\n[Message] timestamp=2026-10-09T04:16:54Z sender=${sender} priority=MESSAGE_PRIORITY_HIGH content=[CLEANUP REPORT]\nAudited Mission: Test\nBase Commit: ${base}\nTarget Commit: ${target}\n--- SUMMARY ---\nDELETE-CANDIDATE: ${delCount}件\nOverall Verdict: ${verdict}\n</SYSTEM_MESSAGE>`
+    content: `<SYSTEM_MESSAGE>\n[Message] timestamp=2026-10-09T04:16:54Z sender=${sender} priority=MESSAGE_PRIORITY_HIGH content=[CLEANUP REPORT]\nAudited Mission: Test\nBase Commit: ${base}\nTarget Commit: ${target}\n--- SUMMARY ---\nDELETE-CANDIDATE: ${delCount}件\n${govLine}Overall Verdict: ${verdict}\n</SYSTEM_MESSAGE>`
   });
 }
 
@@ -294,6 +295,87 @@ runTest('P3: 非プロダクト変更でも監査実施合格 (全Mission一律�
   ];
   const res = verifyCleanupGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
   assert.equal(res.pass, true);
+});
+
+// ─────────────────────────────────────────────────────────────
+// GOVERNANCE-RESIDUAL 追加検証 (N16 - N20, P4)
+// ─────────────────────────────────────────────────────────────
+
+runTest('N16: GOVERNANCE-RESIDUAL 欠損 (FAIL)', () => {
+  const lines = [
+    makeEventA(10, B1, T1),
+    makeEventB(11, CHILD_CONV),
+    makeEventC(12, CHILD_CONV, B1, T1, 0, 'NO_CLEANUP_NEEDED', 'SYSTEM', 'SYSTEM_MESSAGE', null)
+  ];
+  const res = verifyCleanupGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
+  assert.equal(res.pass, false);
+  assert.match(res.error, /does not contain a valid GOVERNANCE-RESIDUAL count/);
+});
+
+runTest('N17: GOVERNANCE-RESIDUAL > 0 (FAIL)', () => {
+  const lines = [
+    makeEventA(10, B1, T1),
+    makeEventB(11, CHILD_CONV),
+    makeEventC(12, CHILD_CONV, B1, T1, 0, 'NO_CLEANUP_NEEDED', 'SYSTEM', 'SYSTEM_MESSAGE', 1)
+  ];
+  const res = verifyCleanupGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
+  assert.equal(res.pass, false);
+  assert.equal(res.governanceResiduals, 1);
+  assert.match(res.error, /GOVERNANCE-RESIDUAL: 1 detected/);
+});
+
+runTest('N18: DELETE 0 / GOV > 0 (FAIL)', () => {
+  const lines = [
+    makeEventA(10, B1, T1),
+    makeEventB(11, CHILD_CONV),
+    makeEventC(12, CHILD_CONV, B1, T1, 0, 'NO_CLEANUP_NEEDED', 'SYSTEM', 'SYSTEM_MESSAGE', 3)
+  ];
+  const res = verifyCleanupGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
+  assert.equal(res.pass, false);
+  assert.equal(res.governanceResiduals, 3);
+  assert.match(res.error, /GOVERNANCE-RESIDUAL: 3 detected/);
+});
+
+runTest('N19: DELETE > 0 / GOV 0 (FAIL)', () => {
+  const lines = [
+    makeEventA(10, B1, T1),
+    makeEventB(11, CHILD_CONV),
+    makeEventC(12, CHILD_CONV, B1, T1, 2, 'CLEANUP_RECOMMENDED', 'SYSTEM', 'SYSTEM_MESSAGE', 0)
+  ];
+  const res = verifyCleanupGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
+  assert.equal(res.pass, false);
+  assert.equal(res.deleteCandidates, 2);
+  assert.match(res.error, /DELETE-CANDIDATE: 2 detected/);
+});
+
+runTest('N20: stale clean report fallback禁止 (最新がGOV > 0)', () => {
+  const lines = [
+    // 1回目: 過去の合格レポート
+    makeEventA(10, B1, T1),
+    makeEventB(11, CHILD_CONV),
+    makeEventC(12, CHILD_CONV, B1, T1, 0, 'NO_CLEANUP_NEEDED', 'SYSTEM', 'SYSTEM_MESSAGE', 0),
+    // 2回目: 最新レポートで GOV > 0
+    makeEventA(20, B1, T1),
+    makeEventB(21, 'latest-child-777'),
+    makeEventC(22, 'latest-child-777', B1, T1, 0, 'CLEANUP_RECOMMENDED', 'SYSTEM', 'SYSTEM_MESSAGE', 2)
+  ];
+  const res = verifyCleanupGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
+  assert.equal(res.pass, false);
+  assert.equal(res.governanceResiduals, 2);
+  assert.match(res.error, /GOVERNANCE-RESIDUAL: 2 detected/);
+});
+
+runTest('P4: both zero only PASS (DELETE 0 / GOV 0 合格)', () => {
+  const lines = [
+    makeEventA(10, B1, T1),
+    makeEventB(11, CHILD_CONV),
+    makeEventC(12, CHILD_CONV, B1, T1, 0, 'NO_CLEANUP_NEEDED', 'SYSTEM', 'SYSTEM_MESSAGE', 0)
+  ];
+  const res = verifyCleanupGate({ baseCommit: B1, targetCommit: T1, transcriptLines: lines, gitResolver: mockGitResolver });
+  assert.equal(res.pass, true);
+  assert.equal(res.chain.deleteCandidates, 0);
+  assert.equal(res.chain.governanceResiduals, 0);
+  assert.equal(res.chain.verdict, 'NO_CLEANUP_NEEDED');
 });
 
 console.log('====================================================');

@@ -18,36 +18,30 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 ### V3 Regression Verification
 - 既存機能への副作用がないことの確認。
 
-### Independent Auditor Gate (独立検品関門 — Context Isolation)
-- Execution AI による自己検品（同一セッション内でのAuditor自称・PASS偽装）は絶対禁止とする。
+### Independent Auditor Gate (独立検品関門 — Internal Dispatch & Context Isolation)
+- Execution AI による自己検品（自作自演・PASS偽装）は絶対禁止とする。
 - 正式Gateフロー:
   ```text
   Execution V1〜V3自己検証
          ↓
-  [EXECUTION HANDOVER] チャット提出
+  Execution AI が invoke_subagent により Independent Auditor をディスパッチ (Fresh isolated child context)
+         ↓ (BASE_COMMIT, TARGET_COMMIT, MISSION_SCOPE 完全バインド)
+  Auditor による独立再検証 (親の報告を信用せず自ら独立コマンド実行)
          ↓
-  Execution HARD STOP (完全停止・自律コミット禁止)
+  [AUDITOR VERDICT] 返却 (PASS / REJECT)
          ↓
-  窓口AIが分離された文脈で Independent Auditor AI へ査読依頼 (Context Isolation)
-         ↓
-  Auditor による独立再検証 (Executionの報告を鵜呑みにせず自らコマンド実行)
-         ↓
-  [AUDITOR VERDICT] チャット出力 (PASS / REJECT)
-         ↓
-  Auditor HARD STOP (完全停止・ファイル書込禁止)
-         ↓
-  MASTER が PASS を目視確認し Resume / Commit Proceed を発令
+  Execution AI が Mechanical Gate 執行: npm run gate:auditor -- --base <BASE> --target <HEAD>
+         ├─ Event A ➔ Event B ➔ Event C 相関チェーン検証
+         └─ Post-Audit Zero Mutation 検証 (監査PASS後のファイル改変を検出した場合は即時 VOID / Exit 1)
+         ↓ PASS (Exit 0)
+  Authorization Envelope [COMMIT: YES, PUSH: YES] に基づき Commit & Push 執行
   ```
 - **Auditor必須独立再確認コマンド**:
-  Auditor は Execution AI の Handover 記述を証拠として鵜呑みにせず、自ら以下のコマンドを実行して独立検証しなければならない：
-  - `git status`
+  Auditor は Execution AI の Handover / 報告記述を証拠として鵜呑みにせず、自ら以下のコマンドを実行して独立検証しなければならない：
   - `git diff`
-  - `git rev-parse HEAD`
-  - `.agents/current-scope.json`
-  - タスク対象テスト（該当スクリプト等）
   - `npm test`
-  - `npm run audit:gate`
-  ※タスク特性に応じて不要な項目は `N/A + その客観的理由` を明記すること。
+  - `node scripts/check-scope.mjs`
+  ※タスク特性に応じて `npm run audit:gate` や個別テストを追加実行。
 - **5大固定観点**:
   1. **観点①: 最上位絶対原則**（Universal Engine非侵襲・コピー原則の遵守）
   2. **観点②: Scope厳守・余計な差分の排除**（Staged/Working Diff と current-scope.json の完全一致）
@@ -57,34 +51,39 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 
 ### Mechanical Governance Gate
 - `npm run audit:gate` を実行し、Scope Guard（`scripts/check-scope.mjs`）による機械監査を通過する（既存ゲートとして完全維持・必須）。
-- ※PoC実証で開発された4観点並列Scope監査およびHook判定機構は、実証資産（`docs/research/parallel_orchestration_poc/`）として保全されており、通常の必須ゲートからは除外されている。
+- `npm run gate:auditor -- --base <BASE> --target <HEAD>` を実行し、独立監査相関チェーンおよび Post-Audit Zero Mutation の機械検証を通過する（必須関門）。
 
-### Commit Gate & Push Gate (MASTER Resume 執行関門)
-- **Commit Gate**: V1〜V3自己検証のPASS、Handoverチャット提出、Independent Auditor によるチャット上の PASS 判定、および **MASTER からの明示的 Resume / Commit Proceed 受領** のすべてが揃った場合のみ、Execution AI は Commit を執行する。Auditor PASS のみによる自動コミット再開は禁止する。
-- **Push Gate**: Commit存在確認、Scope確認、必要な自動監査を通過した場合、Execution AI は Push を執行する（特別Governance Transactionである Scope Commit を含めて最終Pushとする）。
+### Commit Gate & Push Gate (Authorization Envelope 執行関門)
+- **Commit Gate**: V1〜V3自己検証のPASS、Independent Auditor による `[AUDITOR VERDICT]` PASS、および `npm run gate:auditor` Exit 0 が揃い、かつ MASTER の Authorization Envelope（`COMMIT: YES`）が有効な場合に限り、Execution AI は Commit を執行する。
+- **Push Gate**: Commit存在確認、Scope確認、および Authorization Envelope（`PUSH: YES`）が有効な場合、Execution AI は Push を執行する（特別Governance Transactionである Scope Commit を含めて最終Pushとする）。
 
 ### Crisp Deployment Gate & V4 Deployment Verification
-- **Crisp Deployment Gate**: Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）である場合のみ、独立工程として実際の稼働環境へのデプロイを実施する。実環境への反映を必要としない変更は「Deployment対象外 (N/A)」と明示的に判定・記録すること。対象外であることを根拠なく推測してはならない。
+- **Crisp Deployment Gate**: Push完了後、実稼働環境への反映が必要な変更（Deployment対象変更）であり、かつ Authorization Envelope において `DEPLOY: YES` が明示認可されている場合のみ、独立工程として実際の稼働環境へのデプロイを実施する。実環境への反映を必要としない変更は「Deployment対象外 (N/A)」と明示的に判定・記録すること。
 - **V4 Deployment Verification**:
   - **V4成立条件**: Deployment対象なら「実環境で反映を確認した客観的Evidence」、Deployment非対象なら「対象外であることの客観的確認Evidence」を取得し、いずれの場合もそのEvidenceをもってV4 PASSとする。
   - **重要**: `git status`、`git log`、`Script is already up to date.` 等のGit/Crisp実行結果だけでは、V4 Deployment VerificationのEvidenceとして扱わない。
   - **Evidence不足の場合**: PASSせず即時HARD STOPし、MASTERへ報告すること。Evidence不足を補うための実装・修正をAIが勝手に開始してはならない。
-  - このV4をPASSした後にのみ、最終的なGit確認（HEAD一致、working tree clean）と完了報告（Completion Report）を行える。
+  - このV4をPASSした後にのみ、最終的なGit確認（HEAD一致、working tree clean）と Stage 9 への進行を行える。
 
-### Stage 9 Post-Verification Residual Cleanup Gate (Machine-verifiable Evidence Gate)
-- **目的と拘束力**: Stage 8 本番/実機確認 PASS 後、全Missionにおいて必ず Cleanup Worker（Residual Cleanup Auditor Profile）を起動する（**全Mission必須・Stage 9 N/A 禁止**）。
+### Stage 9 Post-Verification Residual Cleanup & Governance Closure Gate (Machine-verifiable Evidence Gate)
+- **目的と拘束力**: Stage 8 本番/実機確認 PASS 後、全Missionにおいて必ず Cleanup Worker（Residual & Governance Closure Auditor Profile）を起動する（**全Mission必須・Stage 9 N/A 禁止**）。
 - **起動プロンプト要件 (Three-Way Exact Match)**: 親Executionの `invoke_subagent` プロンプト（Event A）に `ORIGINAL_BASE`、`HEAD_COMMIT`、`APPROVED_DIFF` を完全一致で明記する。
 - **機械検証可能証跡関門**:
-  Cleanup Worker からチャット画面（親宛て）に `[CLEANUP REPORT]` を受領後、親Executionは機械検証ゲートを実行する：
+  Cleanup Worker から `[CLEANUP REPORT]` を受領後、親Executionは機械検証ゲートを実行する：
   ```bash
   npm run gate:cleanup -- --base <BASE_COMMIT> --target <HEAD_COMMIT>
   ```
   - Gate は現在Conversationの transcript から Event A（`invoke_subagent`）➔ Event B（tool_result with `conversationId`）➔ Event C（childからの `[CLEANUP REPORT]`）の構造化相関チェーン、イベント順序（`stepA < stepB < stepC`）、および三者完全一致（Event A == CLI args == Event C report）を厳格に機械検証する。
+  - **Dual Audit 必須合格条件**:
+    - `DELETE-CANDIDATE: 0`
+    - `GOVERNANCE-RESIDUAL: 0`
+    - `gate:cleanup` Exit 0
+    - いずれか一方でも > 0 の場合、自動削除は絶対禁止とし、MASTER へエスカレーションして HARD STOP とする。
   - Fail-Closed: ログパス欠損・環境変数欠損・ファイル不存在・JSONLパースエラーは即時失敗（exit 1）とする。
   - Stale成功チェーンへのfallbackは禁止（最新チェーンのみ評価）。
 - **累積再監査の義務 (Cumulative Re-audit)**:
-  - `DELETE-CANDIDATE` が0件（`Overall Verdict: NO_CLEANUP_NEEDED`）かつ `gate:cleanup` が Exit 0 で通過した場合に限り、`[MISSION COMPLETION REPORT]` を提出し Mission CLOSED を宣言できる。
-  - `DELETE-CANDIDATE > 0` の場合は、削除サイクル（Stage 2-7）完了後、必ず `ORIGINAL_BASE ➔ latest TARGET` の全累積差分に対して Stage 9 を再実行し、最終的に `DELETE-CANDIDATE: 0 / NO_CLEANUP_NEEDED` を得るまで Mission CLOSED とすることはできない。
+  - 両方 0件（`Overall Verdict: NO_CLEANUP_NEEDED`）かつ `gate:cleanup` が Exit 0 で通過した場合に限り、`[MISSION COMPLETION REPORT]` を提出し Mission CLOSED を宣言できる。
+  - どちらか > 0 の場合は、削除・是正サイクル完了後、必ず `ORIGINAL_BASE ➔ latest TARGET` の全累積差分に対して Stage 9 を再実行し、最終的に両方 0件を得るまで Mission CLOSED とすることはできない。
 
 ### Rollback ガバナンス規程 (History-Preserving Rollback Protocol)
 万一、本番・検証・運用のいずれかで重大な障害が発生しロールバックが必要となった場合、履歴保持型revertのみを許可する。
@@ -102,10 +101,10 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
    - `git push --force-with-lease`
    - その他履歴破壊型rollback（`rebase`, `commit --amend` 等の既出コミット改変）は永久に禁止する。
 
-### Repository Boundary 専用極小例外 (Stage 9 Cleanup Evidence Verification)
-- `scripts/check-cleanup-gate.mjs` による Stage 9 機械検証可能証跡ゲートに限り、`ANTIGRAVITY_CONVERSATION_ID` で特定される「現在Conversation自身」の `.system_generated/logs/transcript.jsonl` 1ファイルのみに対する READ ONLY アクセスを限定的に認める。
+### Repository Boundary 専用極小例外 (Stage 5 Auditor & Stage 9 Cleanup Evidence Verification)
+- `scripts/check-auditor-gate.mjs` および `scripts/check-cleanup-gate.mjs` による機械検証可能証跡ゲートに限り、`ANTIGRAVITY_CONVERSATION_ID` で特定される「現在Conversation自身」の `.system_generated/logs/transcript.jsonl` 1ファイルのみに対する READ ONLY アクセスを限定的に認める。
 - 許可条件:
-  1. 目的は Stage 9 Cleanup Evidence Verification のみ。
+  1. 目的は Stage 5 Auditor Gate および Stage 9 Cleanup Gate の証跡検証のみ。
   2. 対象は現在Conversation自身の `transcript.jsonl` 1ファイルのみ（READ ONLY）。
   3. 親ディレクトリの探索・列挙（`list_dir` 等）の禁止。
   4. 他Conversationのbrain/log参照の禁止。
@@ -151,9 +150,11 @@ AI社員の作業は、必ず以下の「Verification Gate」と「客観的証�
 - ユーザー確認待ち状態で完了報告する
 - あとでcommitする、など未確定状態での報告
 - 「スクリーンショットを要求する」「画面を想像する」「実機確認をユーザーに任せる」形での検証完了報告は絶対禁止とする。
-- Stage 8 実機PASS後に Stage 9 Cleanup Worker（Residual Cleanup Auditor Profile）を起動せずに完了宣言を出すこと
+- Stage 5 で `npm run gate:auditor` を実行・通過させずに Commit/Push へ進むこと
+- 監査PASS後にファイルを変更した状態（Post-Audit Mutation）で Commit すること
+- Stage 8 実機PASS後に Stage 9 Cleanup Worker（Residual & Governance Closure Auditor Profile）を起動せずに完了宣言を出すこと
 - Cleanup Worker からの正式な `[CLEANUP REPORT]` 受領および `npm run gate:cleanup` PASS 前に Mission CLOSED を宣言すること
-- `DELETE-CANDIDATE > 0` の残骸候補が存在する状態で Mission CLOSED とすること
+- `DELETE-CANDIDATE > 0` または `GOVERNANCE-RESIDUAL > 0` の残骸・残滓候補が存在する状態で Mission CLOSED とすること
 
 ### 客観的証跡の義務
 AI社員自身がローカルで起動・操作し、DOM/Console/Networkなどの客観的証跡を取得しなければならない。

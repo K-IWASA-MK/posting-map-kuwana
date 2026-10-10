@@ -177,11 +177,11 @@
       "canonicalSources": [
         {
           "path": ".agents/rules/verification-gates.md",
-          "sha256": "96c4dabb5b47942c583f29e6e3364ecd0c374800d5499fcb32e69c90f39d3499"
+          "sha256": "b901fe196c4ae3aff38a4810ed35239596dc39211395813ad3c296241509776a"
         },
         {
           "path": ".agents/workflows/development/workflow.md",
-          "sha256": "af2c15db81dee1bd69d35f8b2ebb51b1b067f9e99917cec19ad4b478f39176e1"
+          "sha256": "39d32947aecf0e4a97ea161bbbb21676db6786e604d146a2be8333281c1504a9"
         }
       ],
       "evidenceSources": [
@@ -194,11 +194,11 @@
       "canonicalSources": [
         {
           "path": "docs/ai-foundation.md",
-          "sha256": "b9e0083056fab9f2c8d658265a768268270770acdad867fd1ecfe58264419fc1"
+          "sha256": "dbaffd21c6a85c3e6b79c98e9471f49d208d18fcf7b4781f85d028d681bfae13"
         },
         {
           "path": "AGENTS.md",
-          "sha256": "cb374860c37cef64428770461940e5cb7f169772b89228f6260a3bd5307d2d4c"
+          "sha256": "4233bfc789cf1e245bb314b3aba0a6a3aa55866b4d497c216bf2dc4ad9b9eb08"
         }
       ],
       "evidenceSources": [

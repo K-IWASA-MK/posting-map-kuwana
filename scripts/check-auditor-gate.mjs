@@ -5,12 +5,12 @@ import { execSync } from 'node:child_process';
 const rootDir = process.cwd();
 
 function exitFail(message) {
-  console.error(`\n🛑 [Hard Stop] Cleanup Gate FAILED: ${message}`);
+  console.error(`\n🛑 [Hard Stop] Auditor Gate FAILED: ${message}`);
   process.exit(1);
 }
 
 function exitPass(message) {
-  console.log(`\n🟢 [Cleanup Gate] PASSED: ${message}`);
+  console.log(`\n🟢 [Auditor Gate] PASSED: ${message}`);
   process.exit(0);
 }
 
@@ -38,16 +38,63 @@ export function resolveTranscriptPath(env = process.env) {
 }
 
 /**
+ * 変更系コマンドかどうかの判定 (Post-Audit Mutation 検出用)
+ */
+export function isMutatingCommand(commandLine) {
+  if (!commandLine || typeof commandLine !== 'string') return false;
+  const cmd = commandLine.trim();
+
+  // 読み取り専用・非破壊コマンドのホワイトリスト判定
+  const readOnlyPrefixes = [
+    'git status',
+    'git log',
+    'git rev-parse',
+    'git diff',
+    'git show',
+    'git branch',
+    'node scripts/check-auditor-gate.mjs',
+    'npm run gate:auditor',
+    'node scripts/check-scope.mjs',
+    'npm run audit:gate',
+    'npm test'
+  ];
+
+  // リダイレクトによるファイル書き込みがあれば変更系
+  if (/>/.test(cmd)) {
+    return true;
+  }
+
+  // 明示的な変更・破壊操作
+  const mutatingPatterns = [
+    /\b(rm|mv|cp|mkdir|touch|sed|awk|patch|truncate)\b/,
+    /\bgit\s+(add|commit|push|checkout\s+-b|branch\s+-[dD]|reset|rebase|merge|stash)\b/,
+    /\bnpm\s+(install|i|update|audit\s+fix)\b/
+  ];
+
+  for (const pattern of mutatingPatterns) {
+    if (pattern.test(cmd)) return true;
+  }
+
+  // ホワイトリストで始まっているか確認
+  const isReadOnly = readOnlyPrefixes.some(prefix => cmd.startsWith(prefix));
+  if (!isReadOnly) {
+    return true; // 未知コマンドは安全側（Fail-Closed）で mutation 判定
+  }
+
+  return false;
+}
+
+/**
  * 構造化相関チェーン検証コアロジック (Unit/Negative Test からも直接呼び出し可能)
  */
-export function verifyCleanupGate({
+export function verifyAuditorGate({
   baseCommit,
   targetCommit,
   transcriptLines,
   gitResolver = null
 }) {
   if (!baseCommit || typeof baseCommit !== 'string') {
-    return { pass: false, error: 'Missing required baseCommit (--base <ORIGINAL_BASE>)' };
+    return { pass: false, error: 'Missing required baseCommit (--base <BASE>)' };
   }
   if (!targetCommit || typeof targetCommit !== 'string') {
     return { pass: false, error: 'Missing required targetCommit (--target <TARGET>)' };
@@ -103,19 +150,23 @@ export function verifyCleanupGate({
       for (const tc of entry.tool_calls) {
         if (tc.name === 'invoke_subagent' && tc.args) {
           const rawArgs = JSON.stringify(tc.args);
-          const isCleanupAuditor = rawArgs.includes('Residual Cleanup Auditor') || rawArgs.includes('残骸監査専任プロファイル');
+          const isAuditor = (
+            rawArgs.includes('Independent Auditor') ||
+            rawArgs.includes('auditor') ||
+            rawArgs.includes('独立検品')
+          );
 
-          if (isCleanupAuditor) {
-            // Event A Prompt 内の三者バインド確認 (ORIGINAL_BASE, TARGET, APPROVED_DIFF)
+          if (isAuditor) {
+            // Event A Prompt 内の三者バインド確認 (BASE, TARGET, SCOPE)
             const hasBase = rawArgs.includes(shortBase) || rawArgs.includes(fullBase) || rawArgs.includes(baseCommit);
             const hasTarget = rawArgs.includes(shortTarget) || rawArgs.includes(fullTarget) || rawArgs.includes(targetCommit);
-            const hasDiff = rawArgs.includes('APPROVED_DIFF') || rawArgs.includes('確定差分');
+            const hasScope = rawArgs.includes('MISSION_SCOPE') || rawArgs.includes('Approved Scope') || /Scope:\s*[^\\"\s\n\r]+/.test(rawArgs);
 
             pendingInvocation = {
               stepA: stepIndex,
               hasBase,
               hasTarget,
-              hasDiff,
+              hasScope,
               rawArgs
             };
             pendingToolResult = null;
@@ -126,7 +177,6 @@ export function verifyCleanupGate({
     }
 
     // --- Event B: invoke_subagent tool_result ---
-    // ※実Transcript schema準拠: Event A の直後ステップ (stepB === stepA + 1) かつ MODEL/GENERIC のみ受理
     if (pendingInvocation) {
       const isImmediateStep = (stepIndex === pendingInvocation.stepA + 1);
       const isEventBFormat = (
@@ -150,34 +200,40 @@ export function verifyCleanupGate({
         }
       }
 
-      // 直後で不一致、または別イベントが介在した場合は直ちに破棄 (Fail-Closed)
       pendingInvocation = null;
       continue;
     }
 
-    // --- Event C: child Worker incoming message ---
-    // ※親Execution (source: MODEL) や MASTER (source: USER_EXPLICIT) を物理排除
+    // --- Event C: child Auditor incoming message ---
     if (pendingToolResult && entry.source === 'SYSTEM' && entry.type === 'SYSTEM_MESSAGE' && entry.content) {
       const content = entry.content;
-      if (content.includes('[CLEANUP REPORT]')) {
-        // sender 抽出
+      if (content.includes('[AUDITOR VERDICT]')) {
         const matchSender = content.match(/\[Message\].*sender=([^\s]+)/);
         const sender = matchSender ? matchSender[1] : null;
 
         if (sender && sender === pendingToolResult.childConversationId) {
-          // Report 内の Base / Target commit 抽出
-          const matchBase = content.match(/Base Commit:\s*([a-f0-9]+)/i);
-          const matchTarget = content.match(/Target Commit:\s*([a-f0-9]+)/i);
+          const matchBase = content.match(/Base(?:\s*Commit)?:\s*([a-f0-9]+)/i);
+          const matchTarget = content.match(/Target(?:\s*Commit)?:\s*([a-f0-9]+)/i);
           const repBase = matchBase ? matchBase[1] : null;
           const repTarget = matchTarget ? matchTarget[1] : null;
 
           const reportBaseMatches = repBase && (fullBase.startsWith(repBase) || repBase.startsWith(shortBase));
           const reportTargetMatches = repTarget && (fullTarget.startsWith(repTarget) || repTarget.startsWith(shortTarget));
 
-          // 候補数・判定抽出
-          const matchDel = content.match(/DELETE-CANDIDATE:\s*(\d+)/i);
-          const matchGov = content.match(/GOVERNANCE-RESIDUAL:\s*(\d+)/i);
-          const matchVer = content.match(/Overall Verdict:\s*([A-Za-z_]+)/i);
+          const hasScopeReport = /Scope(?:\s*Verified)?:\s*(.+)/i.test(content) || /Approved Scope:/i.test(content);
+
+          // Independent Commands Executed
+          const hasGitDiff = /git diff/i.test(content);
+          const hasNpmTest = /npm test/i.test(content);
+          const hasCheckScope = /check-scope\.mjs/i.test(content);
+          const hasIndependentCommands = hasGitDiff && hasNpmTest && hasCheckScope;
+
+          // Findings & Verdict
+          const matchVerdict = content.match(/(?:Final\s+)?Verdict:\s*([A-Za-z_]+)/i);
+          const verdict = matchVerdict ? matchVerdict[1] : null;
+
+          const matchBlocking = content.match(/Blocking Findings:\s*(\d+|none)/i);
+          const hasBlockingFindings = matchBlocking ? (matchBlocking[1].toLowerCase() !== '0' && matchBlocking[1].toLowerCase() !== 'none') : false;
 
           const chain = {
             stepA: pendingToolResult.invocation.stepA,
@@ -186,12 +242,16 @@ export function verifyCleanupGate({
             childConversationId: sender,
             promptHasBase: pendingToolResult.invocation.hasBase,
             promptHasTarget: pendingToolResult.invocation.hasTarget,
-            promptHasDiff: pendingToolResult.invocation.hasDiff,
+            promptHasScope: pendingToolResult.invocation.hasScope,
             reportBaseMatches,
             reportTargetMatches,
-            deleteCandidates: matchDel ? parseInt(matchDel[1], 10) : null,
-            governanceResiduals: matchGov ? parseInt(matchGov[1], 10) : null,
-            verdict: matchVer ? matchVer[1] : null,
+            hasScopeReport,
+            hasIndependentCommands,
+            hasGitDiff,
+            hasNpmTest,
+            hasCheckScope,
+            hasBlockingFindings,
+            verdict,
             fullReportText: content
           };
 
@@ -205,15 +265,14 @@ export function verifyCleanupGate({
   // 3. チェーン評価 (指定 BASE/TARGET に対する最新 Invocation Chain 評価原則)
   if (invocationChains.length === 0) {
     if (pendingInvocation && !pendingToolResult) {
-      return { pass: false, error: 'Cleanup Worker was invoked, but tool result (conversationId) was not received.' };
+      return { pass: false, error: 'Independent Auditor was invoked, but tool result (conversationId) was not received.' };
     }
     if (pendingToolResult) {
-      return { pass: false, error: `Waiting for [CLEANUP REPORT] from child Worker (${pendingToolResult.childConversationId}).` };
+      return { pass: false, error: `Waiting for [AUDITOR VERDICT] from child Auditor (${pendingToolResult.childConversationId}).` };
     }
-    return { pass: false, error: `Cleanup Worker (Residual Cleanup Auditor Profile) was NOT invoked for range ${shortBase}..${shortTarget}.` };
+    return { pass: false, error: `Independent Auditor was NOT invoked for range ${shortBase}..${shortTarget}.` };
   }
 
-  // 最も新しいチェーンを取得 (古い成功チェーンへのフォールバック禁止)
   const latestChain = invocationChains[invocationChains.length - 1];
 
   // 順序の厳格検証 (stepA < stepB < stepC)
@@ -225,44 +284,70 @@ export function verifyCleanupGate({
   if (!latestChain.promptHasBase || !latestChain.promptHasTarget) {
     return { pass: false, error: `Event A invocation prompt did not bind exact BASE (${shortBase}) or TARGET (${shortTarget}).` };
   }
-  if (!latestChain.promptHasDiff) {
-    return { pass: false, error: 'Event A invocation prompt did not include APPROVED_DIFF.' };
+  if (!latestChain.promptHasScope) {
+    return { pass: false, error: 'Event A invocation prompt did not bind MISSION_SCOPE.' };
   }
   if (!latestChain.reportBaseMatches || !latestChain.reportTargetMatches) {
     return { pass: false, error: `Event C report commit range does not match requested range ${shortBase}..${shortTarget}.` };
   }
+  if (!latestChain.hasScopeReport) {
+    return { pass: false, error: 'Event C report did not confirm approved Scope verification.' };
+  }
 
-  // 残骸判定
-  if (latestChain.deleteCandidates === null) {
-    return { pass: false, error: '[CLEANUP REPORT] does not contain a valid DELETE-CANDIDATE count.' };
+  // コマンド実行証跡
+  if (!latestChain.hasIndependentCommands) {
+    const missing = [];
+    if (!latestChain.hasGitDiff) missing.push('git diff');
+    if (!latestChain.hasNpmTest) missing.push('npm test');
+    if (!latestChain.hasCheckScope) missing.push('node scripts/check-scope.mjs');
+    return { pass: false, error: `Event C [AUDITOR VERDICT] missing mandatory independent command evidence: ${missing.join(', ')}.` };
   }
-  if (latestChain.governanceResiduals === null) {
-    return { pass: false, error: '[CLEANUP REPORT] does not contain a valid GOVERNANCE-RESIDUAL count.' };
+
+  // ブロッキング課題と Verdict
+  if (latestChain.hasBlockingFindings) {
+    return { pass: false, error: 'Event C [AUDITOR VERDICT] contains blocking findings.' };
   }
-  if (latestChain.deleteCandidates > 0) {
-    return {
-      pass: false,
-      deleteCandidates: latestChain.deleteCandidates,
-      governanceResiduals: latestChain.governanceResiduals,
-      error: `DELETE-CANDIDATE: ${latestChain.deleteCandidates} detected. Mission CANNOT be CLOSED. MASTER approval required for cleanup cycle.`
-    };
+  if (latestChain.verdict !== 'PASS') {
+    return { pass: false, error: `Event C [AUDITOR VERDICT] Final Verdict is '${latestChain.verdict}'. Expected PASS.` };
   }
-  if (latestChain.governanceResiduals > 0) {
-    return {
-      pass: false,
-      deleteCandidates: latestChain.deleteCandidates,
-      governanceResiduals: latestChain.governanceResiduals,
-      error: `GOVERNANCE-RESIDUAL: ${latestChain.governanceResiduals} detected. Mission CANNOT be CLOSED. MASTER approval required for governance remediation cycle.`
-    };
-  }
-  if (latestChain.verdict !== 'NO_CLEANUP_NEEDED') {
-    return { pass: false, error: `Overall Verdict is '${latestChain.verdict}'. Expected NO_CLEANUP_NEEDED.` };
+
+  // 4. POST-AUDIT ZERO MUTATION 検証 (Event C 直後から末尾までのtranscript走査)
+  for (let idx = 0; idx < transcriptLines.length; idx++) {
+    const rawLine = transcriptLines[idx].trim();
+    if (!rawLine) continue;
+
+    let entry;
+    try {
+      entry = JSON.parse(rawLine);
+    } catch (e) {
+      continue;
+    }
+
+    const stepIndex = entry.step_index !== undefined ? entry.step_index : idx;
+    if (stepIndex > latestChain.stepC) {
+      if (entry.source === 'MODEL' && entry.tool_calls) {
+        for (const tc of entry.tool_calls) {
+          if (tc.name === 'write_to_file' || tc.name === 'replace_file_content') {
+            return {
+              pass: false,
+              error: `Post-Audit Mutation detected at step ${stepIndex} (${tc.name}). Auditor PASS is VOID.`
+            };
+          }
+          if (tc.name === 'run_command' && tc.args && isMutatingCommand(tc.args.CommandLine)) {
+            return {
+              pass: false,
+              error: `Post-Audit Mutating Command detected at step ${stepIndex} (${tc.args.CommandLine}). Auditor PASS is VOID.`
+            };
+          }
+        }
+      }
+    }
   }
 
   return {
     pass: true,
     chain: latestChain,
-    message: `Verified Cleanup Worker execution and [CLEANUP REPORT] (Chain: step ${latestChain.stepA} -> ${latestChain.stepB} -> ${latestChain.stepC}, child: ${latestChain.childConversationId}, DELETE-CANDIDATE: 0, GOVERNANCE-RESIDUAL: 0, NO_CLEANUP_NEEDED).`
+    message: `Verified Independent Auditor execution, [AUDITOR VERDICT] PASS, and Post-Audit Zero Mutation (Chain: step ${latestChain.stepA} -> ${latestChain.stepB} -> ${latestChain.stepC}, child: ${latestChain.childConversationId}, Verdict: PASS).`
   };
 }
 
@@ -283,13 +368,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(im
   }
 
   if (!baseCommit) {
-    exitFail('Missing required argument: --base <ORIGINAL_BASE>');
+    exitFail('Missing required argument: --base <BASE>');
   }
   if (!targetCommit) {
     exitFail('Missing required argument: --target <TARGET>');
   }
 
-  // Repository Boundary 専用極小例外 & Fail-Closed 検証 (resolveTranscriptPath ヘルパー)
   let transcriptPath;
   try {
     transcriptPath = resolveTranscriptPath(process.env);
@@ -304,7 +388,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(im
     exitFail(`Fail-Closed: Failed to read transcript file: ${e.message}`);
   }
 
-  const result = verifyCleanupGate({
+  const result = verifyAuditorGate({
     baseCommit,
     targetCommit,
     transcriptLines: lines

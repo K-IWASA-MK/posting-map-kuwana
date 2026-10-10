@@ -54,7 +54,8 @@ const testSuites = [
   'test_summary_module_lifecycle.mjs',
   'test_sync_status_view_lifecycle.mjs',
   'test_knowledge_sync_gate.mjs',
-  'test_cleanup_gate.mjs'
+  'test_cleanup_gate.mjs',
+  'test_auditor_gate.mjs'
 ];
 
 console.log("====================================================");

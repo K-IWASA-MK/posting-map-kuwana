@@ -41,10 +41,10 @@
 - SSD上に存在する他地区（OKAYAMA-02、KUWANA等）のリポジトリやフォルダーを、通常時・監査時・実装時・比較時を問わず一切参照・探索・検索・読み取りしない。
 - 「参考」「比較」「検証」の目的でも他リポジトリを見ない。他リポジトリのコード、データ、設定、Git履歴、監査結果、Runtime情報等を判断材料に使用しない。
 - リポジトリ内部だけでは判断できない事項は、他地区を見て補完・推測せず「UNDETERMINED」とする。複数リポジトリを同時に参照しない。
-- **Stage 9 Cleanup Evidence Verification 専用極小例外**:
-  - `check-cleanup-gate.mjs` による Stage 9 機械検証可能証跡ゲートに限り、`ANTIGRAVITY_CONVERSATION_ID` で特定される「現在Conversation自身」の `.system_generated/logs/transcript.jsonl` 1ファイルのみに対する READ ONLY アクセスを限定的に認める。
+- **Stage 5 / Stage 9 機械検証可能証跡ゲート専用極小例外**:
+  - `check-auditor-gate.mjs` および `check-cleanup-gate.mjs` による機械検証可能証跡ゲートに限り、`ANTIGRAVITY_CONVERSATION_ID` で特定される「現在Conversation自身」の `.system_generated/logs/transcript.jsonl` 1ファイルのみに対する READ ONLY アクセスを限定的に認める。
   - 許可条件:
-    1. 目的は Stage 9 Cleanup Evidence Verification のみ。
+    1. 目的は Stage 5 Auditor Gate および Stage 9 Cleanup Gate の証跡検証のみ。
     2. 対象は現在Conversation自身の `transcript.jsonl` 1ファイルのみ（READ ONLY）。
     3. 親ディレクトリの探索・列挙（`list_dir` 等）の禁止。
     4. 他Conversationのbrain/log参照の禁止。
@@ -58,13 +58,23 @@
    - **調査 ➔ 実装計画提出（Execution AI） ➔ HARD STOP ➔ MASTER明示承認 (Proceed) ➔ 実装** のシーケンスを絶対厳守する。
    - 「調査」「計画」「レビュー」「確認」「相談」の依頼を実装承認（Proceed）として解釈してはならない。
    - MASTERからの明示的な着手承認（Proceed）を受領するまで、1文字たりともファイル変更を行ってはならない。
-2. **Human-Orchestrated Independent Audit & Resume**:
-   - MASTERのProceed受領後は、承認済みScope内において **Proceed ➔ Implement ➔ Self Verify ➔ Handoverチャット提出 ➔ HARD STOP** までをExecution AIが執行する。
-   - Execution AIが独立Auditorを自律起動することは実環境上不可能であり禁止する。
-   - MASTERが新規ConversationでIndependent Auditor AIを起動し、会話履歴を遮断（Context Isolation）した状態で独立査読を行う。
-   - Auditorの判定（PASS / REJECT）はチャット出力のみとし、リポジトリへのファイル書込は禁止（Policy-Level Zero Write）。
-   - Auditor PASS後もExecution AIは自動再開してはならない（停止継続）。MASTERがPASSを目視確認し、明示的な **Resume / Commit Proceed** を発令して初めてExecution AIがCommit / Pushを執行する。
-   - 途中でHARD STOP条件（Scope外変更要求、未解決エラー、Universal Gap等）が発生した場合も直ちに作業を停止し、MASTERへ報告する。
+2. **Internal Dispatch, Independent Audit & Authorization Envelope**:
+   - **Chief Orchestrator 内部ディスパッチ原則**: Execution AI は実装の唯一の窓口であり、必要なAI社員（architect, worker, auditor, deployer, cleanup worker）を内部ディスパッチ（`invoke_subagent`）により振り分ける。MASTER がAI社員ごとに手動でチャットを切り替える運用は廃止する。
+   - **Auditor の独立性要件（厳格維持・自己監査禁止）**:
+     - Execution AI は `invoke_subagent` により Independent Auditor を起動する。
+     - Auditor は **Fresh isolated child context**（親の思考過程・試行錯誤を引き継がない独立セッション）で起動される。
+     - **Policy-Level ZERO WRITE**: ファイル編集・生成禁止、Git操作禁止、Deploy禁止、invoke_subagent / manage_subagents 禁止、再委任禁止。
+     - **客観的独立再実行**: 親Executionの主張やPASS表明を信用せず、必須コマンド（`git diff`, `npm test`, `node scripts/check-scope.mjs`）を自ら独立再実行し、PASS / REJECT を独自に判定して `[AUDITOR VERDICT]` を返却する。
+   - **Mechanical Auditor Gate (`npm run gate:auditor`)**:
+     - Execution AI は Auditor 返却後、`npm run gate:auditor -- --base <BASE> --target <TARGET>` を実行する。
+     - Event A（invoke_subagent with BASE/TARGET/SCOPE）➔ Event B（childConversationId）➔ Event C（childからの [AUDITOR VERDICT] PASS）の相関チェーンを検証する。
+     - **Post-Audit Zero Mutation**: Event C PASS 受領後から gate:auditor 実行までの間にファイル変更（write_to_file, replace_file_content, mutating run_command）が1件でも検知された場合、Auditor PASS は即時 VOID（無効）となり Gate は Exit 1 で FAIL する。
+   - **Authorization Envelope**:
+     - MASTER からの着手指示（Proceed）において付与される認可エンベロープ（`IMPLEMENT: YES, AUDIT: YES, COMMIT: YES, PUSH: YES, DEPLOY: NO, EXTERNAL_WRITE: NO`）。Default は Fail-Closed。
+     - `COMMIT: YES, PUSH: YES` が事前認可されている通常Missionでは、Auditor PASS および `gate:auditor` Exit 0 確認後、冗長な手動Resumeを挟まず Commit / Push を連続執行してよい。
+     - ただし以下は必ず **HARD STOP** とする：Auditor REJECT、テスト失敗、Scope拡張要求、Universal Gap、Envelope外の操作、DEPLOY/EXTERNAL_WRITE未承認、material blocker。
+   - **Bootstrap Migration Rule（移行特例）**:
+     - 本規程への移行コミット（AI Employee OS Rectification）自身は、旧Governanceに準拠し、MASTER手動起動による最後のFresh Independent AuditorのPASSおよびMASTER明示Proceed受領後にコミットされる。本コミット反映後の次Missionから新運用を正式適用する。
 3. **Scope Expansion Gate**:
    - 承認済み計画外の変更が必要になった場合、自己判断で勝手にコードを変更してはならない。
    - 直ちに作業を停止（HARD STOP）し、改訂計画を提出してMASTERの再承認を待つこと。
@@ -76,32 +86,38 @@
 
 ## 7. Commit, Push & Deploy Authority — ABSOLUTE
 1. **Commit & Push Authority**:
-   - 承認された実装範囲内において、自己検証（V1〜V3）完了、Independent Auditor AI によるチャット上の PASS 判定、および **MASTER からの明示的 Resume / Commit Proceed 受領** の3点が揃った場合に限り、Execution AI は Commit および Push を執行する。Auditor PASS のみによる自動コミット再開は禁止する。
+   - 承認された実装範囲内において、自己検証（V1〜V3）完了、Independent Auditor による `[AUDITOR VERDICT]` PASS、および `npm run gate:auditor` の Exit 0 の3点が揃い、かつ MASTER の Authorization Envelope（`COMMIT: YES, PUSH: YES`）が有効な場合に限り、Execution AI は Commit および Push を執行する。
 2. **Deploy Authority**:
-   - Deploy（本番環境への配備）は、**MASTER承認済みScopeに明示的に含まれる場合のみ**実施する。
-   - 「Proceed → Implement → Self Verify → Auditor PASS → Commit → Push → Deploy」を無条件の一連シーケンスとしてはならない。
+   - Deploy（本番環境への配備）は、Authorization Envelope において `DEPLOY: YES` が明示的に認可されている場合のみ実施する（Default: NO）。
    - ドキュメント改定や内部テスト追加など、実稼働環境への反映を必要としない変更は「Deployment対象外 (N/A)」と明示的に判定・記録し、Push完了をもって完了報告へ進むこと。
 3. **Definition of Done**:
-   - Proceed ➔ Implement ➔ Self Verify (`npm test`, Scope Guard) ➔ Handover提出 ➔ HARD STOP ➔ (MASTER起動) Auditor PASS ➔ (MASTER) Resume ➔ Commit ➔ Push (➔ Deploy ※対象時のみ) ➔ Stage 8 実機動作検証 PASS ➔ Stage 9 Cleanup Worker起動 ➔ `[CLEANUP REPORT]` 受領 ➔ Machine-verifiable Evidence Gate (`npm run gate:cleanup -- --base <BASE> --target <TARGET>`) PASS ➔ Mission CLOSED.
+   - Proceed ➔ Implement ➔ Self Verify (`npm test`, Scope Guard) ➔ Internal Auditor Dispatch ➔ `[AUDITOR VERDICT]` PASS ➔ `npm run gate:auditor` Exit 0 ➔ Commit ➔ Push (➔ Deploy ※対象時のみ) ➔ Stage 8 実機動作検証 PASS ➔ Stage 9 Cleanup Worker 起動 ➔ `[CLEANUP REPORT]` 受領 ➔ Machine-verifiable Evidence Gate (`npm run gate:cleanup -- --base <BASE> --target <TARGET>`) Exit 0 (DELETE-CANDIDATE: 0, GOVERNANCE-RESIDUAL: 0) ➔ Mission CLOSED.
    - If any required verification FAILS: STOP.
    - Git PASS is not deployment PASS. Production deployment requires production runtime evidence.
-   - Stage 8 PASS is not Mission CLOSED. Cleanup Dispatch Evidence Verification PASS is strictly required.
+   - Stage 8 PASS is not Mission CLOSED. Cleanup Dispatch Evidence Verification (Residual Diff & Governance Closure Dual Audit) PASS is strictly required.
 
 ## 8. AI Role Boundary & Authority — ABSOLUTE
-各AI役職の4役職×8軸仕様、ツール統制、Handoffプロトコルの詳細契約は、Canonical SSOT である [docs/ai-foundation.md](docs/ai-foundation.md) を唯一の正本とする。各役職の絶対境界は以下の通りである。
+各AI役職の仕様、ツール統制、Handoffプロトコルの詳細契約は、Canonical SSOT である [docs/ai-foundation.md](docs/ai-foundation.md) を唯一の正本とする。各役職の絶対境界は以下の通りである。
 
-- **Design / Direction AI**:
+- **Chief Orchestrator (Execution AI)**:
+  - *Authority*: 実装窓口の一元管理、調査、Knowledge Impact Analysis、実装計画策定・チャット提示、事前Scope固定（`current-scope.json`）、内部ディスパッチ（architect, worker, auditor, deployer, cleanup worker）、統合自己検証、Mechanical Gates（gate:auditor, gate:cleanup）執行、Authorization Envelopeに基づくCommit/Push執行。
+  - *Prohibition*: 承認Scope外変更、仕様の勝手な追加・変更、自己検品（Auditorを経ない完了判定）、Auditor PASS前のコミット、未承認Deploy、他地区参照（永久原則）。
+- **Leaf Specialist: Design / Direction AI (architect)**:
   - *Authority*: 全体構造設計、アーキテクチャレビュー、スコープ判断、方針指示、Lean Blueprint 策定。
-  - *Prohibition*: **常時 READ ONLY（Policy-Level Zero Write）**。ファイル編集・Commit・Push・Deployは絶対禁止（設計のrepo反映はExecution AIが行う）。MASTER承認前のコード変更、自己判断による実装着手。
-- **Execution AI**:
-  - *Authority*: 調査、実装計画策定・提出、MASTER承認受領後の承認Scope内最小侵襲実装、自己テスト実行、差分照合、Handoverチャット提出、Auditor PASSおよびMASTER Resume受領後のCommit/Push。
-  - *Prohibition*: 計画外変更、仕様の勝手な追加・変更、自己検品での完了報告、Auditorの自律起動擬態、MASTER Resume無しの自律Commit、未承認のDeploy。
-- **Independent Auditor AI**:
-  - *Authority*: 新規Conversation（Context Isolation）による独立査読、Policy-Level READ ONLY allowlist 方式による検証コマンド実行（`git diff`, `npm test` 等）、客観的証跡に基づく独立判定（PASS / REJECT）のチャット出力。
-  - *Prohibition*: ファイル編集・生成（Policy-Level Zero Write、verdictファイル作成禁止）、Git Commit/Push/Deploy、非 allowlist コマンド実行、忖度・推測によるPASS判定、自己検品、自身でのコード修正。
-- **District Provisioning AI**:
-  - *Authority*: 外部リソース受領後の自律的プロビジョニング手順執行、マスターデータ生成、受入ゲート検証。書込対象は `data/**` および不可避な地区固有設定のみ。
-  - *Prohibition*: 外部リソース（Drive/LIFF/DNS等）の勝手な推測・作成、共通Runtime（`active/**`）の改変、**共通テスト（`tests/**`）の改変（共通テスト変更が必要な場合は Universal Gap として停止）**、Auditor検品なしの完了判定。
+  - *Prohibition*: **常時 READ ONLY（Policy-Level Zero Write）**。ファイル編集・Commit・Push・Deploy禁止、再委任（Subagent Dispatch）禁止、他地区参照（永久原則）。
+- **Leaf Specialist: Parallel Worker (worker)**:
+  - *Authority*: 親Executionから排他割当された単一ファイルの実装・編集、または Stage 9 確定差分残骸・Governance Closure 監査（Cleanup Profile）。
+  - *Prohibition*: 再委任（Subagent Dispatch）禁止、担当外ファイル編集、自律的Scope拡張、Cleanup Profile時のファイル書込・削除・任意コマンド実行、他地区参照（永久原則）。
+- **Leaf Specialist: Independent Auditor AI (auditor)**:
+  - *Authority*: Executionからの内部ディスパッチ（Fresh isolated child context）受容、提示された差分・客観的証跡の独立査読、allowlist検証コマンド独立再実行（`git diff`, `npm test`, `check-scope.mjs`）、独立判定（PASS / REJECT）の `[AUDITOR VERDICT]` チャット返却。
+  - *Prohibition*: ファイル編集・生成（Policy-Level Zero Write、verdictファイル作成禁止）、Git Commit/Push/Deploy、非 allowlist コマンド実行、忖度・推測による判定、再委任（Subagent Dispatch）禁止、他地区参照（永久原則）。
+- **Leaf Specialist: District Provisioning AI (deployer)**:
+  - *Authority*: Executionからの内部ディスパッチ受容、新地区プロビジョニング手順執行、マスターデータ生成、親GAS Registryバインド、受入ゲート検証、`[DEPLOYER REPORT]` 返却。書込対象は `data/**` および不可避な地区固有設定のみ。
+  - *Prohibition*: code deploy禁止、Git Commit/Push禁止、共通Runtime（`active/**`）改変禁止、共通テスト（`tests/**`）改変禁止、自律Scope拡張禁止、再委任（Subagent Dispatch）禁止、他地区参照（永久原則）。
+
+### Strict Subagent Depth = 1 原則
+- 本OSにおいて `invoke_subagent` および `manage_subagents` を保有・実行できるのは **Execution AI（Chief Orchestrator）のみ** である。
+- すべての配下AI社員（architect, worker, auditor, deployer）は **Leaf Nodes** であり、孫エージェントの起動（再委任・Recursion）は絶対禁止とする。
 
 ## 9. Data Protection — ABSOLUTE
 - Never modify production data outside approved scope.
