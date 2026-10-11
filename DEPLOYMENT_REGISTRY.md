@@ -30,7 +30,7 @@ URL を変更してはならない。
 
 | District | Role | Spreadsheet ID | Spreadsheet Name | Status |
 |---|---|---|---|---|
-| KUWANA | 本番稼働DB | `1eGq4Cc8BRePQAvTmwCddmgjQxRQ393_kkcYq6vtGMYw` | `KUWANA` | 本番稼働中 (ACTIVE) |
+| KUWANA | 本番稼働DB | `18_f0ijZBPJBICK-YhG1F5D5Xiswjm4L0-bTOkU4_Hp4` | `POSTING_MAP_DB_KUWANA` | 本番稼働中 (ACTIVE) |
 
 ---
 

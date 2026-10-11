@@ -1,7 +1,4 @@
 [
   ".agents/current-scope.json",
-  ".agents/os-registry.json",
-  "active/api/v2_api.js",
-  "docs/api/API_CONTRACT.md",
-  "tests/test_registry_provisioning_gate.mjs"
+  "DEPLOYMENT_REGISTRY.md"
 ]
