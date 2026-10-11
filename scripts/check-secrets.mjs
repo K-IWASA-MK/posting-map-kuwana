@@ -44,12 +44,6 @@ const ALLOWED_TEST_DUMMIES = new Set([
   'mock-jwt-signature-token-1234567890'
 ]);
 
-// Files exempted from pattern scans (only scanner itself and scanner unit test, which contain detection regexes)
-const SCANNER_META_FILES = new Set([
-  'scripts/check-secrets.mjs',
-  'tests/test_secret_leak_guard.mjs'
-]);
-
 // Detection Rules
 const RULES = [
   {
@@ -82,10 +76,7 @@ function getTrackedFiles() {
   }
 }
 
-function scanFile(relPath) {
-  // If scanner test meta files, skip pattern matching but still check for known leaked hash
-  const isMeta = SCANNER_META_FILES.has(relPath);
-
+function scanFile(relPath, customKnownHashes = null) {
   // If file is an accidental tracked secret file (.env, .secrets/*)
   const baseName = path.basename(relPath);
   const isEnvTemplate = baseName.endsWith('.example') || baseName.endsWith('.template');
@@ -117,32 +108,58 @@ function scanFile(relPath) {
 
   const violations = [];
   const lines = content.split('\n');
+  const targetHashes = customKnownHashes || KNOWN_LEAKED_HASHES;
 
   for (let i = 0; i < lines.length; i++) {
     const lineNum = i + 1;
     const line = lines[i];
 
     // Check 1: Known Leaked Hash match (applies to ALL files without exception)
-    // Extract any string literals in quotes
-    const stringLiterals = line.matchAll(/['"`]([A-Za-z0-9_\-.~+/=]{16,})['"`]/g);
-    for (const litMatch of stringLiterals) {
-      const val = litMatch[1];
-      const hash = crypto.createHash('sha256').update(val).digest('hex');
-      if (KNOWN_LEAKED_HASHES.has(hash)) {
+    // Extract candidate tokens matching [A-Za-z0-9_\-.~+/=]{16,}
+    const tokens = line.match(/[A-Za-z0-9_\-.~+/=]{16,}/g) || [];
+    for (const token of tokens) {
+      // Direct token match
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      if (targetHashes.has(tokenHash)) {
         violations.push({
           rule: 'KNOWN_LEAKED_SECRET_MATCH',
           file: relPath,
           line: lineNum,
-          description: `String literal matches known leaked secret hash (${hash.substring(0, 8)}...)`
+          description: `Token candidate matches known leaked secret hash (${tokenHash.substring(0, 8)}...)`
         });
+        continue;
+      }
+
+      // Sliding window search for embedded candidates with prefix/suffix (lengths 16..128)
+      if (token.length > 16 && token.length <= 128) {
+        let foundEmbedded = false;
+        for (let len = 16; len <= token.length; len++) {
+          for (let start = 0; start <= token.length - len; start++) {
+            if (start === 0 && len === token.length) continue; // Already tested full token above
+            const sub = token.substring(start, start + len);
+            const subHash = crypto.createHash('sha256').update(sub).digest('hex');
+            if (targetHashes.has(subHash)) {
+              violations.push({
+                rule: 'KNOWN_LEAKED_SECRET_MATCH',
+                file: relPath,
+                line: lineNum,
+                description: `Embedded candidate substring matches known leaked secret hash (${subHash.substring(0, 8)}...)`
+              });
+              foundEmbedded = true;
+              break;
+            }
+          }
+          if (foundEmbedded) break;
+        }
       }
     }
 
-    if (isMeta) {
+    // Check 2: Pattern-based rules (applies to ALL files; no whole-file exemptions)
+    // Avoid false positives only on rule definition constructs in scanner itself (e.g. `regex: /.../`)
+    if (/^\s*regex\s*:\s*\//.test(line)) {
       continue;
     }
 
-    // Check 2: Pattern-based rules
     for (const rule of RULES) {
       const match = line.match(rule.regex);
       if (match) {
@@ -171,12 +188,12 @@ function scanFile(relPath) {
   return violations;
 }
 
-export function runSecretScan(trackedFiles = null) {
+export function runSecretScan(trackedFiles = null, customKnownHashes = null) {
   const files = trackedFiles || getTrackedFiles();
   const allViolations = [];
 
   for (const f of files) {
-    const v = scanFile(f);
+    const v = scanFile(f, customKnownHashes);
     if (v.length > 0) {
       allViolations.push(...v);
     }
