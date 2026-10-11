@@ -25,7 +25,7 @@ function authenticateRequest(payload) {
   // 2. Session Cache の確認 (HIT)
   const cachedSession = getSession(token);
   if (cachedSession) {
-    console.log("AUTH CACHE HIT: user=" + cachedSession.lineUserId);
+    console.log("AUTH CACHE HIT");
     return {
       success: true,
       user: {

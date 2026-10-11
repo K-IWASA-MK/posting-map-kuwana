@@ -165,17 +165,16 @@ run('ATTACK-3: unauthenticated external spreadsheetId is blocked', () => {
   assert.equal(data.systemInfoRows, undefined);
 });
 
-run('AUTH-4: authenticated GET redacts Manager PIN', () => {
+run('AUTH-4: authenticated GET is rejected by token method boundary', () => {
   sessionToken = createDashboardSession('KUWANA').token;
   const data = body(doGet({ parameter: {
     action: 'getSystemInfo',
     districtId: 'KUWANA',
     dashboardSessionToken: sessionToken
   }}));
-  assert.equal(data.success, true);
-  const rows = data.systemInfoRows.filter(row => Array.isArray(row) && String(row[0]).trim() === 'Manager認証パスワード');
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0][1], '[REDACTED]');
+  assert.equal(data.success, false);
+  assert.equal(data.error, "Token transmission via GET is prohibited.");
+  assert.equal(data.systemInfoRows, undefined);
   assert.equal(JSON.stringify(data).includes('123456'), false);
 });
 
@@ -196,10 +195,12 @@ run('AUTH-5: authenticated POST redacts Manager PIN', () => {
 
 run('TENANT-6: cross-district session is DISTRICT_MISMATCH', () => {
   const other = createDashboardSession('OKAYAMA').token;
-  const data = body(doGet({ parameter: {
-    action: 'getSystemInfo',
-    districtId: 'KUWANA',
-    dashboardSessionToken: other
+  const data = body(doPost({ postData: {
+    contents: JSON.stringify({
+      action: 'getSystemInfo',
+      districtId: 'KUWANA',
+      dashboardSessionToken: other
+    })
   }}));
   assert.equal(data.success, false);
   assert.equal(data.code, 'DISTRICT_MISMATCH');

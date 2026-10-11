@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
 
 console.log("====================================================");
 console.log("🛡️ PHASE 15 UNIVERSAL SECURITY VERIFICATION SUITE");
@@ -99,8 +100,10 @@ test('6. CSRF & Method Boundary: doGetでのliffToken送信禁止、更新処理
   const v2ApiPath = path.join(rootDir, 'active/api/v2_api.js');
   const v2Api = fs.readFileSync(v2ApiPath, 'utf8');
 
-  // doGet 内での liffToken 送信禁止ガード
-  assert.ok(v2Api.includes('if (params.liffToken)'), 'doGet must inspect params.liffToken');
+  // doGet 内での Token (liffToken, dashboardSessionToken, managerSessionToken) 送信禁止ガード
+  assert.ok(v2Api.includes('params.liffToken'), 'doGet must inspect params.liffToken');
+  assert.ok(v2Api.includes('params.dashboardSessionToken'), 'doGet must inspect params.dashboardSessionToken');
+  assert.ok(v2Api.includes('params.managerSessionToken'), 'doGet must inspect params.managerSessionToken');
   assert.ok(v2Api.includes('Token transmission via GET is prohibited.'), 'doGet must block token transmission via GET');
 });
 
@@ -282,4 +285,181 @@ test('11. Development Server Boundary: Localhost固定、URL decode例外防護�
   assert.equal(s15.statusCode, 200, 'S15: /business/area/address_master_service.js must be ALLOW rewrite (200)');
 });
 
-console.log('✅ ALL 11 PHASE 15 SECURITY VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');
+// ─── 12. Wave S2 Mandatory Counterexamples ───────────────────────────
+test('12. Wave S2 Security Counterexamples: GET credential boundary, syncSystemInfo POST-only, resetRoster privileged auth, PII log removal', async () => {
+  // Spies for behavioral verification
+  let setupRosterSheetCallCount = 0;
+  let syncSystemInfoCallCount = 0;
+
+  const validProvisioningToken = "test-token-123";
+  const validProvisioningHash = crypto.createHash('sha256').update(validProvisioningToken).digest('hex');
+
+  const mockProps = {
+    DISTRICT_REGISTRY: JSON.stringify({
+      KUWANA: { name: "桑名地区", enabled: true }
+    }),
+    PROVISIONING_TOKEN_HASH: validProvisioningHash,
+    DISTRICT_ID: "KUWANA"
+  };
+
+  const sandbox = {
+    console: {
+      log: () => {},
+      warn: () => {},
+      error: () => {}
+    },
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => mockProps[k] || null,
+        setProperty: (k, v) => { mockProps[k] = v; }
+      })
+    },
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput: (text) => ({
+        text,
+        setMimeType: function(mime) { this.mime = mime; return this; }
+      })
+    },
+    setupRosterSheet: (districtId) => {
+      setupRosterSheetCallCount++;
+      return `Setup complete for ${districtId}`;
+    },
+    SystemInfoService: {
+      getInstance: () => ({
+        syncSystemInfo: (opts, distId) => {
+          syncSystemInfoCallCount++;
+          return { success: true, districtId: distId };
+        }
+      })
+    },
+    Utilities: {
+      computeDigest: (algo, str) => Array.from(crypto.createHash('sha256').update(str).digest()),
+      DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF_8' }
+    }
+  };
+
+  vm.createContext(sandbox);
+
+  // Load active/api/v2_api.js into sandbox
+  const v2ApiSource = fs.readFileSync(path.join(rootDir, 'active/api/v2_api.js'), 'utf8');
+  vm.runInContext(v2ApiSource, sandbox);
+
+  function callGet(params) {
+    const res = sandbox.doGet({ parameter: params });
+    return JSON.parse(res.text);
+  }
+
+  function callPost(body, params = {}) {
+    const res = sandbox.doPost({
+      postData: { contents: JSON.stringify(body) },
+      parameter: params
+    });
+    return JSON.parse(res.text);
+  }
+
+  // Counterexample 1: GET + liffToken => rejection
+  const resCe1 = callGet({ action: "getRoster", liffToken: "token_123" });
+  assert.equal(resCe1.success, false, "CE-1: GET + liffToken must be rejected");
+  assert.equal(resCe1.error, "Token transmission via GET is prohibited.");
+
+  // Counterexample 2: GET + dashboardSessionToken => rejection, manager data handler call 0
+  const resCe2 = callGet({ action: "getRoster", dashboardSessionToken: "pms_dash_token_123" });
+  assert.equal(resCe2.success, false, "CE-2: GET + dashboardSessionToken must be rejected");
+  assert.equal(resCe2.error, "Token transmission via GET is prohibited.");
+
+  // Counterexample 3: GET + managerSessionToken => rejection, manager data handler call 0
+  const resCe3 = callGet({ action: "getRoster", managerSessionToken: "pms_dash_token_123" });
+  assert.equal(resCe3.success, false, "CE-3: GET + managerSessionToken must be rejected");
+  assert.equal(resCe3.error, "Token transmission via GET is prohibited.");
+
+  // Counterexample 4: GET syncSystemInfo => METHOD_NOT_ALLOWED, verify/mutation call 0
+  const resCe4 = callGet({ action: "syncSystemInfo", provisioningToken: validProvisioningToken, districtId: "KUWANA" });
+  assert.equal(resCe4.success, false, "CE-4: GET syncSystemInfo must fail");
+  assert.equal(resCe4.code, "METHOD_NOT_ALLOWED", "CE-4: GET syncSystemInfo must return METHOD_NOT_ALLOWED");
+  assert.equal(syncSystemInfoCallCount, 0, "CE-4: syncSystemInfo mutation must NOT be called via GET");
+
+  // Counterexample 5: POST syncSystemInfo + valid existing auth => existing success path
+  const resCe5 = callPost({
+    action: "syncSystemInfo",
+    districtId: "KUWANA",
+    provisioningToken: validProvisioningToken,
+    options: {}
+  });
+  assert.equal(resCe5.success, true, "CE-5: POST syncSystemInfo with valid token must succeed");
+  assert.equal(syncSystemInfoCallCount, 1, "CE-5: syncSystemInfo must be executed via POST");
+
+  // Counterexample 6: GET resetRoster => METHOD_NOT_ALLOWED, setupRosterSheet call 0
+  setupRosterSheetCallCount = 0;
+  const resCe6 = callGet({ action: "resetRoster", districtId: "KUWANA" });
+  assert.equal(resCe6.success, false, "CE-6: GET resetRoster must fail");
+  assert.equal(resCe6.code, "METHOD_NOT_ALLOWED", "CE-6: GET resetRoster must return METHOD_NOT_ALLOWED");
+  assert.equal(setupRosterSheetCallCount, 0, "CE-6: setupRosterSheet must NOT be called via GET");
+
+  // Counterexample 7: POST resetRoster + missing Provisioning Token => UNAUTHORIZED, setupRosterSheet call 0
+  const resCe7 = callPost({ action: "resetRoster", districtId: "KUWANA" });
+  assert.equal(resCe7.success, false, "CE-7: POST resetRoster without token must be rejected");
+  assert.equal(resCe7.code, "UNAUTHORIZED");
+  assert.equal(setupRosterSheetCallCount, 0, "CE-7: setupRosterSheet must NOT be called without token");
+
+  // Counterexample 8: POST resetRoster + valid Staff liffToken only => rejection, setupRosterSheet call 0
+  const resCe8 = callPost({ action: "resetRoster", districtId: "KUWANA", liffToken: "valid_staff_token" });
+  assert.equal(resCe8.success, false, "CE-8: POST resetRoster with staff liffToken only must be rejected");
+  assert.equal(resCe8.code, "UNAUTHORIZED");
+  assert.equal(setupRosterSheetCallCount, 0, "CE-8: setupRosterSheet must NOT be called with staff liffToken only");
+
+  // Counterexample 9: POST resetRoster + invalid Provisioning Token => UNAUTHORIZED, setupRosterSheet call 0
+  const resCe9 = callPost({ action: "resetRoster", districtId: "KUWANA", provisioningToken: "INVALID_DUMMY_TOKEN_FOR_AUDIT" });
+  assert.equal(resCe9.success, false, "CE-9: POST resetRoster with wrong token must be rejected");
+  assert.equal(resCe9.code, "UNAUTHORIZED");
+  assert.equal(setupRosterSheetCallCount, 0, "CE-9: setupRosterSheet must NOT be called with invalid token");
+
+  // Counterexample 10: POST resetRoster + valid Provisioning Token + valid districtId => setupRosterSheet exactly 1 time
+  const resCe10 = callPost({ action: "resetRoster", districtId: "KUWANA", provisioningToken: validProvisioningToken });
+  assert.equal(resCe10.success, true, "CE-10: POST resetRoster with valid token must succeed");
+  assert.equal(setupRosterSheetCallCount, 1, "CE-10: setupRosterSheet must be called exactly 1 time");
+
+  // Counterexample 11: POST resetRoster + missing districtId => Fail-Closed (MISSING_DISTRICT_ID), setupRosterSheet call 0
+  setupRosterSheetCallCount = 0;
+  const resCe11 = callPost({ action: "resetRoster", provisioningToken: validProvisioningToken });
+  assert.equal(resCe11.success, false, "CE-11: POST resetRoster without districtId must fail");
+  assert.equal(resCe11.code, "MISSING_DISTRICT_ID");
+  assert.equal(setupRosterSheetCallCount, 0, "CE-11: setupRosterSheet must NOT be called when districtId is missing");
+
+  // Counterexample 12: Auth Cache HIT => authentication result unchanged, logs contain lineUserId 0
+  const authJsSource = fs.readFileSync(path.join(rootDir, 'active/api/auth/auth.js'), 'utf8');
+  const loggedLines = [];
+  const authSandbox = {
+    console: {
+      log: (msg) => loggedLines.push(String(msg)),
+      warn: () => {},
+      error: () => {}
+    },
+    getSession: (token) => {
+      if (token === "cached_token_valid") {
+        return {
+          lineUserId: "U_secret_user_999",
+          displayName: "Test Staff",
+          pictureUrl: "https://example.com/pic.jpg"
+        };
+      }
+      return null;
+    }
+  };
+  vm.createContext(authSandbox);
+  vm.runInContext(authJsSource, authSandbox);
+
+  const authRes = authSandbox.authenticateRequest({ liffToken: "cached_token_valid" });
+  assert.equal(authRes.success, true, "CE-12: Auth Cache HIT must return success");
+  assert.equal(authRes.user.lineUserId, "U_secret_user_999", "CE-12: Auth result user.lineUserId must be preserved");
+
+  // Verify that loggedLines has NO plaintext lineUserId
+  assert.ok(loggedLines.includes("AUTH CACHE HIT"), "CE-12: Log must contain non-PII 'AUTH CACHE HIT'");
+  for (const line of loggedLines) {
+    assert.ok(!line.includes("U_secret_user_999"), "CE-12: Log must NOT contain lineUserId");
+    assert.ok(!line.includes("user="), "CE-12: Log must NOT contain user= parameter");
+  }
+});
+
+console.log('✅ ALL 12 PHASE 15 SECURITY VERIFICATION CHECKS DEFINED SUCCESSFULLY.\n');

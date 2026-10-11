@@ -1896,8 +1896,9 @@ runTest("Scenario 30: setupRosterSheet(districtId) および v2_api Provisioning
   mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(reg);
   SpreadsheetResolver.getInstance().clearCache();
 
-  // 1. resetRoster アクションの districtId 伝播
-  const resetReq = {
+  // 1. resetRoster アクションの特権認証 & districtId 伝播
+  // 1a. 一般Staff liffToken のみ => 拒絶 (UNAUTHORIZED)
+  const staffResetReq = {
     postData: {
       contents: JSON.stringify({
         action: "resetRoster",
@@ -1906,11 +1907,26 @@ runTest("Scenario 30: setupRosterSheet(districtId) および v2_api Provisioning
       })
     }
   };
-  const resetRes = doPost(resetReq);
-  const resetData = JSON.parse(resetRes.text);
-  assert.equal(resetData.success, true, "resetRoster for OKAYAMA must succeed");
+  const staffResetRes = doPost(staffResetReq);
+  const staffResetData = JSON.parse(staffResetRes.text);
+  assert.equal(staffResetData.success, false, "resetRoster without provisioningToken must be rejected");
+  assert.equal(staffResetData.code, "UNAUTHORIZED");
 
-  // 2. doGet early syncSystemInfo の districtId 伝播
+  // 1b. 有効な provisioningToken 付与 => 成功 & OKAYAMA ロスター再作成
+  const privResetReq = {
+    postData: {
+      contents: JSON.stringify({
+        action: "resetRoster",
+        districtId: "OKAYAMA",
+        provisioningToken: validToken
+      })
+    }
+  };
+  const privResetRes = doPost(privResetReq);
+  const privResetData = JSON.parse(privResetRes.text);
+  assert.equal(privResetData.success, true, "resetRoster with valid provisioningToken for OKAYAMA must succeed");
+
+  // 2. syncSystemInfo の POST 専用性 & districtId 伝播
   // テスト側 KUWANA SYSTEM_INFO fixture に事前設定 (新契約: HアプリURL Authority & 運用モード保証)
   const kSS = mockSpreadsheets["ss-kuwana-id"];
   let kSysSheet = kSS.getSheetByName("SYSTEM_INFO");
@@ -1932,6 +1948,7 @@ runTest("Scenario 30: setupRosterSheet(districtId) および v2_api Provisioning
   if (!hasHAppUrl) kSysSheet.rows.push(["HアプリURL", "https://kuwana.postingmap.jp/"]);
   if (!hasOpMode) kSysSheet.rows.push(["運用モード", "SUBSCRIPTION"]);
 
+  // 2a. doGet 経由 => METHOD_NOT_ALLOWED で拒絶
   const getSysReq = {
     parameter: {
       action: "syncSystemInfo",
@@ -1941,7 +1958,22 @@ runTest("Scenario 30: setupRosterSheet(districtId) および v2_api Provisioning
   };
   const getSysRes = doGet(getSysReq);
   const getSysData = JSON.parse(getSysRes.text);
-  assert.equal(getSysData.success, true, "doGet early syncSystemInfo for KUWANA must succeed");
+  assert.equal(getSysData.success, false, "doGet syncSystemInfo must fail");
+  assert.equal(getSysData.code, "METHOD_NOT_ALLOWED", "doGet syncSystemInfo must return METHOD_NOT_ALLOWED");
+
+  // 2b. doPost 経由 => 成功 & KUWANA SYSTEM_INFO 同期
+  const postSysReq = {
+    postData: {
+      contents: JSON.stringify({
+        action: "syncSystemInfo",
+        provisioningToken: validToken,
+        districtId: "KUWANA"
+      })
+    }
+  };
+  const postSysRes = doPost(postSysReq);
+  const postSysData = JSON.parse(postSysRes.text);
+  assert.equal(postSysData.success, true, "doPost syncSystemInfo for KUWANA must succeed");
 });
 
 // -----------------------------------------------------------------------------

@@ -1172,7 +1172,7 @@ function doGet(e) {
     e.parameter = params;
   }
 
-  if (params.liffToken) {
+  if (params.liffToken || params.dashboardSessionToken || params.managerSessionToken) {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       error: "Token transmission via GET is prohibited."
@@ -1181,7 +1181,7 @@ function doGet(e) {
 
   const action = params.action || "";
 
-  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration' || action === 'switchDistrictSpreadsheet' || action === 'repairDistrictDriveBinding' || action === 'migrateDistrictPhotos') {
+  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration' || action === 'switchDistrictSpreadsheet' || action === 'repairDistrictDriveBinding' || action === 'migrateDistrictPhotos' || action === 'syncSystemInfo' || action === 'resetRoster') {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       code: "METHOD_NOT_ALLOWED",
@@ -1262,34 +1262,6 @@ function doGet(e) {
     const sessionToken = params && (params.dashboardSessionToken || params.token);
     const targetDistrictId = (params && params.districtId) || "";
     const result = handleGetMapsApiKey(targetDistrictId, sessionToken);
-    return ContentService.createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
-  } else if (action === 'syncSystemInfo') {
-    const token = params && (params.provisioningToken || (params.options && params.options.provisioningToken));
-    const tokenCheck = verifyProvisioningToken(token);
-    if (!tokenCheck.success) {
-      return ContentService.createTextOutput(JSON.stringify(tokenCheck))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-    const options = (params && params.options) || {};
-    if (options && options.spreadsheet) {
-      delete options.spreadsheet;
-    }
-    options.provisioningToken = token;
-    const targetDistrictId = String((params && (params.districtId || (params.options && params.options.districtId))) || "").trim().toUpperCase();
-    const explicitSsId = String((params && (params.targetSpreadsheetId || params.spreadsheetId || (params.options && (params.options.targetSpreadsheetId || params.options.spreadsheetId)))) || "").trim();
-    if (explicitSsId) {
-      options.targetSpreadsheetId = explicitSsId;
-    }
-    let result;
-    if (typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance) {
-      result = SystemInfoService.getInstance().syncSystemInfo(options, targetDistrictId);
-    } else if (typeof DistrictProvisioner !== 'undefined' && DistrictProvisioner.getInstance) {
-      const ss = DistrictProvisioner.getInstance().getSS(targetDistrictId);
-      result = DistrictProvisioner.getInstance().createOrSyncSystemInfo(ss, options);
-    } else {
-      result = { success: false, message: 'SystemInfoService not available' };
-    }
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -1485,9 +1457,6 @@ function processGetActionLegacy(action, e, districtId = "") {
         response = { success: true, roster: aggregatedRoster };
         break;
       }
-      case 'resetRoster':
-        response = { success: true, message: setupRosterSheet(districtId) };
-        break;
       case 'resetDeviceManagement':
         response = { success: false, code: "FORBIDDEN", message: "resetDeviceManagement is disabled on Web App endpoint." };
         break;
@@ -1548,6 +1517,7 @@ function doPost(e) {
     'syncSystemInfo',
     'healSchemaHeaders',
     'runIdentityMigration',
+    'resetRoster',
     'registerOrValidateDevice',
     'resetDeviceManagement',
     'getDeviceStatus',
@@ -2038,6 +2008,25 @@ function doPost(e) {
     const result = handleMigrateDistrictPhotos(postData, params);
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'resetRoster') {
+    const token = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)))
+               || (params && (params.provisioningToken || (params.options && params.options.provisioningToken)));
+    const tokenCheck = verifyProvisioningToken(token);
+    if (!tokenCheck.success) {
+      return ContentService.createTextOutput(JSON.stringify(tokenCheck))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    const targetDistrictId = String((postData && postData.districtId) || districtId || (params && params.districtId) || "").trim().toUpperCase();
+    if (!targetDistrictId) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        code: "MISSING_DISTRICT_ID",
+        message: "districtId is required for resetRoster."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    const result = { success: true, message: setupRosterSheet(targetDistrictId) };
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getMapsApiKey') {
     const sessionToken = (postData && (postData.dashboardSessionToken || postData.token)) || (params && (params.dashboardSessionToken || params.token));
     const targetDistrictId = (postData && postData.districtId) || districtId || (params && params.districtId);
@@ -2453,8 +2442,6 @@ function processPostAction(action, postData, e, districtId = "") {
       });
       return { success: true, roster: aggregatedRoster };
     }
-    case 'resetRoster':
-      return { success: true, message: setupRosterSheet(districtId) };
     case 'resetDeviceManagement':
       return {
         success: false,
