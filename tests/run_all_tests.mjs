@@ -59,15 +59,51 @@ const testSuites = [
   'test_secret_leak_guard.mjs'
 ];
 
+const isCiMode = process.argv.includes('--ci');
+
+const CI_EXCLUDED_SUITES = new Set([
+  'test_phase17_production_verification.mjs'
+]);
+
+// Safety Assertions for CI Mode
+if (isCiMode) {
+  if (CI_EXCLUDED_SUITES.size !== 1) {
+    console.error(`🛑 [Safety Assertion Failed] CI_EXCLUDED_SUITES must contain exactly 1 suite. Actual: ${CI_EXCLUDED_SUITES.size}`);
+    process.exit(1);
+  }
+  for (const excluded of CI_EXCLUDED_SUITES) {
+    if (!testSuites.includes(excluded)) {
+      console.error(`🛑 [Safety Assertion Failed] Excluded suite "${excluded}" does not exist in testSuites list.`);
+      process.exit(1);
+    }
+  }
+}
+
+const activeSuites = isCiMode
+  ? testSuites.filter(s => !CI_EXCLUDED_SUITES.has(s))
+  : testSuites;
+
+if (isCiMode) {
+  if (activeSuites.length !== testSuites.length - 1) {
+    console.error(`🛑 [Safety Assertion Failed] CI active suites count (${activeSuites.length}) must equal testSuites.length - 1 (${testSuites.length - 1}).`);
+    process.exit(1);
+  }
+  console.log("====================================================");
+  console.log("ℹ️ CI MODE: Excluding 1 non-hermetic live production suite:");
+  for (const s of CI_EXCLUDED_SUITES) {
+    console.log(`   - ${s} (requires local clasp authentication and live production verification)`);
+  }
+}
+
 console.log("====================================================");
-console.log(`🚀 RUNNING ALL ACTIVE TEST SUITES (${testSuites.length} SUITES)`);
+console.log(`🚀 RUNNING ALL ACTIVE TEST SUITES (${activeSuites.length} SUITES)`);
 console.log("====================================================");
 
 let passedCount = 0;
 let failedCount = 0;
 const failures = [];
 
-for (const suite of testSuites) {
+for (const suite of activeSuites) {
   process.stdout.write(`▶ Running ${suite.padEnd(42)} ... `);
   const suitePath = path.join(TESTS_DIR, suite);
   const res = spawnSync(process.execPath, [suitePath], { stdio: 'pipe', encoding: 'utf8' });
@@ -85,7 +121,7 @@ for (const suite of testSuites) {
 console.log("\n====================================================");
 console.log("📊 ALL TESTS SUMMARY REPORT");
 console.log("====================================================");
-console.log(`Total Suites:  ${testSuites.length}`);
+console.log(`Total Suites:  ${activeSuites.length}`);
 console.log(`Passed Suites: ${passedCount}`);
 console.log(`Failed Suites: ${failedCount}`);
 
