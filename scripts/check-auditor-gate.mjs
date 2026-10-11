@@ -385,6 +385,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(im
     exitFail('Missing required argument: --target <TARGET>');
   }
 
+  // Preflight Gate: Static Secret Scanner must PASS across all tracked files
+  try {
+    execSync('node scripts/check-secrets.mjs', { cwd: rootDir, stdio: 'inherit' });
+  } catch (err) {
+    exitFail('Preflight Secret Scan FAILED. Plaintext secrets detected in tracked files.');
+  }
+
   let transcriptPath;
   try {
     transcriptPath = resolveTranscriptPath(process.env);

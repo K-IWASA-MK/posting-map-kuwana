@@ -40,22 +40,19 @@ function verifyProvisioningToken(token) {
   }
   const props = PropertiesService.getScriptProperties();
   const storedHash = (props.getProperty('PROVISIONING_TOKEN_HASH') || '').trim().toLowerCase();
-  const CORE_PROVISIONING_HASH = 'cdbbd0eedf4ea2c25de8a03fda87017740261bd64b898e98de687906a5d4cc90';
+
+  // Fail-Closed: PROVISIONING_TOKEN_HASH が Script Properties に設定されていない場合は即座に遮断
+  if (!storedHash) {
+    return { success: false, code: "UNAUTHORIZED", message: "PROVISIONING_TOKEN_HASH is not configured in Script Properties (Fail-Closed)." };
+  }
 
   const clientHash = computeSha256(token.trim()).toLowerCase();
 
-  if (storedHash) {
-    if (clientHash === storedHash) {
-      return { success: true };
-    }
-    return { success: false, code: "UNAUTHORIZED", message: "Invalid provisioning token for configured district." };
-  }
-
-  if (clientHash === CORE_PROVISIONING_HASH) {
+  if (clientHash === storedHash) {
     return { success: true };
   }
 
-  return { success: false, code: "UNAUTHORIZED", message: "Invalid provisioning token." };
+  return { success: false, code: "UNAUTHORIZED", message: "Invalid provisioning token for configured district." };
 }
 
 /**

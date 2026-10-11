@@ -1,6 +1,13 @@
 [
   ".agents/current-scope.json",
-  "deployment.template.json",
-  "docs/architecture/CURRENT_ARCHITECTURE.md",
-  "docs/architecture/decisions/ADR-018_PRODUCTION_DEPLOYMENT_SPECIFICATION.md"
+  ".agents/os-registry.json",
+  "active/api/v2_api.js",
+  "package.json",
+  "scripts/acquire-liff-id.mjs",
+  "scripts/check-auditor-gate.mjs",
+  "scripts/check-secrets.mjs",
+  "tests/run_all_tests.mjs",
+  "tests/test_phase15_security_verification.mjs",
+  "tests/test_registry_provisioning_gate.mjs",
+  "tests/test_secret_leak_guard.mjs"
 ]

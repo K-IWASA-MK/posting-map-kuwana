@@ -5,6 +5,29 @@ import { execSync } from 'child_process';
 
 const rootDir = process.cwd();
 
+// Safe local secret loader from .env (gitignored)
+function loadEnvFallback() {
+  const envPath = path.join(rootDir, '.env');
+  if (fs.existsSync(envPath)) {
+    try {
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx !== -1) {
+          const k = trimmed.substring(0, eqIdx).trim();
+          const v = trimmed.substring(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+          if (!process.env[k]) {
+            process.env[k] = v;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+}
+loadEnvFallback();
+
 // Canonical constants
 const LINE_LOGIN_CHANNEL_ID = '2010941735';
 const KNOWN_FOREIGN_DISTRICT_LIFF_IDS = [
@@ -247,25 +270,35 @@ async function main() {
   if (webAppUrl) {
     console.log('\n🚀 Synchronizing live spreadsheet SYSTEM_INFO (human inspection view)...');
     try {
-      const syncPayload = {
-        action: 'syncSystemInfo',
-        provisioningToken: 'POSTING_MAP_PROVISIONING_CORE_SECRET_2026',
-        options: {
-          baseUrl: `https://${domain}`,
-          productionLiffUrl: productionLiffUrl,
-          liffUrl: productionLiffUrl,
-          liffId: acquiredLiffId
-        }
-      };
+      const provisioningToken = (
+        process.env.POSTING_MAP_PROVISIONING_TOKEN ||
+        process.env.PROVISIONING_TOKEN ||
+        ''
+      ).trim();
 
-      const syncRes = await fetch(webAppUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(syncPayload),
-        redirect: 'follow'
-      });
-      const syncJson = await syncRes.json();
-      console.log('✅ SYSTEM_INFO Sync Result:', JSON.stringify(syncJson, null, 2));
+      if (!provisioningToken) {
+        console.warn('⚠️ Warning: POSTING_MAP_PROVISIONING_TOKEN is not configured in environment. Skipping live SYSTEM_INFO sync.');
+      } else {
+        const syncPayload = {
+          action: 'syncSystemInfo',
+          provisioningToken: provisioningToken,
+          options: {
+            baseUrl: `https://${domain}`,
+            productionLiffUrl: productionLiffUrl,
+            liffUrl: productionLiffUrl,
+            liffId: acquiredLiffId
+          }
+        };
+
+        const syncRes = await fetch(webAppUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(syncPayload),
+          redirect: 'follow'
+        });
+        const syncJson = await syncRes.json();
+        console.log('✅ SYSTEM_INFO Sync Result:', JSON.stringify(syncJson, null, 2));
+      }
     } catch (e) {
       console.warn(`⚠️ Warning: SYSTEM_INFO sync encountered network issue: ${e.message}`);
     }

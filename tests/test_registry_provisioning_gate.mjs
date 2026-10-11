@@ -1246,6 +1246,20 @@ runGate("Gate 50: migrateDistrictPhotos functions universally for arbitrary dist
   assert.equal(pDynamic.parent.getId(), dynamicStorage.getId());
 });
 
+// Gate 51: verifyProvisioningToken without PROVISIONING_TOKEN_HASH fails closed
+runGate("Gate 51: verifyProvisioningToken without PROVISIONING_TOKEN_HASH fails closed", () => {
+  const savedHash = mockScriptProperties["PROVISIONING_TOKEN_HASH"];
+  try {
+    delete mockScriptProperties["PROVISIONING_TOKEN_HASH"];
+    const res = verifyProvisioningToken(VALID_TOKEN);
+    assert.equal(res.success, false, "Must fail authentication when PROVISIONING_TOKEN_HASH is missing");
+    assert.equal(res.code, "UNAUTHORIZED");
+    assert.ok(res.message.includes("Fail-Closed") || res.message.includes("not configured"));
+  } finally {
+    mockScriptProperties["PROVISIONING_TOKEN_HASH"] = savedHash;
+  }
+});
+
 console.log("\n====================================================");
 console.log(`GATE & UNIT SUMMARY: Total=${passCount + failCount}, PASS=${passCount}, FAIL=${failCount}`);
 console.log("====================================================");

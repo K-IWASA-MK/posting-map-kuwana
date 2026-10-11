@@ -8,7 +8,8 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node tests/run_all_tests.mjs",
+    "test": "node scripts/check-secrets.mjs && node tests/run_all_tests.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "gate:minus-1": "node scripts/verify-gate-minus-1.mjs",
     "liff:acquire": "node scripts/acquire-liff-id.mjs",
     "check:ssot": "node scripts/validate-gas-endpoint-ssot.mjs",

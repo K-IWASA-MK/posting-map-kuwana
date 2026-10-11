@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { execSync } from 'node:child_process';
 
 console.log("====================================================");
 console.log("🛡️ PHASE 15 UNIVERSAL SECURITY VERIFICATION SUITE");
@@ -113,6 +114,10 @@ test('7. Secret Exposure: .gitignoreによる機密ファイル除外、Git追�
   assert.ok(gitignore.includes('.env'), '.gitignore must exclude .env');
   assert.ok(gitignore.includes('.clasp.json'), '.gitignore must exclude .clasp.json');
   assert.ok(gitignore.includes('deployment.json'), '.gitignore must exclude deployment.json');
+
+  // 機械的静的シークレットスキャンゲート（Current Tree 全域0件違反検証）
+  const scanOutput = execSync('node scripts/check-secrets.mjs', { cwd: rootDir, encoding: 'utf8' });
+  assert.ok(scanOutput.includes('PASS (0 violations detected'), 'Static secret scan must PASS across all tracked files');
 });
 
 // ─── 8. lineUserId Exposure 検証 ───────────────────────────────────
