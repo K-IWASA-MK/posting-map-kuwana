@@ -379,18 +379,49 @@ global.Utilities = {
   DigestAlgorithm: { SHA_256: 'SHA_256' },
   Charset: { UTF_8: 'UTF_8' },
   formatDate(d, tz, fmt) {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    if (fmt === 'yyyy-MM') return `${year}-${month}`;
-    if (fmt === 'yyyy-MM-dd') return `${year}-${month}-${day}`;
-    if (fmt && fmt.includes('HH:mm:ss')) {
-      const h = String(d.getHours()).padStart(2, '0');
-      const m = String(d.getMinutes()).padStart(2, '0');
-      const s = String(d.getSeconds()).padStart(2, '0');
-      return `${year}/${month}/${day} ${h}:${m}:${s}`;
+    let resolvedTz = tz || 'Asia/Tokyo';
+    if (resolvedTz === 'JST') resolvedTz = 'Asia/Tokyo';
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: resolvedTz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+      });
+      const parts = formatter.formatToParts(d);
+      const partMap = {};
+      for (const p of parts) {
+        partMap[p.type] = p.value;
+      }
+      const year = partMap.year;
+      const month = partMap.month;
+      const day = partMap.day;
+      const hour = partMap.hour;
+      const minute = partMap.minute;
+      const second = partMap.second;
+
+      if (fmt === 'yyyy-MM') return `${year}-${month}`;
+      if (fmt === 'yyyy-MM-dd') return `${year}-${month}-${day}`;
+      if (fmt === 'yyyy/MM/dd HH:mm:ss') return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+      if (fmt && fmt.includes('HH:mm:ss')) {
+        const sep = fmt.includes('/') ? '/' : '-';
+        return `${year}${sep}${month}${sep}${day} ${hour}:${minute}:${second}`;
+      }
+      if (fmt === 'yyyy/MM/dd HH:mm') return `${year}/${month}/${day} ${hour}:${minute}`;
+      if (fmt === 'MM/dd HH:mm') return `${month}/${day} ${hour}:${minute}`;
+      if (fmt === 'yyyyMMdd') return `${year}${month}${day}`;
+      if (fmt === 'HHmmss') return `${hour}${minute}${second}`;
+      return `${year}-${month}-${day}`;
+    } catch (e) {
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
-    return `${year}-${month}-${day}`;
   }
 };
 
