@@ -1,9 +1,5 @@
 [
   ".agents/current-scope.json",
-  ".agents/os-registry.json",
-  "active/api/v2_api.js",
-  "active/api/auth/auth.js",
-  "tests/test_phase15_security_verification.mjs",
-  "tests/test_multi_district_routing_auth.mjs",
-  "tests/test_sec005_getsysteminfo_disclosure.mjs"
+  "tests/run_all_tests.mjs",
+  ".github/workflows/security-ci.yml"
 ]
