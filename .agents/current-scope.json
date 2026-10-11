@@ -1,4 +1,6 @@
 [
   ".agents/current-scope.json",
-  "DEPLOYMENT_REGISTRY.md"
+  "deployment.template.json",
+  "docs/architecture/CURRENT_ARCHITECTURE.md",
+  "docs/architecture/decisions/ADR-018_PRODUCTION_DEPLOYMENT_SPECIFICATION.md"
 ]

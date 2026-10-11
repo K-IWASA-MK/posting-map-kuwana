@@ -191,7 +191,7 @@ Universal POSTING MAP は以下の外部クラウドインフラと連携する�
 4. **Standalone GAS プロジェクト**: APIサーバーとして独立配備。
 
 ### 2. Deployment Metadata (`deployment.json`)
-- インフラ接続の物理ID（`scriptId`, `deploymentId`, `webAppUrl`, `spreadsheetId`, `storageFolderId`, `productionLiffUrl`）を保持するローカル設定ファイル（Git追跡除外）。
+- インフラ接続の物理ID（`scriptId`, `deploymentId`, `webAppUrl`, `productionLiffUrl`）および地区識別子（`districtId`）を保持するローカル設定ファイル（Git追跡除外）。
 - テンプレート `deployment.template.json` のみがリポジトリに保持される。
 
 ---

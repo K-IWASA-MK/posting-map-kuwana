@@ -42,7 +42,7 @@ Phase 17 の実施にあたり、本番インフラの固定化、デプロイ�
 
 ### 2.3 SSOT ファイルと秘密情報保護規程
 1. **`deployment.json`**:
-   - ローカル実行用として最小限の非機密情報（Script ID, Deployment ID, Web App URL）のみを保持する。
+   - ローカル実行用として最小限の非機密情報（Script ID, Deployment ID, Web App URL、およびローカルツール・LIFFプロビジョニング検証用の District ID, Production LIFF URL）を保持する。
    - Secret, Token, OAuth credential は絶対に格納しない。
    - **`.gitignore` による除外を絶対維持**し、Git管理対象外とする。
 2. **`deployment.template.json`**:
