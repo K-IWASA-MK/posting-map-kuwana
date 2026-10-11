@@ -140,6 +140,14 @@ function createMockFolder(id, name, parent = null) {
         hasNext() { return idx < this.files.length; },
         next() { return this.files[idx++]; }
       };
+    },
+    addFile(file) {
+      if (!this.files.includes(file)) this.files.push(file);
+      file.parent = this;
+    },
+    removeFile(file) {
+      const idx = this.files.indexOf(file);
+      if (idx !== -1) this.files.splice(idx, 1);
     }
   };
   mockFolders[id] = folder;
@@ -166,6 +174,17 @@ function createMockFile(id, name, parent = null, mimeType = "application/vnd.goo
         hasNext() { return !yielded && p !== null; },
         next() { yielded = true; return p; }
       };
+    },
+    moveTo(targetFolder) {
+      if (this.parent && this.parent.files) {
+        const idx = this.parent.files.indexOf(this);
+        if (idx !== -1) this.parent.files.splice(idx, 1);
+      }
+      this.parent = targetFolder;
+      if (targetFolder && targetFolder.files) {
+        targetFolder.files.push(this);
+      }
+      return this;
     },
     makeCopy(newName, targetFolder) {
       const copyId = `copy_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -821,6 +840,410 @@ runGate("Gate 30: repairDistrictDriveBinding missing required argument fails clo
 
   assert.equal(res.success, false);
   assert.equal(res.code, "INVALID_ARGUMENT");
+});
+
+// ====================================================
+// ▶ Running migrateDistrictPhotos Gates (Gates 31-50)...
+// ====================================================
+
+console.log("\n▶ Running migrateDistrictPhotos Gates (Gates 31-50)...");
+
+const photoSourceFolder = createMockFolder("photo-source-folder-id", "Templates");
+const photoCanonicalStorage = createMockFolder("photo-canonical-storage-id", "KUWANA 支部_STORAGE");
+
+function resetPhotoTestState() {
+  resetRepairState();
+  // Update Kuwana entry in registry to use photoCanonicalStorage.id
+  const reg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  reg.KUWANA.storageFolderId = photoCanonicalStorage.getId();
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(reg);
+
+  // Clear folder files
+  photoSourceFolder.files = [];
+  photoCanonicalStorage.files = [];
+}
+
+function createTestPhoto(id, name, folder = photoSourceFolder, mime = "image/jpeg") {
+  const file = createMockFile(id, name, folder, mime);
+  return file;
+}
+
+// Gate 31: invalid token → mutation 0
+runGate("Gate 31: migrateDistrictPhotos invalid token fails closed with mutation 0", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p31_1", "p31_1.jpg");
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p31_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: "bad-token"
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "UNAUTHORIZED");
+  assert.equal(p1.parent.getId(), photoSourceFolder.getId());
+});
+
+// Gate 32: GET → METHOD_NOT_ALLOWED
+runGate("Gate 32: migrateDistrictPhotos GET request rejected with METHOD_NOT_ALLOWED", () => {
+  const out = doGet({ parameter: { action: "migrateDistrictPhotos" } });
+  const data = JSON.parse(out.content);
+  assert.equal(data.success, false);
+  assert.equal(data.code, "METHOD_NOT_ALLOWED");
+});
+
+// Gate 33: district missing → mutation 0
+runGate("Gate 33: migrateDistrictPhotos missing districtId fails closed with mutation 0", () => {
+  resetPhotoTestState();
+  const p33 = createTestPhoto("p33_1", "p33_1.jpg");
+  const res = handleMigrateDistrictPhotos({
+    fileIds: ["p33_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "INVALID_INPUT");
+  assert.equal(p33.parent.getId(), photoSourceFolder.getId());
+});
+
+// Gate 34: empty fileIds reject
+runGate("Gate 34: migrateDistrictPhotos empty fileIds rejected", () => {
+  resetPhotoTestState();
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: [],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "INVALID_INPUT");
+});
+
+// Gate 35: duplicate IDs contract
+runGate("Gate 35: migrateDistrictPhotos duplicate fileIds deduplicated properly", () => {
+  resetPhotoTestState();
+  const p35_1 = createTestPhoto("p35_1", "p35_1.jpg");
+  const p35_2 = createTestPhoto("p35_2", "p35_2.jpg");
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p35_1", "p35_1", "p35_2", "p35_2", "p35_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(res.requestedCount, 2);
+  assert.equal(res.migratedCount, 2);
+  assert.equal(p35_1.parent.getId(), photoCanonicalStorage.getId());
+  assert.equal(p35_2.parent.getId(), photoCanonicalStorage.getId());
+});
+
+// Gate 36: target storage resolution PASS
+runGate("Gate 36: migrateDistrictPhotos target storage resolved autonomously from Registry", () => {
+  resetPhotoTestState();
+  const p36 = createTestPhoto("p36_1", "p36_1.jpg");
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p36_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(res.targetStorageFolderId, photoCanonicalStorage.getId());
+  assert.equal(p36.parent.getId(), photoCanonicalStorage.getId());
+});
+
+// Gate 37: target assertion mismatch → mutation 0
+runGate("Gate 37: migrateDistrictPhotos expectedTargetStorageFolderId mismatch fails closed", () => {
+  resetPhotoTestState();
+  const p37 = createTestPhoto("p37_1", "p37_1.jpg");
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p37_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    expectedTargetStorageFolderId: "wrong-storage-folder-id",
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "STORAGE_FOLDER_MISMATCH");
+  assert.equal(p37.parent.getId(), photoSourceFolder.getId());
+});
+
+// Gate 38: all files source valid → migrate success
+runGate("Gate 38: migrateDistrictPhotos all valid files successfully migrated", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p38_1", "p38_1.jpg");
+  const p2 = createTestPhoto("p38_2", "p38_2.jpg");
+  const p3 = createTestPhoto("p38_3", "p38_3.jpg");
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p38_1", "p38_2", "p38_3"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    expectedTargetStorageFolderId: photoCanonicalStorage.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(res.requestedCount, 3);
+  assert.equal(res.migratedCount, 3);
+  assert.equal(res.alreadyMigratedCount, 0);
+  assert.equal(p1.parent.getId(), photoCanonicalStorage.getId());
+  assert.equal(p2.parent.getId(), photoCanonicalStorage.getId());
+  assert.equal(p3.parent.getId(), photoCanonicalStorage.getId());
+});
+
+// Gate 39: one invalid source during preflight → all mutation 0
+runGate("Gate 39: migrateDistrictPhotos one invalid source fails preflight with mutation 0", () => {
+  resetPhotoTestState();
+  const otherFolder = createMockFolder("other-folder-id", "Other");
+  const p1 = createTestPhoto("p39_1", "p39_1.jpg", photoSourceFolder);
+  const p2 = createTestPhoto("p39_2", "p39_2.jpg", otherFolder);
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p39_1", "p39_2"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "SOURCE_FOLDER_MISMATCH");
+  assert.equal(p1.parent.getId(), photoSourceFolder.getId());
+  assert.equal(p2.parent.getId(), otherFolder.getId());
+});
+
+// Gate 40: already target → idempotent no-op
+runGate("Gate 40: migrateDistrictPhotos already in target handled as idempotent no-op", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p40_1", "p40_1.jpg", photoCanonicalStorage);
+  const p2 = createTestPhoto("p40_2", "p40_2.jpg", photoCanonicalStorage);
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p40_1", "p40_2"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(res.requestedCount, 2);
+  assert.equal(res.migratedCount, 0);
+  assert.equal(res.alreadyMigratedCount, 2);
+  assert.equal(p1.parent.getId(), photoCanonicalStorage.getId());
+  assert.equal(p2.parent.getId(), photoCanonicalStorage.getId());
+});
+
+// Gate 41: mixed source + already target → valid success
+runGate("Gate 41: migrateDistrictPhotos mixed source and target handled correctly", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p41_1", "p41_1.jpg", photoSourceFolder);
+  const p2 = createTestPhoto("p41_2", "p41_2.jpg", photoCanonicalStorage);
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p41_1", "p41_2"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(res.requestedCount, 2);
+  assert.equal(res.migratedCount, 1);
+  assert.equal(res.alreadyMigratedCount, 1);
+  assert.equal(p1.parent.getId(), photoCanonicalStorage.getId());
+  assert.equal(p2.parent.getId(), photoCanonicalStorage.getId());
+});
+
+// Gate 42: file ID unchanged
+runGate("Gate 42: migrateDistrictPhotos physical file IDs strictly unchanged", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p42_unique_fixed_id", "p42.jpg");
+  const origId = p1.getId();
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p42_unique_fixed_id"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(p1.getId(), origId);
+  assert.equal(mockFiles["p42_unique_fixed_id"].getId(), origId);
+});
+
+// Gate 43: filename unchanged
+runGate("Gate 43: migrateDistrictPhotos filename strictly unchanged", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p43_1", "74_K._IWASA_20261009_103754.jpg");
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p43_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(p1.getName(), "74_K._IWASA_20261009_103754.jpg");
+});
+
+// Gate 44: unrelated file untouched
+runGate("Gate 44: migrateDistrictPhotos unrelated files in source folder untouched", () => {
+  resetPhotoTestState();
+  const pTarget = createTestPhoto("p44_target", "target.jpg", photoSourceFolder);
+  const pUntouched = createTestPhoto("p44_unrelated", "unrelated.jpg", photoSourceFolder);
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p44_target"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(pTarget.parent.getId(), photoCanonicalStorage.getId());
+  assert.equal(pUntouched.parent.getId(), photoSourceFolder.getId());
+});
+
+// Gate 45: Registry 0 diff
+runGate("Gate 45: migrateDistrictPhotos preserves DISTRICT_REGISTRY with 0 diff", () => {
+  resetPhotoTestState();
+  const regBefore = mockScriptProperties["DISTRICT_REGISTRY"];
+  createTestPhoto("p45_1", "p45.jpg");
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p45_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], regBefore);
+});
+
+// Gate 46: Script Properties 0 diff
+runGate("Gate 46: migrateDistrictPhotos preserves all Script Properties with 0 diff", () => {
+  resetPhotoTestState();
+  const propsBefore = { ...mockScriptProperties };
+  createTestPhoto("p46_1", "p46.jpg");
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p46_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.deepEqual(mockScriptProperties, propsBefore);
+});
+
+// Gate 47: partial runtime move failure → movedLedger rollback
+runGate("Gate 47: migrateDistrictPhotos partial runtime error triggers movedLedger rollback", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p47_1", "p47_1.jpg");
+  const p2 = createTestPhoto("p47_2", "p47_2.jpg");
+
+  p2.moveTo = () => { throw new Error("Simulated Drive network failure on p2"); };
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p47_1", "p47_2"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "MUTATION_FAILED");
+  assert.equal(p1.parent.getId(), photoSourceFolder.getId());
+  assert.equal(p2.parent.getId(), photoSourceFolder.getId());
+});
+
+// Gate 48: rollback failure → explicit ROLLBACK_INCOMPLETE
+runGate("Gate 48: migrateDistrictPhotos rollback failure reports ROLLBACK_INCOMPLETE", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p48_1", "p48_1.jpg");
+  const p2 = createTestPhoto("p48_2", "p48_2.jpg");
+
+  p2.moveTo = () => { throw new Error("Move failed"); };
+  const origP1MoveTo = p1.moveTo.bind(p1);
+  let p1MovedOnce = false;
+  p1.moveTo = (target) => {
+    if (!p1MovedOnce) {
+      p1MovedOnce = true;
+      return origP1MoveTo(target);
+    }
+    throw new Error("Rollback failed for p1");
+  };
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p48_1", "p48_2"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "ROLLBACK_INCOMPLETE");
+  assert.ok(res.message.includes("p48_1"));
+});
+
+// Gate 49: post-move read-back mismatch → fail
+runGate("Gate 49: migrateDistrictPhotos post-move read-back mismatch fails closed", () => {
+  resetPhotoTestState();
+  const p1 = createTestPhoto("p49_1", "p49_1.jpg");
+
+  p1.moveTo = function(target) {
+    // Deliberately fail to update parent in mock
+  };
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "KUWANA",
+    fileIds: ["p49_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "READ_BACK_MISMATCH");
+});
+
+// Gate 50: district hardcode 0 (Universal multi-district execution)
+runGate("Gate 50: migrateDistrictPhotos functions universally for arbitrary district", () => {
+  resetPhotoTestState();
+  const dynamicStorage = createMockFolder("dynamic-storage-id", "DYNAMIC_DIST_99 支部_STORAGE");
+  const reg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  reg.DYNAMIC_DIST_99 = {
+    spreadsheetId: "ss-dynamic-id",
+    storageFolderId: dynamicStorage.getId(),
+    name: "DYNAMIC_DIST_99",
+    enabled: true
+  };
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify(reg);
+
+  const pDynamic = createTestPhoto("p_dynamic_1", "dynamic.jpg", photoSourceFolder);
+
+  const res = handleMigrateDistrictPhotos({
+    districtId: "DYNAMIC_DIST_99",
+    fileIds: ["p_dynamic_1"],
+    expectedSourceFolderId: photoSourceFolder.getId(),
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(res.districtId, "DYNAMIC_DIST_99");
+  assert.equal(res.targetStorageFolderId, dynamicStorage.getId());
+  assert.equal(pDynamic.parent.getId(), dynamicStorage.getId());
 });
 
 console.log("\n====================================================");

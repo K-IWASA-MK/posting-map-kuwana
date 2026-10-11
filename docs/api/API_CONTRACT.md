@@ -51,6 +51,7 @@
    - [27.3 地区Spreadsheet世代切替管理 API 契約 (switchDistrictSpreadsheet)](#273-地区spreadsheet世代切替管理-api-契約-switchdistrictspreadsheet)
    - [27.4 新地区プロビジョニング・環境ブートストラップ管理 API 契約 (bootstrapEnvironment / createDistrictDatabase)](#274-新地区プロビジョニング環境ブートストラップ管理-api-契約-bootstrapenvironment--createdistrictdatabase)
    - [27.5 ACTIVE地区Driveバインディング是正管理 API 契約 (repairDistrictDriveBinding)](#275-active地区driveバインディング是正管理-api-契約-repairdistrictdrivebinding)
+   - [27.6 ACTIVE地区写真ファイル群安全移動管理 API 契約 (migrateDistrictPhotos)](#276-active地区写真ファイル群安全移動管理-api-契約-migratedistrictphotos)
 
 ---
 
@@ -1159,6 +1160,85 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
     "storageFolderId": "1HI1nB_XqpEABz9vPugu7jLsf78LM1Mpw",
     "storageParentId": "1HI1nB_XqpEABz9vPugu7jLsf78LM1Mpw",
     "districtRegistryUpdated": true
+  }
+  ```
+
+### 27.6 ACTIVE地区写真ファイル群安全移動管理 API 契約 (migrateDistrictPhotos)
+- **エンドポイント**: `POST /exec`
+- **アクション名**: `migrateDistrictPhotos`
+- **目的と責務**:
+  - 既存の配布実績写真ファイル群を、誤って配置された親フォルダ（旧設定フォルダ等）から、対象地区の Canonical Storage フォルダ（`{districtId} 支部_STORAGE`）へ、物理ファイルID・ファイル名・コンテンツ・メタデータを完全不変のまま安全に移動する。
+  - 新規ファイルアップロードや地区プロビジョニング、Script Properties / Registry の変更は一切行わない（**Script Properties & Registry 0 diff 契約**）。
+- **認証と認可 (Authentication & Authorization)**:
+  - `PROVISIONING_TOKEN` 必須（`verifyProvisioningToken(token)` 照合）。
+  - GET メソッドでの呼出しは即座に `405 METHOD_NOT_ALLOWED` で拒絶。
+  - トークン欠損または不一致時は `401 UNAUTHORIZED`（mutation 0）。
+- **リクエスト仕様 (Request Parameters)**:
+  - `action`: `"migrateDistrictPhotos"` (必須)
+  - `provisioningToken`: 有効なプロビジョニングトークン (必須)
+  - `districtId`: 対象地区コード (必須, e.g. `"KUWANA"`)
+  - `fileIds`: 移動対象の Google Drive ファイルID配列 (必須, e.g. `["fid1", "fid2", ...]`)
+    - 重複除去（Deduplicate）を自動適用し、有効なユニークID群を確定。
+    - 上限ガード: 1 バッチ最大 200 件（超過時は `BATCH_SIZE_EXCEEDED` で全中止、mutation 0）。
+  - `expectedSourceFolderId`: 現在の写真配置元フォルダID (必須)
+  - `expectedTargetStorageFolderId`: 期待される移動先ストレージフォルダID (任意, Assertion-only)
+- **移動先 Authority & 安全防壁 (Target Storage Authority)**:
+  1. 移動先フォルダIDは呼び出し元の指定を Authority とせず、サーバー側の `DISTRICT_REGISTRY[districtId].storageFolderId` を唯一の正本とする。
+  2. `expectedTargetStorageFolderId` が指定された場合、正本の `canonicalStorageFolderId` と完全一致することを強制検証（不一致時は `STORAGE_FOLDER_MISMATCH` で Fail-Closed、mutation 0）。
+  3. `expectedSourceFolderId` と `canonicalStorageFolderId` が同一の場合は `INVALID_INPUT` で拒絶。
+- **全件事前検証 (All-Files Preflight Before Mutation)**:
+  1. 1 件でも移動を開始する前に、`fileIds` の全件について以下の事前検査を完全執行する：
+     - `DriveApp.getFileById(fileId)` でファイルが実在しオープン可能であること。
+     - `file.isTrashed() === false`（ゴミ箱内ファイルでないこと）。
+     - MIME タイプが画像であること（`image/*`: `image/jpeg`, `image/png`, `image/webp`, `image/gif` 等）。
+     - 現在の親フォルダが `expectedSourceFolderId`、または既に `canonicalStorageFolderId` であること。
+  2. 1 件でもファイル未存在、ゴミ箱内、非画像、または想定外フォルダに存在するファイルが検知された場合、直ちに `RESOURCE_NOT_FOUND` / `FILE_TRASHED` / `UNSUPPORTED_MEDIA_TYPE` / `SOURCE_FOLDER_MISMATCH` で Fail-Closed 終了し、**全ファイルの移動を一切行わない（mutation 0 保証）**。
+- **移動執行と局所ロールバック (Atomic Move with Moved Ledger)**:
+  1. Preflight を全件通過したファイルのうち、未移動分のみを `file.moveTo(canonicalTargetFolder)`（または互換 `targetFolder.addFile; sourceFolder.removeFile`）で順次移動。
+  2. 1 件移動成功ごとに `movedLedger` に File ID を追記。
+  3. 途中障害発生時:
+     - 直ちに後続処理を中断。
+     - `movedLedger` に記録されたファイルのみを `expectedSourceFolderId` へ移動して原状復帰（Rollback）。
+     - ロールバックが完遂した場合は `MUTATION_FAILED` を返却。
+     - ロールバック中に障害が発生した場合は `ROLLBACK_INCOMPLETE` として未復帰ファイル一覧とともに Fail-Closed 報告。
+- **事後Read-Back機械検証 (Post-Move Read-Back Verification)**:
+  1. 全 `fileIds` を再取得し、以下を機械検証：
+     - ファイルID不変、ファイル名不変、`trashed === false`
+     - 親フォルダに `canonicalStorageFolderId` が含まれていること
+     - 親フォルダから `expectedSourceFolderId` が完全に除去されていること
+  2. 1 件でも不整合が検知された場合は `READ_BACK_MISMATCH` で Fail-Closed。
+- **冪等性 (Idempotency)**:
+  - 既に全件が `canonicalStorageFolderId` に存在する場合、移動処理を行わず `alreadyMigratedCount == requestedCount`, `migratedCount == 0`, `success: true` を返却（Idempotent no-op）。
+- **管理エラーコード一覧 (Failure Codes)**:
+  - `UNAUTHORIZED`: プロビジョニングトークン欠損・不正
+  - `INVALID_INPUT`: `districtId`, `fileIds`, `expectedSourceFolderId` の欠損、無効形式、空配列、または同一フォルダ指定
+  - `BATCH_SIZE_EXCEEDED`: 指定 `fileIds` 件数が 200 件を超過
+  - `DISTRICT_NOT_FOUND`: 対象地区が `DISTRICT_REGISTRY` に未登録
+  - `STORAGE_FOLDER_NOT_CONFIGURED`: 対象地区の `storageFolderId` が Registry に未設定
+  - `STORAGE_FOLDER_MISMATCH`: Caller 指定の `expectedTargetStorageFolderId` が正本ストレージと不一致
+  - `RESOURCE_NOT_FOUND`: 指定フォルダまたはファイルが存在しない・オープン不可
+  - `FILE_TRASHED`: 指定ファイルがゴミ箱内に存在
+  - `UNSUPPORTED_MEDIA_TYPE`: 指定ファイルの MIME が画像（`image/*`）以外
+  - `SOURCE_FOLDER_MISMATCH`: 指定ファイルの親フォルダが `expectedSourceFolderId` でも `canonicalStorageFolderId` でもない
+  - `MUTATION_FAILED`: 移動失敗（ロールバック正常完遂）
+  - `ROLLBACK_INCOMPLETE`: 移動失敗かつロールバック中に復帰不可ファイルが発生
+  - `READ_BACK_MISMATCH`: 移動後の親フォルダ検証不一致
+  - `METHOD_NOT_ALLOWED`: GET メソッドによる呼出し
+- **レスポンス形式 (Response)**:
+  ```json
+  {
+    "success": true,
+    "message": "District \"KUWANA\" photos migrated successfully.",
+    "districtId": "KUWANA",
+    "requestedCount": 38,
+    "migratedCount": 38,
+    "alreadyMigratedCount": 0,
+    "failedCount": 0,
+    "targetStorageFolderId": "1HI1nB_XqpEABz9vPugu7jLsf78LM1Mpw",
+    "migratedFileIds": [
+      "1qV9-OuetqapcyRSlMIliPlJenAAKY8Hi",
+      "..."
+    ]
   }
   ```
 

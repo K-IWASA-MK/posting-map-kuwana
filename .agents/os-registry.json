@@ -100,11 +100,11 @@
       "canonicalSources": [
         {
           "path": "docs/api/API_CONTRACT.md",
-          "sha256": "7ba75fe05a38efb37f226d41f606f0a30ecd2d3a197eac524056371ed6b109d3"
+          "sha256": "0b3fe2ed4ff884cfc672bbae1d9ecdeeff90b5b14a5fe7f84bc5d6d459556bd0"
         },
         {
           "path": "active/api/v2_api.js",
-          "sha256": "5627913dd56015334e2610de93be92098decbd4379865eb97a1b1107445e0175"
+          "sha256": "6d9ddbbb260670ad2b48d1f9b139c0c6402a2785ab94651ee65a4e5f5dc046ec"
         }
       ],
       "evidenceSources": [
@@ -147,7 +147,7 @@
       "canonicalSources": [
         {
           "path": "docs/api/API_CONTRACT.md",
-          "sha256": "7ba75fe05a38efb37f226d41f606f0a30ecd2d3a197eac524056371ed6b109d3"
+          "sha256": "0b3fe2ed4ff884cfc672bbae1d9ecdeeff90b5b14a5fe7f84bc5d6d459556bd0"
         },
         {
           "path": "docs/security/SECURITY_BASELINE.md",

@@ -763,6 +763,400 @@ function handleRepairDistrictDriveBinding(postData, params) {
 }
 
 /**
+ * ACTIVE地区の写真ファイル群安全移動ハンドラ (migrateDistrictPhotos)
+ * 既存写真ファイル群を現在の親フォルダから対象districtのCanonical Storageへ安全に物理移動する
+ *
+ * 認可: PROVISIONING_TOKEN 必須 (verifyProvisioningToken)
+ * 挙動:
+ * 1. 排他ロック取得 (LockService.getScriptLock)
+ * 2. verifyProvisioningToken(token) による認証
+ * 3. 入力検証 (districtId, fileIds[], expectedSourceFolderId)
+ *    - fileIds は重複除去 (Deduplicate)
+ *    - 上限 (BATCH_SIZE_EXCEEDED: 200件)
+ * 4. 対象districtのRegistry照合 & targetStorageFolderId確定 (Server Authority)
+ *    - DISTRICT_REGISTRY[districtId].storageFolderId を正本とし、DriveAppで存在確認
+ *    - caller指定の expectedTargetStorageFolderId は Assertion-only (不一致時は STORAGE_FOLDER_MISMATCH)
+ *    - Script Properties / Registry は 0 diff (変更禁止)
+ * 5. 全件事前検査 (All-Files Preflight Before Mutation):
+ *    - 1件でも移動する前に fileIds 全件を検査
+ *    - DriveApp.getFileById で取得可能、!isTrashed()、MIMEが image/* (jpeg, png, webp, gif等)
+ *    - parent が expectedSourceFolderId または既に canonicalTargetStorageFolderId
+ *    - どちらでもない場合は SOURCE_FOLDER_MISMATCH で即座に全中断 (mutation 0)
+ * 6. 移動執行 (Atomic Move with Moved Ledger):
+ *    - toMigrate 対象を file.moveTo(targetFolder) で順次移動
+ *    - 成功ごとに movedLedger に記録
+ *    - 途中エラー時は movedLedger のみを sourceFolder へロールバック (失敗時は ROLLBACK_INCOMPLETE)
+ * 7. 事後Read-back検証 (Post-Move Read-Back):
+ *    - 全件について parent が canonicalTargetStorageFolderId、source未含有、!isTrashed() を再確認
+ * 8. 結果返却 (Secret漏洩なし)
+ */
+function handleMigrateDistrictPhotos(postData, params) {
+  // 1. 排他制御
+  let lock;
+  try {
+    if (typeof LockService !== 'undefined' && LockService.getScriptLock) {
+      lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+    }
+  } catch (eLock) {
+    return {
+      success: false,
+      code: "LOCK_TIMEOUT",
+      message: "Could not acquire script lock within 30 seconds."
+    };
+  }
+
+  try {
+    // 2. Token認証 (PROVISIONING_TOKEN)
+    const token = (postData && (postData.provisioningToken || postData.token))
+               || (params && (params.provisioningToken || params.token));
+    const tokenCheck = verifyProvisioningToken(token);
+    if (!tokenCheck.success) {
+      return tokenCheck;
+    }
+
+    // 3. 入力検証
+    const targetDistrictId = String((postData && postData.districtId) || (params && params.districtId) || "").trim();
+    const cleanDistrictId = targetDistrictId.toUpperCase();
+    if (!cleanDistrictId) {
+      return {
+        success: false,
+        code: "INVALID_INPUT",
+        message: "districtId is required."
+      };
+    }
+
+    const rawFileIds = (postData && (postData.fileIds || postData.photoIds))
+                    || (params && (params.fileIds || params.photoIds));
+    if (!Array.isArray(rawFileIds) || rawFileIds.length === 0) {
+      return {
+        success: false,
+        code: "INVALID_INPUT",
+        message: "fileIds must be a non-empty array of file IDs."
+      };
+    }
+
+    // 重複除去 (Deduplicate)
+    const uniqueFileIds = Array.from(new Set(rawFileIds.map(id => String(id || '').trim()).filter(Boolean)));
+    if (uniqueFileIds.length === 0) {
+      return {
+        success: false,
+        code: "INVALID_INPUT",
+        message: "fileIds contains no valid non-empty file IDs."
+      };
+    }
+
+    // 上限チェック (安全上限: 200件)
+    const MAX_BATCH_SIZE = 200;
+    if (uniqueFileIds.length > MAX_BATCH_SIZE) {
+      return {
+        success: false,
+        code: "BATCH_SIZE_EXCEEDED",
+        message: `fileIds count (${uniqueFileIds.length}) exceeds maximum batch size of ${MAX_BATCH_SIZE}.`
+      };
+    }
+
+    const expectedSourceFolderId = String(
+      (postData && postData.expectedSourceFolderId) || (params && params.expectedSourceFolderId) || ""
+    ).trim();
+    if (!expectedSourceFolderId) {
+      return {
+        success: false,
+        code: "INVALID_INPUT",
+        message: "expectedSourceFolderId is required."
+      };
+    }
+
+    const expectedTargetStorageFolderId = String(
+      (postData && postData.expectedTargetStorageFolderId) || (params && params.expectedTargetStorageFolderId) || ""
+    ).trim();
+
+    // 4. District Safety & Target Storage Authority
+    const props = (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties)
+      ? PropertiesService.getScriptProperties()
+      : null;
+    if (!props) {
+      return {
+        success: false,
+        code: "CONFIGURATION_ERROR",
+        message: "PropertiesService is unavailable."
+      };
+    }
+
+    const regRaw = (props.getProperty("DISTRICT_REGISTRY") || "").trim();
+    if (!regRaw) {
+      return {
+        success: false,
+        code: "UNINITIALIZED_REGISTRY",
+        message: "DISTRICT_REGISTRY is not configured or empty."
+      };
+    }
+
+    let registry;
+    try {
+      registry = JSON.parse(regRaw);
+    } catch (e) {
+      return {
+        success: false,
+        code: "CORRUPTED_REGISTRY",
+        message: "Failed to parse DISTRICT_REGISTRY JSON: " + e.message
+      };
+    }
+
+    const districtKey = Object.keys(registry).find(k => k.trim().toUpperCase() === cleanDistrictId);
+    if (!districtKey || !registry[districtKey]) {
+      return {
+        success: false,
+        code: "DISTRICT_NOT_FOUND",
+        message: `District "${targetDistrictId}" not found in DISTRICT_REGISTRY.`
+      };
+    }
+
+    const currentEntry = registry[districtKey];
+    const canonicalStorageFolderId = String(
+      (typeof currentEntry === 'object' && currentEntry !== null)
+        ? currentEntry.storageFolderId
+        : ""
+    ).trim();
+
+    if (!canonicalStorageFolderId) {
+      return {
+        success: false,
+        code: "STORAGE_FOLDER_NOT_CONFIGURED",
+        message: `Canonical storageFolderId is not configured for district "${targetDistrictId}".`
+      };
+    }
+
+    // Caller 指定の expectedTargetStorageFolderId は Assertion-only
+    if (expectedTargetStorageFolderId && expectedTargetStorageFolderId !== canonicalStorageFolderId) {
+      return {
+        success: false,
+        code: "STORAGE_FOLDER_MISMATCH",
+        message: `Expected target storage folder ID "${expectedTargetStorageFolderId}" does not match canonical storage folder ID "${canonicalStorageFolderId}".`
+      };
+    }
+
+    if (expectedSourceFolderId === canonicalStorageFolderId) {
+      return {
+        success: false,
+        code: "INVALID_INPUT",
+        message: "expectedSourceFolderId cannot be identical to canonical target storage folder ID."
+      };
+    }
+
+    if (typeof DriveApp === 'undefined' || !DriveApp.getFileById || !DriveApp.getFolderById) {
+      return {
+        success: false,
+        code: "SERVICE_UNAVAILABLE",
+        message: "DriveApp service is not available."
+      };
+    }
+
+    let sourceFolder;
+    try {
+      sourceFolder = DriveApp.getFolderById(expectedSourceFolderId);
+      if (!sourceFolder) throw new Error("Folder null");
+    } catch (eSrc) {
+      return {
+        success: false,
+        code: "RESOURCE_NOT_FOUND",
+        message: `Source folder "${expectedSourceFolderId}" cannot be opened: ${eSrc.message}`
+      };
+    }
+
+    let targetFolder;
+    try {
+      targetFolder = DriveApp.getFolderById(canonicalStorageFolderId);
+      if (!targetFolder) throw new Error("Folder null");
+    } catch (eTgt) {
+      return {
+        success: false,
+        code: "RESOURCE_NOT_FOUND",
+        message: `Target storage folder "${canonicalStorageFolderId}" cannot be opened: ${eTgt.message}`
+      };
+    }
+
+    // 5. All-Files Preflight Before Mutation (全件事前検査)
+    const alreadyMigrated = [];
+    const toMigrate = [];
+
+    for (const fid of uniqueFileIds) {
+      let file;
+      try {
+        file = DriveApp.getFileById(fid);
+        if (!file) throw new Error("File null");
+      } catch (eFile) {
+        return {
+          success: false,
+          code: "RESOURCE_NOT_FOUND",
+          message: `Preflight failed: file "${fid}" cannot be opened: ${eFile.message}`
+        };
+      }
+
+      if (file.isTrashed && file.isTrashed()) {
+        return {
+          success: false,
+          code: "FILE_TRASHED",
+          message: `Preflight failed: file "${fid}" is in trash.`
+        };
+      }
+
+      const mime = (file.getMimeType ? file.getMimeType() : "").toLowerCase();
+      // 最低限 image/jpeg, image/png, image/webp, image/gif を含む画像MIMEを許可
+      if (!mime.startsWith("image/")) {
+        return {
+          success: false,
+          code: "UNSUPPORTED_MEDIA_TYPE",
+          message: `Preflight failed: file "${fid}" has unsupported MIME type "${mime}". Only images are permitted.`
+        };
+      }
+
+      // 親フォルダ検査
+      const parentsIter = file.getParents ? file.getParents() : null;
+      const parentIds = [];
+      if (parentsIter) {
+        while (parentsIter.hasNext()) {
+          parentIds.push(parentsIter.next().getId());
+        }
+      }
+
+      const inTarget = parentIds.includes(canonicalStorageFolderId);
+      const inSource = parentIds.includes(expectedSourceFolderId);
+
+      if (inTarget) {
+        alreadyMigrated.push(fid);
+      } else if (inSource) {
+        toMigrate.push({ id: fid, file: file });
+      } else {
+        return {
+          success: false,
+          code: "SOURCE_FOLDER_MISMATCH",
+          message: `Preflight failed: file "${fid}" is not located in expected source folder "${expectedSourceFolderId}". Actual parents: ${JSON.stringify(parentIds)}`
+        };
+      }
+    }
+
+    // 6. 移動執行 (Atomic Move with Moved Ledger)
+    const movedLedger = [];
+    let mutationError = null;
+
+    for (const item of toMigrate) {
+      try {
+        if (typeof item.file.moveTo === 'function') {
+          item.file.moveTo(targetFolder);
+        } else {
+          // DriveApp 古い互換フォールバック: addFile / removeFile
+          targetFolder.addFile(item.file);
+          sourceFolder.removeFile(item.file);
+        }
+        movedLedger.push(item.id);
+      } catch (errMove) {
+        mutationError = errMove;
+        console.error(`[migrateDistrictPhotos] Error moving file "${item.id}":`, errMove);
+        break;
+      }
+    }
+
+    // 途中エラー発生時の局所ロールバック
+    if (mutationError) {
+      const rollbackFailures = [];
+      for (const rbId of movedLedger) {
+        try {
+          const rbFile = DriveApp.getFileById(rbId);
+          if (typeof rbFile.moveTo === 'function') {
+            rbFile.moveTo(sourceFolder);
+          } else {
+            sourceFolder.addFile(rbFile);
+            targetFolder.removeFile(rbFile);
+          }
+        } catch (eRb) {
+          console.error(`[migrateDistrictPhotos] Critical rollback failure for file "${rbId}":`, eRb);
+          rollbackFailures.push(rbId);
+        }
+      }
+
+      if (rollbackFailures.length > 0) {
+        return {
+          success: false,
+          code: "ROLLBACK_INCOMPLETE",
+          message: `Move failed and rollback was incomplete. Mutation error: ${mutationError.message}. Unrecovered files: ${JSON.stringify(rollbackFailures)}`
+        };
+      }
+
+      return {
+        success: false,
+        code: "MUTATION_FAILED",
+        message: `Move aborted and successfully rolled back. Error: ${mutationError.message}`
+      };
+    }
+
+    // 7. Post-Move Read-Back Verification (事後検証)
+    for (const fid of uniqueFileIds) {
+      let rbFile;
+      try {
+        rbFile = DriveApp.getFileById(fid);
+        if (!rbFile) throw new Error("File null on read-back");
+      } catch (eRbRead) {
+        return {
+          success: false,
+          code: "READ_BACK_MISMATCH",
+          message: `Read-back verification failed: file "${fid}" could not be retrieved.`
+        };
+      }
+
+      if (rbFile.isTrashed && rbFile.isTrashed()) {
+        return {
+          success: false,
+          code: "READ_BACK_MISMATCH",
+          message: `Read-back verification failed: file "${fid}" is trashed.`
+        };
+      }
+
+      const rbParentsIter = rbFile.getParents ? rbFile.getParents() : null;
+      const rbParentIds = [];
+      if (rbParentsIter) {
+        while (rbParentsIter.hasNext()) {
+          rbParentIds.push(rbParentsIter.next().getId());
+        }
+      }
+
+      if (!rbParentIds.includes(canonicalStorageFolderId)) {
+        return {
+          success: false,
+          code: "READ_BACK_MISMATCH",
+          message: `Read-back verification failed: file "${fid}" parent does not include canonical storage folder.`
+        };
+      }
+
+      if (rbParentIds.includes(expectedSourceFolderId)) {
+        return {
+          success: false,
+          code: "READ_BACK_MISMATCH",
+          message: `Read-back verification failed: file "${fid}" still contains source folder in parents.`
+        };
+      }
+    }
+
+    // 8. 成功レスポンス返却
+    return {
+      success: true,
+      message: `District "${targetDistrictId}" photos migrated successfully.`,
+      districtId: cleanDistrictId,
+      requestedCount: uniqueFileIds.length,
+      migratedCount: movedLedger.length,
+      alreadyMigratedCount: alreadyMigrated.length,
+      failedCount: 0,
+      targetStorageFolderId: canonicalStorageFolderId,
+      migratedFileIds: movedLedger
+    };
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (e) {}
+    }
+  }
+}
+
+/**
  * GETリクエスト：JSONデータの取得
  */
 function doGet(e) {
@@ -790,7 +1184,7 @@ function doGet(e) {
 
   const action = params.action || "";
 
-  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration' || action === 'switchDistrictSpreadsheet' || action === 'repairDistrictDriveBinding') {
+  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration' || action === 'switchDistrictSpreadsheet' || action === 'repairDistrictDriveBinding' || action === 'migrateDistrictPhotos') {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       code: "METHOD_NOT_ALLOWED",
@@ -857,6 +1251,12 @@ function doGet(e) {
       success: false,
       code: "METHOD_NOT_ALLOWED",
       message: "repairDistrictDriveBinding requires POST request."
+    })).setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'migrateDistrictPhotos') {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      code: "METHOD_NOT_ALLOWED",
+      message: "migrateDistrictPhotos requires POST request."
     })).setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getDeviceStatus') {
     return ContentService.createTextOutput(JSON.stringify({ success: true, exists: false, rows: [] }))
@@ -1157,7 +1557,8 @@ function doPost(e) {
     'issueMobilePairingToken',
     'pairMobileDevice',
     'switchDistrictSpreadsheet',
-    'repairDistrictDriveBinding'
+    'repairDistrictDriveBinding',
+    'migrateDistrictPhotos'
   ].includes(action);
 
   if (!isManagementAction) {
@@ -1634,6 +2035,10 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'repairDistrictDriveBinding') {
     const result = handleRepairDistrictDriveBinding(postData, params);
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'migrateDistrictPhotos') {
+    const result = handleMigrateDistrictPhotos(postData, params);
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getMapsApiKey') {
@@ -2145,6 +2550,8 @@ function processPostAction(action, postData, e, districtId = "") {
       return handleSwitchDistrictSpreadsheet(postData, e && e.parameter);
     case 'repairDistrictDriveBinding':
       return handleRepairDistrictDriveBinding(postData, e && e.parameter);
+    case 'migrateDistrictPhotos':
+      return handleMigrateDistrictPhotos(postData, e && e.parameter);
     case 'verifyManagerPassword':
       const postPwd = (postData && postData.password) || (e && e.parameter ? e.parameter.password : "");
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance
