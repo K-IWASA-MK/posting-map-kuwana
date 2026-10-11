@@ -2,12 +2,7 @@
   ".agents/current-scope.json",
   ".agents/os-registry.json",
   "active/api/v2_api.js",
-  "package.json",
-  "scripts/acquire-liff-id.mjs",
-  "scripts/check-auditor-gate.mjs",
-  "scripts/check-secrets.mjs",
-  "tests/run_all_tests.mjs",
+  "active/api/auth/auth.js",
   "tests/test_phase15_security_verification.mjs",
-  "tests/test_registry_provisioning_gate.mjs",
-  "tests/test_secret_leak_guard.mjs"
+  "tests/test_multi_district_routing_auth.mjs"
 ]
