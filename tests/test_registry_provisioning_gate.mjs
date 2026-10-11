@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -35,11 +36,41 @@ global.PropertiesService = {
     return {
       getProperty(k) { return mockScriptProperties[k] || null; },
       setProperty(k, v) { mockScriptProperties[k] = String(v); },
+      deleteProperty(k) { delete mockScriptProperties[k]; },
+      getProperties() { return { ...mockScriptProperties }; },
       setProperties(obj) {
         for (const [k, v] of Object.entries(obj)) {
           mockScriptProperties[k] = String(v);
         }
       }
+    };
+  }
+};
+
+global.Utilities = {
+  computeDigest(algo, str) {
+    return Array.from(crypto.createHash('sha256').update(str).digest());
+  },
+  DigestAlgorithm: { SHA_256: 'SHA_256' },
+  Charset: { UTF_8: 'UTF_8' }
+};
+
+global.CacheService = {
+  getScriptCache() {
+    return {
+      remove(k) {},
+      get(k) { return null; },
+      put(k, v, ttl) {}
+    };
+  }
+};
+
+global.ContentService = {
+  MimeType: { JSON: 'JSON' },
+  createTextOutput(str) {
+    return {
+      content: str,
+      setMimeType(m) { return this; }
     };
   }
 };
@@ -55,7 +86,9 @@ global.SpreadsheetApp = {
 // ソースコードロード
 const adapterCode = fs.readFileSync(path.join(REPO_ROOT, 'active/infrastructure/spreadsheet/spreadsheet_adapter.js'), 'utf8');
 const provisionerCode = fs.readFileSync(path.join(REPO_ROOT, 'active/business/system/district_provisioner.js'), 'utf8');
+const v2ApiCode = fs.readFileSync(path.join(REPO_ROOT, 'active/api/v2_api.js'), 'utf8');
 vm.runInThisContext(adapterCode);
+vm.runInThisContext(v2ApiCode);
 
 // Drive モック環境の構築
 const mockFolders = {};
@@ -178,9 +211,7 @@ global.LockService = {
   }
 };
 
-global.verifyProvisioningToken = function(t) {
-  return { success: true };
-};
+mockScriptProperties['PROVISIONING_TOKEN_HASH'] = computeSha256("valid-token");
 
 vm.runInThisContext(provisionerCode);
 
@@ -462,6 +493,334 @@ runGate("Unit 5: createDistrictDatabase INVALID_DISTRICT_NAME assertion", () => 
   });
   assert.equal(badNameResult.success, false);
   assert.equal(badNameResult.code, "INVALID_DISTRICT_NAME");
+});
+
+console.log("\n▶ Running repairDistrictDriveBinding Gates (Gates 14-30)...");
+
+// Mock Drive structure for repairDistrictDriveBinding
+const repairBranchRoot = createMockFolder("test-repair-branch-root-id", "03_BRANCH");
+const repairKuwanaFolder = repairBranchRoot.createFolder("KUWANA");
+const repairCanonicalStorage = repairKuwanaFolder.createFolder("KUWANA 支部_STORAGE");
+const canonicalStorageId = repairCanonicalStorage.getId();
+const oldStorageFolder = createMockFolder("old-storage-folder-id", "Templates");
+
+const VALID_TOKEN = "valid-token";
+const RAW_HASH_VALID = computeSha256(VALID_TOKEN);
+
+function resetRepairState() {
+  delete mockScriptProperties["BRANCH_ROOT_FOLDER_ID"];
+  mockScriptProperties["PROVISIONING_TOKEN_HASH"] = RAW_HASH_VALID;
+  mockScriptProperties["STORAGE_PARENT_ID"] = "old-storage-folder-id";
+  mockScriptProperties["TARGET_SPREADSHEET_ID"] = "ss-kuwana-pure-db-id";
+  mockScriptProperties["GOOGLE_MAPS_API_KEY"] = "test-maps-key";
+  mockScriptProperties["LINE_LIFF_ID"] = "test-liff-id";
+  mockScriptProperties["DISTRICT_REGISTRY"] = JSON.stringify({
+    KUWANA: {
+      spreadsheetId: "ss-kuwana-pure-db-id",
+      storageFolderId: "old-storage-folder-id",
+      name: "KUWANA",
+      enabled: true
+    },
+    OKAYAMA_02: {
+      spreadsheetId: "ss-okayama-id",
+      storageFolderId: "storage-okayama-id",
+      name: "OKAYAMA_02",
+      enabled: true
+    }
+  });
+}
+
+// Gate 14: branch root absent → set success
+runGate("Gate 14: repairDistrictDriveBinding initial seed sets BRANCH_ROOT_FOLDER_ID", () => {
+  resetRepairState();
+  assert.equal(mockScriptProperties["BRANCH_ROOT_FOLDER_ID"], undefined);
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true, "Should succeed: " + (res.message || res.code));
+  assert.equal(mockScriptProperties["BRANCH_ROOT_FOLDER_ID"], "test-repair-branch-root-id");
+  assert.equal(mockScriptProperties["STORAGE_PARENT_ID"], canonicalStorageId);
+  const reg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  assert.equal(reg.KUWANA.storageFolderId, canonicalStorageId);
+});
+
+// Gate 15: same branch root → idempotent success (no-op)
+runGate("Gate 15: repairDistrictDriveBinding idempotent success with same branch root", () => {
+  assert.equal(mockScriptProperties["BRANCH_ROOT_FOLDER_ID"], "test-repair-branch-root-id");
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: canonicalStorageId,
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(mockScriptProperties["BRANCH_ROOT_FOLDER_ID"], "test-repair-branch-root-id");
+});
+
+// Gate 16: different existing branch root → fail closed (BRANCH_ROOT_MISMATCH, mutation 0)
+runGate("Gate 16: repairDistrictDriveBinding mismatched existing branch root fails closed", () => {
+  const savedRoot = mockScriptProperties["BRANCH_ROOT_FOLDER_ID"];
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "different-branch-root-id",
+    expectedCurrentStorageFolderId: canonicalStorageId,
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "BRANCH_ROOT_MISMATCH");
+  assert.equal(mockScriptProperties["BRANCH_ROOT_FOLDER_ID"], savedRoot, "Root must not be mutated");
+});
+
+// Gate 17: storage old ID CAS match → success
+runGate("Gate 17: repairDistrictDriveBinding storage old ID CAS match updates storageFolderId", () => {
+  resetRepairState();
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  const reg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  assert.equal(reg.KUWANA.storageFolderId, canonicalStorageId);
+  assert.equal(mockScriptProperties["STORAGE_PARENT_ID"], canonicalStorageId);
+});
+
+// Gate 18: storage stale ID → mutation 0 (STALE_WRITE)
+runGate("Gate 18: repairDistrictDriveBinding stale current storageFolderId fails closed (STALE_WRITE)", () => {
+  resetRepairState();
+  const savedReg = mockScriptProperties["DISTRICT_REGISTRY"];
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "wrong-stale-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "STALE_WRITE");
+  assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], savedReg, "Registry must not be mutated");
+});
+
+// Gate 19: target storage != server-resolved canonical → fail (STORAGE_FOLDER_MISMATCH, mutation 0)
+runGate("Gate 19: repairDistrictDriveBinding non-canonical target storage fails closed", () => {
+  resetRepairState();
+  const savedReg = mockScriptProperties["DISTRICT_REGISTRY"];
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: "unresolved-fake-storage-id",
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "STORAGE_FOLDER_MISMATCH");
+  assert.equal(mockScriptProperties["DISTRICT_REGISTRY"], savedReg, "Registry must not be mutated");
+});
+
+// Gate 20: enabled:true remains true
+runGate("Gate 20: repairDistrictDriveBinding enabled: true is strictly preserved", () => {
+  resetRepairState();
+  const beforeReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  assert.equal(beforeReg.KUWANA.enabled, true);
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  const afterReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  assert.equal(afterReg.KUWANA.enabled, true, "enabled must remain true");
+});
+
+// Gate 21: spreadsheetId unchanged
+runGate("Gate 21: repairDistrictDriveBinding spreadsheetId is strictly unchanged", () => {
+  resetRepairState();
+  const beforeReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  const expectedSS = beforeReg.KUWANA.spreadsheetId;
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  const afterReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  assert.equal(afterReg.KUWANA.spreadsheetId, expectedSS, "spreadsheetId must not change");
+});
+
+// Gate 22: other district 0 diff
+runGate("Gate 22: repairDistrictDriveBinding other district entry has 0 diff", () => {
+  resetRepairState();
+  const beforeReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  const expectedOkayama = JSON.stringify(beforeReg.OKAYAMA_02);
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  const afterReg = JSON.parse(mockScriptProperties["DISTRICT_REGISTRY"]);
+  assert.equal(JSON.stringify(afterReg.OKAYAMA_02), expectedOkayama, "Other district must be 100% identical");
+});
+
+// Gate 23: PROVISIONING_TOKEN_HASH unchanged
+runGate("Gate 23: repairDistrictDriveBinding PROVISIONING_TOKEN_HASH strictly unchanged", () => {
+  resetRepairState();
+  const originalHash = mockScriptProperties["PROVISIONING_TOKEN_HASH"];
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(mockScriptProperties["PROVISIONING_TOKEN_HASH"], originalHash, "Token hash must not change");
+});
+
+// Gate 24: TARGET_SPREADSHEET_ID unchanged
+runGate("Gate 24: repairDistrictDriveBinding TARGET_SPREADSHEET_ID strictly unchanged", () => {
+  resetRepairState();
+  const originalTargetSS = mockScriptProperties["TARGET_SPREADSHEET_ID"];
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(mockScriptProperties["TARGET_SPREADSHEET_ID"], originalTargetSS, "TARGET_SPREADSHEET_ID must not change");
+});
+
+// Gate 25: unrelated Properties 0 diff
+runGate("Gate 25: repairDistrictDriveBinding unrelated Script Properties have 0 diff", () => {
+  resetRepairState();
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(mockScriptProperties["GOOGLE_MAPS_API_KEY"], "test-maps-key");
+  assert.equal(mockScriptProperties["LINE_LIFF_ID"], "test-liff-id");
+});
+
+// Gate 26: read-back mechanical verification
+runGate("Gate 26: repairDistrictDriveBinding read-back mechanical verification succeeds", () => {
+  resetRepairState();
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, true);
+  assert.equal(res.districtId, "KUWANA");
+  assert.equal(res.branchRootFolderId, "test-repair-branch-root-id");
+  assert.equal(res.storageFolderId, canonicalStorageId);
+  assert.equal(res.storageParentId, canonicalStorageId);
+  assert.equal(res.districtRegistryUpdated, true);
+});
+
+// Gate 27: corrupted Registry → mutation 0 (CORRUPTED_REGISTRY)
+runGate("Gate 27: repairDistrictDriveBinding corrupted Registry fails closed (CORRUPTED_REGISTRY)", () => {
+  resetRepairState();
+  mockScriptProperties["DISTRICT_REGISTRY"] = "{INVALID_JSON...";
+
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "CORRUPTED_REGISTRY");
+});
+
+// Gate 28: Non-existent district fails closed (DISTRICT_NOT_FOUND)
+runGate("Gate 28: repairDistrictDriveBinding non-existent district fails closed (DISTRICT_NOT_FOUND)", () => {
+  resetRepairState();
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "NON_EXISTENT_DIST",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "DISTRICT_NOT_FOUND");
+});
+
+// Gate 29: expectedRegistryRawHash mismatch fails closed (STALE_WRITE)
+runGate("Gate 29: repairDistrictDriveBinding expectedRegistryRawHash CAS mismatch fails closed", () => {
+  resetRepairState();
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    expectedCurrentStorageFolderId: "old-storage-folder-id",
+    targetStorageFolderId: canonicalStorageId,
+    expectedRegistryRawHash: "0000000000000000000000000000000000000000000000000000000000000000",
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "STALE_WRITE");
+});
+
+// Gate 30: Missing required arguments fails closed (INVALID_ARGUMENT)
+runGate("Gate 30: repairDistrictDriveBinding missing required argument fails closed", () => {
+  resetRepairState();
+  const res = handleRepairDistrictDriveBinding({
+    districtId: "KUWANA",
+    branchRootFolderId: "test-repair-branch-root-id",
+    targetStorageFolderId: canonicalStorageId,
+    provisioningToken: VALID_TOKEN
+  }, null);
+
+  assert.equal(res.success, false);
+  assert.equal(res.code, "INVALID_ARGUMENT");
 });
 
 console.log("\n====================================================");

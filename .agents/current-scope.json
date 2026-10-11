@@ -1,15 +1,7 @@
 [
-  ".agents/agents/deployer/agent.md",
   ".agents/current-scope.json",
   ".agents/os-registry.json",
-  ".agents/rules/agent-authority.md",
   "active/api/v2_api.js",
-  "active/business/system/district_provisioner.js",
-  "docs/ai-foundation.md",
   "docs/api/API_CONTRACT.md",
-  "docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md",
-  "scripts/check-auditor-gate.mjs",
-  "tests/test_auditor_gate.mjs",
-  "tests/test_multi_district_routing_auth.mjs",
   "tests/test_registry_provisioning_gate.mjs"
 ]

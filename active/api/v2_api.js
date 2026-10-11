@@ -408,6 +408,361 @@ function handleSwitchDistrictSpreadsheet(postData, params) {
 }
 
 /**
+ * ACTIVE地区のDrive Binding安全是正ハンドラ (repairDistrictDriveBinding)
+ * - 認可: Provisioning Token 必須 (verifyProvisioningToken)
+ * - 対象地区: 既存 DISTRICT_REGISTRY に存在必須（新地区作成不可）
+ * - BRANCH_ROOT_FOLDER_ID:
+ *     未設定時: target Folder実在確認、caller token認証後に初期設定
+ *     設定済・同値: idempotent success (no-op)
+ *     設定済・異値: BRANCH_ROOT_MISMATCH で Fail-Closed (mutation 0)
+ * - REGISTRY STORAGE CAS:
+ *     current storageFolderId === expectedCurrentStorageFolderId (STALE_WRITE if mismatch)
+ *     expectedRegistryRaw / expectedRegistryRawHash CAS (STALE_WRITE if mismatch)
+ *     spreadsheetId, name, enabled (true stays true) その他field完全維持
+ *     他地区 entry 完全不変 (0 diff)
+ * - TARGET STORAGE VALIDATION:
+ *     Server側導出: branchRootFolderId -> districtFolder -> canonical storage folder
+ *     targetStorageFolderId === canonicalStorageFolderId (STORAGE_FOLDER_MISMATCH if mismatch)
+ * - STORAGE_PARENT_ID:
+ *     current STORAGE_PARENT_ID === expectedCurrentStorageFolderId (STALE_WRITE if mismatch)
+ *     canonical targetStorageFolderId へ同期
+ * - MUTATION ALLOWLIST:
+ *     最大3箇所のみ (BRANCH_ROOT_FOLDER_ID, DISTRICT_REGISTRY[district].storageFolderId, STORAGE_PARENT_ID)
+ * - READ-BACK:
+ *     3箇所を再取得して期待値・不変性を完全機械検証
+ * - FAILURE SEMANTICS:
+ *     mutation前に全Validation/CAS完了。途中失敗時は変更済みkeyのみ局所rollback。
+ */
+function handleRepairDistrictDriveBinding(postData, params) {
+  // 1. Provisioning Token検証
+  const token = (postData && (postData.provisioningToken || (postData.options && postData.options.provisioningToken)))
+             || (params && (params.provisioningToken || (params.options && params.options.provisioningToken)));
+  const tokenCheck = verifyProvisioningToken(token);
+  if (!tokenCheck.success) {
+    return tokenCheck;
+  }
+
+  // 2. 必須パラメータ検証
+  const targetDistrictId = String((postData && postData.districtId) || (params && params.districtId) || "").trim();
+  const cleanDistrictId = targetDistrictId.toUpperCase();
+  const branchRootFolderId = String((postData && postData.branchRootFolderId) || (params && params.branchRootFolderId) || "").trim();
+  const expectedCurrentStorageId = String((postData && postData.expectedCurrentStorageFolderId) || (params && params.expectedCurrentStorageFolderId) || "").trim();
+  const targetStorageId = String((postData && postData.targetStorageFolderId) || (params && params.targetStorageFolderId) || "").trim();
+
+  if (!cleanDistrictId || !branchRootFolderId || !expectedCurrentStorageId || !targetStorageId) {
+    return {
+      success: false,
+      code: "INVALID_ARGUMENT",
+      message: "districtId, branchRootFolderId, expectedCurrentStorageFolderId, and targetStorageFolderId are all required."
+    };
+  }
+
+  // 3. DISTRICT_REGISTRY取得・構文検証
+  const props = (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties)
+    ? PropertiesService.getScriptProperties()
+    : null;
+  const regRaw = props ? props.getProperty("DISTRICT_REGISTRY") : null;
+
+  if (!regRaw || typeof regRaw !== 'string' || !regRaw.trim()) {
+    return {
+      success: false,
+      code: "CORRUPTED_REGISTRY",
+      message: "DISTRICT_REGISTRY is not configured or empty."
+    };
+  }
+
+  let registry;
+  try {
+    registry = JSON.parse(regRaw);
+    if (!registry || typeof registry !== 'object' || Array.isArray(registry)) {
+      return {
+        success: false,
+        code: "CORRUPTED_REGISTRY",
+        message: "DISTRICT_REGISTRY is not a valid JSON object."
+      };
+    }
+  } catch (e) {
+    return {
+      success: false,
+      code: "CORRUPTED_REGISTRY",
+      message: "Failed to parse DISTRICT_REGISTRY JSON: " + e.message
+    };
+  }
+
+  // 4. 対象地区が既存Registryに存在すること（新地区作成不可）
+  const districtKey = Object.keys(registry).find(k => k.trim().toUpperCase() === cleanDistrictId);
+  if (!districtKey || !registry[districtKey]) {
+    return {
+      success: false,
+      code: "DISTRICT_NOT_FOUND",
+      message: `District "${targetDistrictId}" not found in DISTRICT_REGISTRY. repairDistrictDriveBinding cannot be used for new district creation.`
+    };
+  }
+
+  const currentEntry = registry[districtKey];
+  const currentStorageFolderId = String(
+    (typeof currentEntry === 'object' && currentEntry !== null)
+      ? currentEntry.storageFolderId
+      : ""
+  ).trim();
+
+  // 5. REGISTRY CAS検証
+  // 5a. expectedRegistryRawHash / expectedRegistryRaw 検証（指定時）
+  const expHash = String((postData && postData.expectedRegistryRawHash) || (params && params.expectedRegistryRawHash) || "").trim().toLowerCase();
+  if (expHash) {
+    const actualHash = computeSha256(regRaw).toLowerCase();
+    if (actualHash !== expHash) {
+      return {
+        success: false,
+        code: "STALE_WRITE",
+        message: `DISTRICT_REGISTRY hash mismatch (expected: "${expHash}", actual: "${actualHash}"). Stale write prevented.`
+      };
+    }
+  }
+  const expRaw = (postData && postData.expectedRegistryRaw) || (params && params.expectedRegistryRaw);
+  if (typeof expRaw === 'string' && expRaw.trim()) {
+    if (regRaw.trim() !== expRaw.trim()) {
+      return {
+        success: false,
+        code: "STALE_WRITE",
+        message: "DISTRICT_REGISTRY raw mismatch. Stale write prevented."
+      };
+    }
+  }
+
+  // 5b. current storageFolderId === expectedCurrentStorageFolderId
+  if (currentStorageFolderId !== expectedCurrentStorageId) {
+    return {
+      success: false,
+      code: "STALE_WRITE",
+      message: `Current storageFolderId "${currentStorageFolderId}" does not match expected "${expectedCurrentStorageId}". Stale write prevented.`
+    };
+  }
+
+  // 6. BRANCH_ROOT_FOLDER_ID 検証 & Idempotency
+  const currentBranchRootId = (props.getProperty("BRANCH_ROOT_FOLDER_ID") || "").trim();
+  if (currentBranchRootId) {
+    if (currentBranchRootId !== branchRootFolderId) {
+      return {
+        success: false,
+        code: "BRANCH_ROOT_MISMATCH",
+        message: `Existing BRANCH_ROOT_FOLDER_ID "${currentBranchRootId}" does not match provided "${branchRootFolderId}". Root cannot be overwritten.`
+      };
+    }
+  }
+
+  // 7. target Folder 実在確認 & Server-Side Deterministic Resolution
+  let branchFolder;
+  try {
+    if (typeof DriveApp === 'undefined' || !DriveApp.getFolderById) {
+      throw new Error("DriveApp unavailable");
+    }
+    branchFolder = DriveApp.getFolderById(branchRootFolderId);
+    if (!branchFolder) {
+      return {
+        success: false,
+        code: "RESOURCE_NOT_FOUND",
+        message: `Branch root folder "${branchRootFolderId}" not found.`
+      };
+    }
+  } catch (eBranch) {
+    return {
+      success: false,
+      code: "RESOURCE_NOT_FOUND",
+      message: `Branch root folder "${branchRootFolderId}" cannot be opened: ${eBranch.message}`
+    };
+  }
+
+  // 03_BRANCH/{districtId} 探索
+  const distFolders = branchFolder.getFoldersByName(cleanDistrictId);
+  let distFolder = null;
+  let distCount = 0;
+  while (distFolders.hasNext()) {
+    distFolder = distFolders.next();
+    distCount++;
+  }
+  if (distCount === 0 || !distFolder) {
+    return {
+      success: false,
+      code: "RESOURCE_NOT_FOUND",
+      message: `District folder "${cleanDistrictId}" not found under branch root "${branchRootFolderId}".`
+    };
+  }
+  if (distCount > 1) {
+    return {
+      success: false,
+      code: "AMBIGUOUS_DISTRICT_FOLDER",
+      message: `Multiple folders named "${cleanDistrictId}" found under branch root.`
+    };
+  }
+
+  // {districtId} 支部_STORAGE 探索
+  const storageName = `${cleanDistrictId} 支部_STORAGE`;
+  const storageFolders = distFolder.getFoldersByName(storageName);
+  let storageFolder = null;
+  let sCount = 0;
+  while (storageFolders.hasNext()) {
+    storageFolder = storageFolders.next();
+    sCount++;
+  }
+  if (sCount === 0 || !storageFolder) {
+    return {
+      success: false,
+      code: "RESOURCE_NOT_FOUND",
+      message: `Storage folder "${storageName}" not found under district folder.`
+    };
+  }
+  if (sCount > 1) {
+    return {
+      success: false,
+      code: "AMBIGUOUS_STORAGE_FOLDER",
+      message: `Multiple folders named "${storageName}" found under district folder.`
+    };
+  }
+
+  const canonicalStorageFolderId = storageFolder.getId();
+
+  // targetStorageFolderId === canonicalStorageFolderId Assertion
+  if (targetStorageId !== canonicalStorageFolderId) {
+    return {
+      success: false,
+      code: "STORAGE_FOLDER_MISMATCH",
+      message: `Specified targetStorageFolderId "${targetStorageId}" does not match canonical resolved storage folder "${canonicalStorageFolderId}".`
+    };
+  }
+
+  // 8. STORAGE_PARENT_ID CAS検証
+  const currentStorageParentId = (props.getProperty("STORAGE_PARENT_ID") || "").trim();
+  if (currentStorageParentId && currentStorageParentId !== expectedCurrentStorageId) {
+    return {
+      success: false,
+      code: "STALE_WRITE",
+      message: `Current STORAGE_PARENT_ID "${currentStorageParentId}" does not match expected "${expectedCurrentStorageId}". Stale write prevented.`
+    };
+  }
+
+  // 9. Atomic Mutations (Allowlist: 最大3箇所のみ)
+  const originalBranchRoot = currentBranchRootId;
+  const originalRegRaw = regRaw;
+  const originalStorageParent = currentStorageParentId;
+
+  let branchRootMutated = false;
+  let registryMutated = false;
+  let storageParentMutated = false;
+
+  try {
+    // 1) BRANCH_ROOT_FOLDER_ID (未設定時のみ初期シード)
+    if (!currentBranchRootId) {
+      props.setProperty("BRANCH_ROOT_FOLDER_ID", branchRootFolderId);
+      branchRootMutated = true;
+    }
+
+    // 2) DISTRICT_REGISTRY (対象district.storageFolderId のみ変更、他全field・他地区0 diff)
+    const newRegistry = JSON.parse(JSON.stringify(registry));
+    if (typeof newRegistry[districtKey] === 'object' && newRegistry[districtKey] !== null) {
+      newRegistry[districtKey].storageFolderId = targetStorageId;
+    } else {
+      newRegistry[districtKey] = {
+        spreadsheetId: currentEntry,
+        storageFolderId: targetStorageId,
+        name: targetDistrictId,
+        enabled: true
+      };
+    }
+    props.setProperty("DISTRICT_REGISTRY", JSON.stringify(newRegistry));
+    registryMutated = true;
+
+    // 3) STORAGE_PARENT_ID
+    props.setProperty("STORAGE_PARENT_ID", targetStorageId);
+    storageParentMutated = true;
+
+    // 10. READ-BACK 機械検証
+    const rbBranchRoot = (props.getProperty("BRANCH_ROOT_FOLDER_ID") || "").trim();
+    const rbRegRaw = props.getProperty("DISTRICT_REGISTRY");
+    const rbStorageParent = (props.getProperty("STORAGE_PARENT_ID") || "").trim();
+
+    if (rbBranchRoot !== branchRootFolderId) {
+      throw new Error(`Read-back mismatch for BRANCH_ROOT_FOLDER_ID: expected "${branchRootFolderId}", got "${rbBranchRoot}"`);
+    }
+    if (rbStorageParent !== targetStorageId) {
+      throw new Error(`Read-back mismatch for STORAGE_PARENT_ID: expected "${targetStorageId}", got "${rbStorageParent}"`);
+    }
+
+    const rbRegistry = JSON.parse(rbRegRaw);
+    const rbEntry = rbRegistry[districtKey];
+    if (!rbEntry || rbEntry.storageFolderId !== targetStorageId) {
+      throw new Error(`Read-back mismatch for DISTRICT_REGISTRY[${districtKey}].storageFolderId`);
+    }
+    if (typeof currentEntry === 'object' && currentEntry !== null) {
+      if (rbEntry.spreadsheetId !== currentEntry.spreadsheetId) {
+        throw new Error(`Read-back violation: spreadsheetId was mutated!`);
+      }
+      if (rbEntry.enabled !== currentEntry.enabled) {
+        throw new Error(`Read-back violation: enabled status was mutated!`);
+      }
+      if (rbEntry.name !== currentEntry.name) {
+        throw new Error(`Read-back violation: name was mutated!`);
+      }
+    }
+
+    // 他地区 0 diff 確認
+    for (const [k, v] of Object.entries(registry)) {
+      if (k === districtKey) continue;
+      if (JSON.stringify(rbRegistry[k]) !== JSON.stringify(v)) {
+        throw new Error(`Read-back violation: other district "${k}" was mutated!`);
+      }
+    }
+    for (const k of Object.keys(rbRegistry)) {
+      if (k === districtKey) continue;
+      if (!registry[k]) {
+        throw new Error(`Read-back violation: unexpected district "${k}" appeared in registry!`);
+      }
+    }
+
+    // 11. キャッシュクリア
+    if (typeof CacheService !== 'undefined' && CacheService.getScriptCache()) {
+      CacheService.getScriptCache().remove("CONFIG_STORE");
+    }
+    if (typeof SpreadsheetResolver !== 'undefined' && SpreadsheetResolver.getInstance) {
+      SpreadsheetResolver.getInstance().clearCache();
+    }
+
+    // 12. 成功返却
+    return {
+      success: true,
+      message: `District "${targetDistrictId}" drive binding repaired successfully.`,
+      districtId: cleanDistrictId,
+      branchRootFolderId: rbBranchRoot,
+      storageFolderId: targetStorageId,
+      storageParentId: rbStorageParent,
+      districtRegistryUpdated: true
+    };
+  } catch (errMutation) {
+    // 途中失敗時の局所ロールバック
+    try {
+      if (storageParentMutated) {
+        if (originalStorageParent) props.setProperty("STORAGE_PARENT_ID", originalStorageParent);
+        else props.deleteProperty("STORAGE_PARENT_ID");
+      }
+      if (registryMutated) {
+        props.setProperty("DISTRICT_REGISTRY", originalRegRaw);
+      }
+      if (branchRootMutated) {
+        if (originalBranchRoot) props.setProperty("BRANCH_ROOT_FOLDER_ID", originalBranchRoot);
+        else props.deleteProperty("BRANCH_ROOT_FOLDER_ID");
+      }
+    } catch (eRollback) {
+      console.error("[repairDistrictDriveBinding] Critical rollback error:", eRollback);
+    }
+    return {
+      success: false,
+      code: "MUTATION_FAILED",
+      message: errMutation.message
+    };
+  }
+}
+
+/**
  * GETリクエスト：JSONデータの取得
  */
 function doGet(e) {
@@ -435,7 +790,7 @@ function doGet(e) {
 
   const action = params.action || "";
 
-  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration' || action === 'switchDistrictSpreadsheet') {
+  if (action === 'healSchemaHeaders' || action === 'runIdentityMigration' || action === 'switchDistrictSpreadsheet' || action === 'repairDistrictDriveBinding') {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       code: "METHOD_NOT_ALLOWED",
@@ -496,6 +851,12 @@ function doGet(e) {
       success: false,
       code: "METHOD_NOT_ALLOWED",
       message: "switchDistrictSpreadsheet requires POST request."
+    })).setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'repairDistrictDriveBinding') {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      code: "METHOD_NOT_ALLOWED",
+      message: "repairDistrictDriveBinding requires POST request."
     })).setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getDeviceStatus') {
     return ContentService.createTextOutput(JSON.stringify({ success: true, exists: false, rows: [] }))
@@ -795,7 +1156,8 @@ function doPost(e) {
     'getDeviceStatus',
     'issueMobilePairingToken',
     'pairMobileDevice',
-    'switchDistrictSpreadsheet'
+    'switchDistrictSpreadsheet',
+    'repairDistrictDriveBinding'
   ].includes(action);
 
   if (!isManagementAction) {
@@ -1268,6 +1630,10 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'switchDistrictSpreadsheet') {
     const result = handleSwitchDistrictSpreadsheet(postData, params);
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === 'repairDistrictDriveBinding') {
+    const result = handleRepairDistrictDriveBinding(postData, params);
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   } else if (action === 'getMapsApiKey') {
@@ -1777,6 +2143,8 @@ function processPostAction(action, postData, e, districtId = "") {
         : { success: false, message: 'SystemInfoService not available' };
     case 'switchDistrictSpreadsheet':
       return handleSwitchDistrictSpreadsheet(postData, e && e.parameter);
+    case 'repairDistrictDriveBinding':
+      return handleRepairDistrictDriveBinding(postData, e && e.parameter);
     case 'verifyManagerPassword':
       const postPwd = (postData && postData.password) || (e && e.parameter ? e.parameter.password : "");
       return typeof SystemInfoService !== 'undefined' && SystemInfoService.getInstance

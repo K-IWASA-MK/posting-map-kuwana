@@ -50,6 +50,7 @@
 27. [Production Smoke Test & Migration API Contracts (本番スモークテストおよびマイグレーションAPI契約)](#27-production-smoke-test--migration-api-contracts-本番スモークテストおよびマイグレーションapi契約)
    - [27.3 地区Spreadsheet世代切替管理 API 契約 (switchDistrictSpreadsheet)](#273-地区spreadsheet世代切替管理-api-契約-switchdistrictspreadsheet)
    - [27.4 新地区プロビジョニング・環境ブートストラップ管理 API 契約 (bootstrapEnvironment / createDistrictDatabase)](#274-新地区プロビジョニング環境ブートストラップ管理-api-契約-bootstrapenvironment--createdistrictdatabase)
+   - [27.5 ACTIVE地区Driveバインディング是正管理 API 契約 (repairDistrictDriveBinding)](#275-active地区driveバインディング是正管理-api-契約-repairdistrictdrivebinding)
 
 ---
 
@@ -1088,6 +1089,76 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
     "storageParentId": "1_CANONICAL_STORAGE_FOLDER_ID",
     "districtRegistryUpdated": true,
     "message": "Environment successfully bootstrapped for district \"NEW_DISTRICT\"."
+  }
+  ```
+
+### 27.5 ACTIVE地区Driveバインディング是正管理 API 契約 (repairDistrictDriveBinding)
+- **エンドポイント**: `POST /exec` (GET は `METHOD_NOT_ALLOWED` で即時遮断)
+- **アクション**: `action: "repairDistrictDriveBinding"`
+- **認可**: `verifyProvisioningToken` によるトークン認証必須（欠損・不正時は `UNAUTHORIZED` で遮断、mutation 0）
+- **目的**: 既存 ACTIVE 地区における Google Drive バインディング不整合（例: 初期構築時のストレージフォルダ誤紐付け）を、人間オペレーターの GAS UI 手動操作や `bootstrapEnvironment` による無差別な環境再構築（`enabled: false` への降格、REGISTRY 再構成、`TARGET_SPREADSHEET_ID` 誤更新等）を一切排し、最小かつ安全に是正（Remediation）する Universal Admin API。
+- **入力契約 (Request Payload)**:
+  ```json
+  {
+    "action": "repairDistrictDriveBinding",
+    "provisioningToken": "<SECRET_TOKEN>",
+    "districtId": "KUWANA",
+    "branchRootFolderId": "1EQQqWbtyF7iMd7Fk-WnUwWiAGB4MdIdN",
+    "expectedCurrentStorageFolderId": "1Zt-AC153J0ByAwP9TkaUjimsgGVwDImF",
+    "targetStorageFolderId": "1HI1nB_XqpEABz9vPugu7jLsf78LM1Mpw",
+    "expectedRegistryRawHash": "<OPTIONAL_SHA256_HASH>",
+    "expectedRegistryRaw": "<OPTIONAL_RAW_JSON_STRING>"
+  }
+  ```
+- **安全制約 & 絶対遵守事項 (Safety Constraints & Prohibitions)**:
+  1. **ACTIVE 地区存在必須（新地区作成不可）**: 対象地区は既存 `DISTRICT_REGISTRY` に必ず存在しなければならない。不在時は `DISTRICT_NOT_FOUND` で直ちに Fail-Closed 遮断（mutation 0）。
+  2. **BRANCH_ROOT_FOLDER_ID 厳格制御 & 冪等性**:
+     - 未設定時: トークン認証および対象フォルダ実在確認後に初期シード設定。
+     - 設定済かつ同値: 冪等に成功（No-op）。
+     - 設定済かつ異値: `BRANCH_ROOT_MISMATCH` で直ちに Fail-Closed 遮断（mutation 0）。上書きは永久禁止。
+  3. **Server-Side 決定論的検証 (Target Storage Assertion)**:
+     - 呼び出し元が指定した `targetStorageFolderId` を盲信しない。
+     - サーバー側で `branchRootFolderId` → `03_BRANCH/{districtId}` → `{districtId} 支部_STORAGE` を自律探索し、導出された `canonicalStorageFolderId` と完全一致することを強制検証（不一致時は `STORAGE_FOLDER_MISMATCH` で Fail-Closed、mutation 0）。
+  4. **Stale Write 抑止 (CAS: Compare-And-Swap ガード)**:
+     - 現在の `DISTRICT_REGISTRY[districtId].storageFolderId === expectedCurrentStorageFolderId` を検証（不一致時は `STALE_WRITE` で Fail-Closed、mutation 0）。
+     - 現在の `STORAGE_PARENT_ID`（設定されている場合）が `expectedCurrentStorageFolderId` と一致することを検証（不一致時は `STALE_WRITE` で Fail-Closed、mutation 0）。
+     - オプションの `expectedRegistryRawHash` / `expectedRegistryRaw` 指定時、全文字一致を検証。
+  5. **既存地区属性 & 他地区テナントの完全不可侵**:
+     - 対象地区の `spreadsheetId`, `enabled`（`true` のまま維持）, `name` 等の他フィールドは一切変更しない。
+     - 他地区の全 entry は 1 バイトたりとも変更しない（0 diff deepEqual 保証）。
+     - `PROVISIONING_TOKEN_HASH`, `TARGET_SPREADSHEET_ID`, `SPREADSHEET_ID` 等の無関係な Script Properties は 100% 不可侵（0 diff）。
+  6. **変更許可キーの厳格限定（Allowlist: 最大3箇所のみ）**:
+     - `BRANCH_ROOT_FOLDER_ID`（未設定時のみ）
+     - `DISTRICT_REGISTRY[districtId].storageFolderId`
+     - `STORAGE_PARENT_ID`
+  7. **Read-Back 機械検証 & 局所ロールバック**:
+     - 書き込み直後に 3 箇所の Script Properties を再取得し、期待値および他地区不変性を完全機械検証。不一致時は例外をスロー。
+     - 途中失敗時は、変更済みキーのみを書き込み前の元値へ復元（Rollback）。
+  8. **キャッシュ即時無効化**:
+     - 反映直後に `CacheService.getScriptCache().remove("CONFIG_STORE")` および `SpreadsheetResolver.getInstance().clearCache()` を実行。
+- **管理エラーコード一覧 (Failure Codes)**:
+  - `UNAUTHORIZED`: プロビジョニングトークン欠損・不正
+  - `INVALID_ARGUMENT`: 必須パラメータ（`districtId`, `branchRootFolderId`, `expectedCurrentStorageFolderId`, `targetStorageFolderId`）の欠損
+  - `CORRUPTED_REGISTRY`: `DISTRICT_REGISTRY` 未設定、空文字、または JSON 破損
+  - `DISTRICT_NOT_FOUND`: 対象地区が `DISTRICT_REGISTRY` に未登録（新規作成禁止）
+  - `STALE_WRITE`: 現在の `storageFolderId` または `STORAGE_PARENT_ID` または Registry ハッシュが期待値と不一致
+  - `BRANCH_ROOT_MISMATCH`: 既存の `BRANCH_ROOT_FOLDER_ID` と指定値が不一致
+  - `RESOURCE_NOT_FOUND`: 指定フォルダ（branchRootFolder, districtFolder, storageFolder）が存在しない・アクセス不可
+  - `AMBIGUOUS_DISTRICT_FOLDER`: branchRoot 配下に同名地区フォルダが重複存在
+  - `AMBIGUOUS_STORAGE_FOLDER`: 地区フォルダ配下に同名ストレージフォルダが重複存在
+  - `STORAGE_FOLDER_MISMATCH`: 指定 `targetStorageFolderId` がサーバー側導出ストレージフォルダと不一致
+  - `MUTATION_FAILED`: 書き込み失敗または read-back 不一致（局所ロールバック実行）
+  - `METHOD_NOT_ALLOWED`: GET メソッドによる呼出し
+- **レスポンス形式 (Response)**:
+  ```json
+  {
+    "success": true,
+    "message": "District \"KUWANA\" drive binding repaired successfully.",
+    "districtId": "KUWANA",
+    "branchRootFolderId": "1EQQqWbtyF7iMd7Fk-WnUwWiAGB4MdIdN",
+    "storageFolderId": "1HI1nB_XqpEABz9vPugu7jLsf78LM1Mpw",
+    "storageParentId": "1HI1nB_XqpEABz9vPugu7jLsf78LM1Mpw",
+    "districtRegistryUpdated": true
   }
   ```
 
