@@ -1,5 +1,4 @@
 [
   ".agents/current-scope.json",
-  "tests/run_all_tests.mjs",
-  ".github/workflows/security-ci.yml"
+  "tests/test_multi_district_routing_auth.mjs"
 ]
