@@ -1,8 +1,5 @@
 [
   ".agents/current-scope.json",
-  ".agents/os-registry.json",
-  "AGENTS.md",
-  "docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md",
-  "scripts/check-scope.mjs",
-  "tests/test_registry_provisioning_gate.mjs"
+  "active/h-app/render.js",
+  "scripts/test_browser_h_app_storage.mjs"
 ]
