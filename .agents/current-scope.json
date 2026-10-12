@@ -1,5 +1,5 @@
 [
   ".agents/current-scope.json",
-  "active/h-app/render.js",
-  "scripts/test_browser_h_app_storage.mjs"
+  "active/manager/manager.js",
+  "active/manager/assets/manager.tailwind.css"
 ]
