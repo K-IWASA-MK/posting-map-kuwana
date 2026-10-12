@@ -1,13 +1,8 @@
 [
-  ".agents/agents/deployer/agent.md",
   ".agents/current-scope.json",
   ".agents/os-registry.json",
-  "DEPLOYMENT_REGISTRY.md",
-  "active/api/v2_api.js",
-  "active/business/system/district_provisioner.js",
-  "docs/api/API_CONTRACT.md",
-  "docs/operations/BACKUP_RESTORE_RUNBOOK.md",
-  "docs/operations/DISTRICT_PROVISIONING_RUNBOOK.md",
-  "tests/test_multi_district_routing_auth.mjs",
+  "AGENTS.md",
+  "docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md",
+  "scripts/check-scope.mjs",
   "tests/test_registry_provisioning_gate.mjs"
 ]
