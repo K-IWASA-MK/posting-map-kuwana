@@ -121,8 +121,8 @@ async function runBrowserStorageTests() {
   let getFlyerStockCallCount = 0;
   let mockGetFlyerStockDelay = 0;
   let mockStocksData = [
-    { id: "STK001", staffId: "S002", staffName: "鈴木 一郎", location: "桑名市", count: 1200, updatedAt: "2026/10/06 10:00" },
-    { id: "STK002", staffId: "S001", staffName: "テスト配布員", location: "桑名市", count: 500, updatedAt: "2026/10/06 12:00", isMe: true }
+    { id: "ST001", staffId: "S002", staffName: "なお", location: "桑名市", count: 2000, updatedAt: "2026/10/06 10:00" },
+    { id: "ST002", staffId: "S001", staffName: "テスト配布員", location: "桑名市", count: 500, updatedAt: "2026/10/06 12:00", isMe: true }
   ];
   let updatedStockPayload = null;
 
@@ -319,8 +319,8 @@ async function runBrowserStorageTests() {
     // ─────────────────────────────────────────────────────────
     console.log("👉 CASE D: Protect user input against delayed GET arrival");
     mockStocksData = [
-      { id: "STK001", staffId: "S002", staffName: "鈴木 一郎", location: "桑名市", count: 1200, updatedAt: "2026/10/06 10:00" },
-      { id: "STK002", staffId: "S001", staffName: "テスト配布員", location: "桑名市", count: 9999, updatedAt: "2026/10/06 12:00", isMe: true }
+      { id: "ST001", staffId: "S002", staffName: "なお", location: "桑名市", count: 2000, updatedAt: "2026/10/06 10:00" },
+      { id: "ST002", staffId: "S001", staffName: "テスト配布員", location: "桑名市", count: 9999, updatedAt: "2026/10/06 12:00", isMe: true }
     ];
     mockGetFlyerStockDelay = 400;
 
@@ -417,11 +417,19 @@ async function runBrowserStorageTests() {
     const listState = await page.evaluate(() => {
       const container = document.getElementById('storage-list-container');
       const rows = container ? container.querySelectorAll('.stock-row') : [];
+      const firstRow = rows[0];
+      const personLabelEl = firstRow ? firstRow.querySelector('.text-left div') : null;
+      const personLabelText = personLabelEl ? personLabelEl.textContent.trim() : '';
+      const countEl = firstRow ? firstRow.querySelector('span.text-\\[\\#22c55e\\]') : null;
+      const countText = countEl ? countEl.textContent.trim() : '';
+      const dataStorageId = firstRow ? firstRow.getAttribute('data-storage-id') : null;
       return {
         hasContainer: !!container,
         rowCount: rows.length,
         hasTransferBtn: container ? container.innerHTML.includes('受渡要請') : false,
-        hasOtherStaff: container ? container.innerHTML.includes('鈴木 一郎') : false,
+        personLabelText,
+        countText,
+        dataStorageId,
         hasMyStaff: container ? container.innerHTML.includes('テスト配布員') : false
       };
     });
@@ -429,9 +437,13 @@ async function runBrowserStorageTests() {
     assert.ok(listState.hasContainer, '在庫一覧コンテナが存在すること');
     assert.ok(listState.rowCount >= 1, '他配布員の在庫行が表示されていること');
     assert.equal(listState.hasTransferBtn, true, '受渡要請ボタンが存在すること');
-    assert.equal(listState.hasOtherStaff, true, '他配布員（鈴木 一郎）が表示されていること');
+    assert.ok(listState.personLabelText.includes('S002'), '人物ラベルに S002 が含まれていること');
+    assert.ok(listState.personLabelText.includes('なお'), '人物ラベルに なお が含まれていること');
+    assert.ok(!listState.personLabelText.includes('ST001'), '人物ラベルのtextContentに ST001 が含まれないこと');
+    assert.equal(listState.dataStorageId, 'ST001', 'data-storage-id には ST001 が維持されていること');
+    assert.ok(listState.countText.includes('2,000枚'), '枚数表示に 2,000枚 が含まれていること');
     assert.equal(listState.hasMyStaff, false, '自分の在庫（テスト配布員）は一覧から除外されていること');
-    console.log("  ✅ Case G PASSED: Storage list rendered & transfer button present\n");
+    console.log("  ✅ Case G PASSED: Storage list identity display (S002 なお, 2,000枚, ST001 excluded from person label) verified\n");
 
     console.log("==================================================================");
     console.log("🏆 ALL REAL-BROWSER STORAGE AUDIT CASES (A - G) PASSED!");

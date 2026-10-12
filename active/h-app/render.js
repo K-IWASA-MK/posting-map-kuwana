@@ -1174,7 +1174,7 @@ function renderStorageList(stocks, fallbackCities = null) {
 
           <!-- 1行目：左詰め（ID） -->
           <div class="w-full text-left">
-            <div class="text-sm font-black font-mono text-white truncate">${(s.id||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+            <div class="text-sm font-black font-mono text-white truncate">${([s.staffId, s.staffName].filter(Boolean).join(' ')).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
           </div>
 
           <!-- 2行目：中央揃え（枚数とLINEボタン） -->
