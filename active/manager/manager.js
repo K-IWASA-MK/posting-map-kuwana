@@ -1950,7 +1950,7 @@ function renderMainStageStocks(stocks) {
   let html = renderDomainStateBanner('stocks') + '<div class="space-y-1.5">';
   sortedStocks.forEach(s => {
     const staffBadgeHtml = s.staffId
-      ? `<span class="h-7 px-2 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center font-mono font-bold text-xs text-brand flex-shrink-0">${escapeHtml(s.staffId)}</span>`
+      ? `<span class="h-7 px-2 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center font-mono font-bold text-xs text-brand flex-shrink-0 lg:w-12 lg:flex-none">${escapeHtml(s.staffId)}</span>`
       : '';
 
     html += `
@@ -1964,7 +1964,7 @@ function renderMainStageStocks(stocks) {
         </div>
         <div class="flex items-center gap-2 text-xs sm:text-sm text-[#94A3B8] flex-1 min-w-0">
           ${staffBadgeHtml}
-          <span class="font-medium text-white text-xs sm:text-sm truncate max-w-[130px]">${escapeHtml(s.staffName || (s.staffId ? '' : '未設定'))}</span>
+          <span class="font-medium text-white text-xs sm:text-sm truncate max-w-[130px] lg:w-[130px] lg:flex-none">${escapeHtml(s.staffName || (s.staffId ? '' : '未設定'))}</span>
           <span class="text-[#243044] text-xs">|</span>
           <span class="text-textSub text-xs">更新: <span class="font-mono">${escapeHtml(s.updatedAt || '--')}</span></span>
         </div>
