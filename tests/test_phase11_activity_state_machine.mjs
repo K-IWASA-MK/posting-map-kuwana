@@ -143,7 +143,7 @@ test('5. 業務ルール1: 完了確定地区は当月再操作不可である�
 
   // 3. render.js モーダル内での再操作不可バッジ表示
   assert.ok(renderJs.includes('(p.isDone && !p.isReadyToSubmit)'), '完了確定済みアイテムの条件判定');
-  assert.ok(renderJs.includes('今月の配布は完了しています（再操作不可）'), 'モーダル内に再操作不可メッセージを表示');
+  assert.ok(renderJs.includes('今月の配布は完了しています<br>（再操作不可）'), 'モーダル内に再操作不可メッセージを表示');
   assert.ok(renderJs.includes('closeDetailModal()'), '閉じるボタンのみを提供し再提出ボタンを非表示化');
 });
 

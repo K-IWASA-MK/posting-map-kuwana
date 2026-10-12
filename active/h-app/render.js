@@ -875,7 +875,7 @@ function renderDetailModalContent(p) {
         ${(p.isDone && !p.isReadyToSubmit) ? `
           <!-- 【完了確定済み】当月再操作不可ガード (ADR-013) -->
           <div style="background: rgba(234, 95, 8, 0.12); border: 1px solid rgba(234, 95, 8, 0.4); color: #ea5f08; border-radius: 12px; padding: 10px; font-size: 12px; font-weight: 900; width: 100%; box-sizing: border-box; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px;">
-            <span>🔒</span><span>今月の配布は完了しています（再操作不可）</span>
+            <span>🔒</span><span>今月の配布は完了しています<br>（再操作不可）</span>
           </div>
           <div style="width: 100%; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box;">
             <button type="button" onclick="closeDetailModal()" class="btn-neu"
