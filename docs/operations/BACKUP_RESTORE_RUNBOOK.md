@@ -105,7 +105,7 @@
 2. **バックアップファイルの特定と検証**:
    - 障害発生直前の健全なバックアップスプレッドシート（`BACKUP_<districtId>_YYYYMMDD_HHmmss`）をバックアップフォルダから特定。
 3. **本番用スプレッドシートの再配備**:
-   - バックアップファイルを本番フォルダへ複製し、ファイル名を `POSTING_MAP_DB_<districtId>` に設定。
+   - バックアップファイルを本番フォルダへ複製し、ファイル名を `<districtId>` に設定。
    - 新しいスプレッドシートID（`RESTORED_SPREADSHEET_ID`）を取得。
 4. **Integrity Guard の確認**:
    - 複製したシートの `SYSTEM_INFO` を開き、`district_id` が対象地区と完全一致していることを確認。

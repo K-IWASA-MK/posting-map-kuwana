@@ -1627,7 +1627,7 @@ function doPost(e) {
     }
 
     const cleanDistrictId = String(districtId).trim().toUpperCase();
-    const canonicalDbName = `POSTING_MAP_DB_${cleanDistrictId}`;
+    const canonicalDbName = cleanDistrictId;
 
     // Server-side Deterministic Resolution: 03_BRANCH 配下から districtFolder, storageFolder を解決
     let driveStructure;
@@ -1668,9 +1668,9 @@ function doPost(e) {
       ssCount++;
     }
 
-    // 後方互換性フォールバック: 既存地区（旧名称: cleanDistrictId）の探索
+    // 互換性フォールバック: 過去形式（旧命名: POSTING_MAP_DB_<districtId>）の探索
     if (ssCount === 0) {
-      const legacyFiles = distFolder.getFilesByName(cleanDistrictId);
+      const legacyFiles = distFolder.getFilesByName(`POSTING_MAP_DB_${cleanDistrictId}`);
       while (legacyFiles.hasNext()) {
         ssFile = legacyFiles.next();
         ssCount++;
@@ -1741,9 +1741,9 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 地区名SSOT検証: スプレッドシート名が canonicalDbName または cleanDistrictId と完全一致すること
+    // 地区名SSOT検証: スプレッドシート名が canonicalDbName (cleanDistrictId) または過去形式と一致すること
     const ssName = (ss.getName() || "").trim();
-    if (ssName !== canonicalDbName && ssName !== cleanDistrictId) {
+    if (ssName !== canonicalDbName && ssName !== `POSTING_MAP_DB_${cleanDistrictId}`) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
         code: "DISTRICT_MISMATCH",

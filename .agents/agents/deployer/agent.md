@@ -56,7 +56,7 @@ Execution AI（Chief Orchestrator）からの内部ディスパッチ（`invoke_
 ## 📋 標準執行パイプライン（5段階）
 
 1. **Phase 1: Drive Physical Layout & Resource Derivation**:
-   - `BRANCH_ROOT_FOLDER_ID` から `03_BRANCH/{districtId}/`、`{districtId} 支部_STORAGE/`、`SOURCE_ARCHIVE/`、および `POSTING_MAP_DB_{districtId}` を決定論的に解決・導出（`EXTERNAL_WRITE: YES` 認可時）。
+   - `BRANCH_ROOT_FOLDER_ID` から `03_BRANCH/{districtId}/`、`{districtId} 支部_STORAGE/`、`SOURCE_ARCHIVE/`、および `{districtId}`（スプレッドシートDB）を決定論的に解決・導出（`EXTERNAL_WRITE: YES` 認可時）。
 2. **Phase 2: Data Acquisition & Master Generation**:
    - 公式データ自律取得。
    - `district-data-provisioning` および `official-data-audit` プロトコル執行（境界GeoJSON・住所マスター・自治体マスター生成）。

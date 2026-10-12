@@ -868,14 +868,14 @@ runTest("Scenario 12: bootstrapEnvironment による既存地区の保護と新�
     const storageFolderB = distFolderB.createFolder("NEW_DISTRICT_B 支部_STORAGE");
     const ssFileB = {
       getId: () => "ss-b-id",
-      getName: () => "POSTING_MAP_DB_NEW_DISTRICT_B",
+      getName: () => "NEW_DISTRICT_B",
       getMimeType: () => "application/vnd.google-apps.spreadsheet",
       isTrashed: () => false
     };
     distFolderB.files.push(ssFileB);
 
-    // 新規地区スプレッドシートのモック（名前は Canonical DB Name: POSTING_MAP_DB_NEW_DISTRICT_B）
-    const ssNewB = new MockSpreadsheet("ss-b-id", "POSTING_MAP_DB_NEW_DISTRICT_B");
+    // 新規地区スプレッドシートのモック（名前は Canonical DB Name: NEW_DISTRICT_B）
+    const ssNewB = new MockSpreadsheet("ss-b-id", "NEW_DISTRICT_B");
     mockSpreadsheets["ss-b-id"] = ssNewB;
 
     // 1. 正常系: districtId のみ（Caller 指定なしでサーバー側解決）

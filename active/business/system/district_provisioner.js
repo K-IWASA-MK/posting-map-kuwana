@@ -401,7 +401,7 @@
       if (!cleanDistrictId) {
         return { success: false, code: "INVALID_ARGUMENT", message: "districtId is required." };
       }
-      const canonicalDbName = `POSTING_MAP_DB_${cleanDistrictId}`;
+      const canonicalDbName = cleanDistrictId;
 
       const token = opts && opts.provisioningToken;
       const tokenCheck = typeof verifyProvisioningToken === 'function'

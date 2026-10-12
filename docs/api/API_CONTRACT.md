@@ -1017,7 +1017,7 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
   FIELD_OPERATIONS_PLATFORM/
   └── 03_BRANCH/
       └── {districtId}/
-          ├── POSTING_MAP_DB_{districtId}
+          ├── {districtId}
           ├── {districtId} 支部_STORAGE/
           └── SOURCE_ARCHIVE/
   ```
@@ -1034,7 +1034,7 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
      ↓
   sourceArchiveFolderId (SOURCE_ARCHIVE/)
      ↓
-  canonicalDbName (POSTING_MAP_DB_{districtId})
+  canonicalDbName ({districtId})
      ↓
   canonicalSpreadsheetId
   ```
@@ -1059,7 +1059,7 @@ Gate 3 で策定した設計契約と、現行コードベース（`active/`）�
     ```
     ※後方互換用オプショナル引数: `targetFolderId`, `targetDistrictName`
 - **安全制約 & 絶対遵守事項 (Safety Constraints & Prohibitions)**:
-  1. **Caller Authority の剥奪**: Caller が配置先フォルダ ID や任意の DB 名を決定することは永久に禁止される。DB 名は `POSTING_MAP_DB_{cleanDistrictId}` に強制固定される。
+  1. **Caller Authority の剥奪**: Caller が配置先フォルダ ID や任意の DB 名を決定することは永久に禁止される。DB 名は `{cleanDistrictId}` に強制固定される。
   2. **Legacy 引数の Assertion-Only 運用**: 旧引数（`targetSpreadsheetId`, `storageParentId`, `targetFolderId`, `targetDistrictName`）が渡された場合、それらは配置・指定の Authority としては使用されず、サーバー側導出値との一致検証専用（Assertion Only）として扱われる。不一致時は直ちに Fail-Closed 遮断（`SPREADSHEET_ID_MISMATCH`, `STORAGE_FOLDER_MISMATCH`, `FOLDER_MISMATCH`, `INVALID_DISTRICT_NAME`）。
   3. **ドライブショートカットの厳格拒絶**: ドライブショートカット（MIMEタイプ `application/vnd.google-apps.shortcut`）は実体 DB として認可せず、検知時は直ちに `SHORTCUT_REJECTED` で遮断（mutation 0）。
   4. **自動破壊（Auto-Trash）の完全禁止**: 既存同名 DB が既に存在する場合、過去の自動ゴミ箱送り（`setTrashed(true)`）は永久に禁止される。1件存在時は `DISTRICT_DB_ALREADY_EXISTS`、2件以上存在時は `AMBIGUOUS_DISTRICT_DB` で直ちに Fail-Closed 停止する。

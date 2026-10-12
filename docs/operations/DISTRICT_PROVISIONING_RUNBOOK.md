@@ -130,7 +130,7 @@
      - `BRANCH_ROOT_FOLDER_ID` 配下に `03_BRANCH/{districtId}/`、`{districtId} 支部_STORAGE/`、および `SOURCE_ARCHIVE/` を自動探索または正規生成する。
   2. **Canonical DB 複製・生成**:
      - `DistrictProvisioner.getInstance().createDistrictDatabase(templateSpreadsheetId, null, null, options)` を実行。
-     - 共通 Empty Template（`SYSTEM_INFO` および `端末管理` のみを保持、原本5種なし、初期状態空欄）から、導出済み `districtFolder` 直下にファイル名 `POSTING_MAP_DB_<districtId>` として複製する。
+     - 共通 Empty Template（`SYSTEM_INFO` および `端末管理` のみを保持、原本5種なし、初期状態空欄）から、導出済み `districtFolder` 直下にファイル名 `<districtId>` として複製する。
      - **自動破壊（Auto-Trash）完全抑止**: 既に同名 DB が存在する場合、自動上書き・ゴミ箱送りは永久に禁止され、`DISTRICT_DB_ALREADY_EXISTS` で安全停止（Fail-Closed）する。
   3. **`SYSTEM_INFO` シート設定（Key-Value形式）**:
      - `地区コード` (必須): Stage 1 で決定した `districtId` を正確に入力（Integrity Guard 照合対象）。

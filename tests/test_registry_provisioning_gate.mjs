@@ -422,7 +422,7 @@ runGate("Gate 9: districtFolder.parentId === BRANCH_ROOT_FOLDER_ID", () => {
 runGate("Gate 10: spreadsheet.parentId === districtFolderId (real spreadsheet, not shortcut)", () => {
   const ssFile = DriveApp.getFileById(dbResult.spreadsheetId);
   assert.ok(ssFile, "Spreadsheet file must exist");
-  assert.equal(ssFile.getName(), `POSTING_MAP_DB_${PROV_DISTRICT}`);
+  assert.equal(ssFile.getName(), PROV_DISTRICT);
   assert.notEqual(ssFile.getMimeType(), "application/vnd.google-apps.shortcut", "DB must not be a shortcut");
   const parentIter = ssFile.getParents();
   assert.ok(parentIter.hasNext(), "Spreadsheet file must have a parent");
