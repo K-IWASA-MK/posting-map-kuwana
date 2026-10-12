@@ -4,8 +4,8 @@
   "activationState": "active",
   "principleContract": {
     "canonicalSource": "docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md",
-    "expectedVersion": "2026-10-08",
-    "sha256": "e56b32cb37a9b29afa1d94c82412c4b46b9a8fb911c5dc69c1a47c8d83b2cb00"
+    "expectedVersion": "2026-10-12",
+    "sha256": "3e52d77ad774ee81b74485f139912477ad00502d0181c84b776f6bf442a61831"
   },
   "universalContract": {
     "oneDistrictOneApp": true,
@@ -117,7 +117,7 @@
       "canonicalSources": [
         {
           "path": "docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md",
-          "sha256": "e56b32cb37a9b29afa1d94c82412c4b46b9a8fb911c5dc69c1a47c8d83b2cb00"
+          "sha256": "3e52d77ad774ee81b74485f139912477ad00502d0181c84b776f6bf442a61831"
         },
         {
           "path": "docs/architecture/UNIVERSAL_QUALITY_DOCTRINE.md",
@@ -198,7 +198,7 @@
         },
         {
           "path": "AGENTS.md",
-          "sha256": "4233bfc789cf1e245bb314b3aba0a6a3aa55866b4d497c216bf2dc4ad9b9eb08"
+          "sha256": "29ccef0ea225725d5ed025a261b7ad4a9cb8e4756dcf6fa5e271e82b79a977fb"
         }
       ],
       "evidenceSources": [

@@ -2,7 +2,7 @@
 
 ## 0. Supreme Principles — ABSOLUTE
 - 本リポジトリにおけるすべての工学契約、就業規則、開発ガバナンスは、最高位存在規範である **Supreme Product Principles**（正本ポインタ: [.agents/os-registry.json](.agents/os-registry.json) `principleContract.canonicalSource` ➔ [docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md](docs/architecture/SUPREME_PRODUCT_PRINCIPLES.md)）に絶対従属する。
-- **Product Behavior Preservation**: 現在完成しているHアプリ・Dashboardの機能、操作、表示、タイミング（UI, 操作順, 表示内容, 画面遷移, Loading, Modal, Error, Optimistic First Paint, API firing order, await / no-await, Promise ordering, Concurrency, Timers, Existing quirks）を1つも変えてはならない。
+- **Product Behavior Preservation**: 現在完成しているHアプリ・Dashboardの機能、操作、表示、タイミング（UI, 操作順, 表示内容, 画面遷移, Loading, Modal, Error, Optimistic First Paint, API firing order, await / no-await, Promise ordering, Concurrency, Timers, Existing quirks, SSOT, Identity, 命名契約, Spreadsheet・File等の外部Resource名, API semantics, Authentication・Session Binding）を1つも変えてはならない。
 - **Universal Product Model & 物理製品境界**: 1地区 = 1完成アプリ = 1単独フォルダー = 1単独リポジトリ = 1単独ドメイン。共通Runtime（`active/**`）の個別改変・分岐を永久に禁止する。
 - **No Autonomous Principle Change**: 原則の更新起点は MASTER explicit decision のみとする。AIによる原則の自律改定は永久に禁止する。
 - **Version Resolution**: 各AI社員は原則バージョンを直接保持せず、Current Role ➔ Canonical Pointer ➔ Registry ➔ Supreme Principle SSOT の一方向チェーンによって一意に解決する。
@@ -28,6 +28,7 @@
 
 ## 3. CURRENT TREE IS THE TRUTH — ABSOLUTE
 - **Current Tree = 現在**、**Git History = 過去**。
+- **Current Tree は現在の状態（Current State）を記録するものであり、自動的な正当性や権威（Automatic Authority）を付与するものではない**。MASTER未承認のRegressionがCurrent Tree、テスト、Runbook、API契約書等へ反映されても、それによって当該Regressionは正当化されない。
 - 廃止設計、旧実装、ゾンビコードを `legacy/`、`reference/`、`archive/` やコメントアウトとして Current Tree へ残してはならない。
 - ただし削除は、後継実装の完全な検証（Replacement Verified）が客観的証跡により確認された後のみ実行可能とする。
 
@@ -83,6 +84,8 @@
 6. **Unexpected Condition → Report → STOP**: 予期せぬ状態・不整合・テスト失敗・宣言外変更を発見した場合は即座に作業を停止し、MASTERへ報告すること。自己判断での修正拡大は禁止。
 7. **実装後差分照合必須**: 実装完了後、必ず `git diff` で事前宣言と実際の変更内容を照合すること。宣言外変更が1行でも存在した場合は即時失敗・HARD STOPとする。
 8. **既存安全経路最優先・非侵襲原則**: 単純な管理・調査・試験のために、本番GAS、本番WebApp、デプロイ、OAuth、権限体系を変更することを禁止する。「APIでできない → GASを一時改造する」を標準手段として使用してはならない。UIで完結する作業はUIで完結させ、最小変更・最小リスク・既存システム非侵襲を最優先とする。
+9. **Regression Repair Doctrine**: 過去に正常稼働していた Product Behavior が直近の変更によって損なわれた（Regression）場合、デフォルトかつ唯一の修復方針は「最後の承認済み正常挙動への最小復旧」とする。MASTERが明示的に再設計を承認しない限り、Regression修復を理由としたSSOT変更、命名変更、再設計、疎結合化、API追加、近代化を永久に禁止する。
+10. **No Manual Delegation（AIからMASTERへの手動委譲禁止）**: AI自身が認証済み自動化経路（CLI, API, 外部自動化スクリプト等）により安全に機械実行可能な操作を、安易にMASTERへ手動作業として委譲してはならない。安全な自動化実行経路が存在しない場合は AUTOMATION GAP として直ちに作業を停止（HARD STOP）し、MASTERへ報告する。手動委譲を正当化するために新APIを追加することも禁止する。
 
 ## 7. Commit, Push & Deploy Authority — ABSOLUTE
 1. **Commit & Push Authority**:
@@ -141,6 +144,8 @@ AI社員は以下の条件に抵触する変更を新規にコミットしては
    - `app.js` から `window.*` への新規 state/function 露出
    - Feature Module の private state の新規 global 露出
    - Feature / API / Presentation レイヤーから `app.js` 内部 state への新規の逆依存追加
+   - **Protected Product Invariants の変質**: Spreadsheet District Identity（`cleanDistrictId` との完全一致）、SSOT、認証・セッション結合、API semantics などの重要契約の Net-New 改変
+   - **契約テストと製品コードの同一Transaction改ざん**: `active/**` のコード変更と、それを担保する契約テスト（`test_registry_provisioning_gate.mjs`, `test_sec001_dashboard_auth_fix.mjs` 等）の変更を同一コミットで行うこと
 2. **【REVIEW】（MASTER Architecture Review 必須）**
    - `app.js` への新規 `callApiPost()` 呼び出し追加（Boot/Bootstrap上不可避な場合のみ承認対象とする）
 3. **【WARN】（警告・説明責任）**

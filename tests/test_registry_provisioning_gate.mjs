@@ -423,6 +423,7 @@ runGate("Gate 10: spreadsheet.parentId === districtFolderId (real spreadsheet, n
   const ssFile = DriveApp.getFileById(dbResult.spreadsheetId);
   assert.ok(ssFile, "Spreadsheet file must exist");
   assert.equal(ssFile.getName(), PROV_DISTRICT);
+  assert.doesNotMatch(ssFile.getName(), /^POSTING_MAP_DB_/, "Canonical DB name must NOT contain POSTING_MAP_DB_ prefix (Regression invariant)");
   assert.notEqual(ssFile.getMimeType(), "application/vnd.google-apps.shortcut", "DB must not be a shortcut");
   const parentIter = ssFile.getParents();
   assert.ok(parentIter.hasNext(), "Spreadsheet file must have a parent");
@@ -512,6 +513,23 @@ runGate("Unit 5: createDistrictDatabase INVALID_DISTRICT_NAME assertion", () => 
   });
   assert.equal(badNameResult.success, false);
   assert.equal(badNameResult.code, "INVALID_DISTRICT_NAME");
+});
+
+// Unit Test 6: Canonical name must be cleanDistrictId, reject POSTING_MAP_DB_ prefix
+runGate("Unit 6: Canonical DB name must match cleanDistrictId exactly (No prefix)", () => {
+  const testDist = "TEST_CANONICAL_CHECK";
+  prov.resolveOrCreateDistrictDriveStructure(testDist);
+  const result = prov.createDistrictDatabase("template-ss-empty-id", null, null, {
+    districtId: testDist,
+    provisioningToken: "valid-token"
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.districtName, testDist);
+  assert.doesNotMatch(result.districtName, /^POSTING_MAP_DB_/, "Canonical districtName must NOT contain POSTING_MAP_DB_ prefix");
+
+  const file = DriveApp.getFileById(result.spreadsheetId);
+  assert.equal(file.getName(), testDist);
+  assert.doesNotMatch(file.getName(), /^POSTING_MAP_DB_/, "File name must NOT contain POSTING_MAP_DB_ prefix");
 });
 
 console.log("\n▶ Running repairDistrictDriveBinding Gates (Gates 14-30)...");

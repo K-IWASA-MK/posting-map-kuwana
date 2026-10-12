@@ -1,5 +1,5 @@
 ---
-principleVersion: "2026-10-08"
+principleVersion: "2026-10-12"
 status: "CURRENT"
 ---
 
@@ -28,6 +28,11 @@ status: "CURRENT"
 - Concurrency
 - Timers
 - Existing quirks（既存の特殊仕様・癖を含む）
+- SSOT（Single Source of Truth: 地区表示・データフローの唯一の正本）
+- Identity & Branch derivation（地区・組織・権限の導出構造）
+- Important naming contracts（Spreadsheet名・ファイル名等の重要な外部Resource命名契約）
+- API semantics（APIの契約・引数・戻り値・HTTP挙動）
+- Authentication & Session Binding（認証・セッショントークン結合キー）
 
 ---
 
@@ -45,6 +50,7 @@ status: "CURRENT"
 ### 第4条：Current Tree = Current / Git History = Past（知識統制原則）
 Current Tree は現在であり、Git History は過去である。
 - Current Tree には常に最新かつ有効な正本のみを配置する。
+- **Current Tree は現在の状態（Current State）を記録するものであり、自動的な正当性や権威（Automatic Authority）を付与するものではない**。MASTER未承認のRegressionがCurrent Tree、テスト、Runbook、API契約書等へ反映されても、それによって当該Regressionは正当化されない。
 - 過去の原則、改定理由、変遷差分は Git コミット履歴を歴史的参照元（historical reference）とする。
 - 旧版別名ファイル（`*principle*` 等の旧版ファイル）の蓄積、および退避用ディレクトリ（`legacy/`, `archive/`, `reference/`, `old-principles/` 等）の作成、コメントアウトによる旧原則の残存を永久に禁止する。
 
@@ -54,6 +60,7 @@ Current Tree は現在であり、Git History は過去である。
 原則の更新起点は MASTER explicit decision のみとする。
 - AIが自律的または自己判断で「改善」「リファクタリング」「最適化」と称して原則を改定・変更することは永久に禁止される。
 - 新原則への進化は、MASTERによる明示的発令、影響分析、MASTER承認（Proceed）、検証、独立検品、MASTER承認（Resume/Commit）の厳格なトランザクションを経てのみ成立する。
+- **Regression Repair Doctrine**: 過去に正常稼働していた Product Behavior が直近の変更によって損なわれた（Regression）場合、デフォルトかつ唯一の修復方針は「最後の承認済み正常挙動への最小復旧」とする。MASTERが明示的に再設計を承認しない限り、Regression修復を理由としたSSOT変更、命名変更、再設計、疎結合化、API追加、近代化を永久に禁止する。
 
 ---
 
@@ -61,4 +68,5 @@ Current Tree は現在であり、Git History は過去である。
 - **Scope Lock & 最小侵襲**: 指定範囲外のコード不可侵。最小限の行数のみ変更。「ついで」の改善は絶対禁止。
 - **No Silent Changes**: ファイル変更前の事前宣言と実装後の差分照合（`git diff`）の義務付け。
 - **Unexpected Condition = Report + HARD STOP**: 予期せぬ状態・不整合・テスト失敗を発見した場合は即座に作業を停止し、MASTERへ報告する。
+- **No Manual Delegation**: AI自身が認証済み自動化経路（CLI, API, 外部自動化スクリプト等）により安全に機械実行可能な操作を、安易にMASTERへ手動作業として委譲してはならない。安全な自動化実行経路が存在しない場合は AUTOMATION GAP として直ちに作業を停止（HARD STOP）し、MASTERへ報告する。手動委譲を正当化するために新APIを追加することも禁止する。
 - **Independent Audit & MASTER Resume**: 独立監査（Context Isolation）による PASS 判定、および MASTER からの明示的指示を受領するまでコミット・確定を行ってはならない。
